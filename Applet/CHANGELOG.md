@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- A noodlet watched live from another device draws everything it shows, even when it was never opened on this Mac. Before, anything it drew frame by frame stayed blank until someone opened it here. It stays out of sight on this Mac while it is watched.
+
 ## [0.11.0] - 2026-09-26
 
 ### Added

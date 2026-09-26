@@ -94,6 +94,68 @@ import WebKit
       _ = try await call(["step"] + exact, succeeds: false)
       _ = try await call(["close"] + exact)
     }
+    // A person watching from another device opens the noodlet in the background, never seen on this Mac.
+    let watched = library.documents.appendingPathComponent("Watched.\(AppletBuildIdentity.current.fileExtension)")
+    _ = try NoodletPackage.install([
+      "noodlet.json": try JSONEncoder().encode(NoodletManifest(title: "Live view regression")),
+      "index.html": Data("""
+        <!doctype html><title>Live view</title>
+        <style>body{margin:0;background:black}div,canvas{display:block;width:160px;height:120px}</style>
+        <div style="background:#ff0000"></div><canvas id="c" width="160" height="120"></canvas>
+        <script>requestAnimationFrame(()=>{const x=c.getContext('2d');x.fillStyle='#00ff00';x.fillRect(0,0,160,120);});</script>
+        """.utf8)
+    ], to: watched)
+    library.scan()
+    let watchedTarget = ["--id", try library.linkID(for: NoodletPackage(url: watched)).uuidString]
+    let cold = try await call(["open", "--mode", "background"] + watchedTarget)
+    guard let session = runtime.sessions[cold.sessionID!], let web = session.web else { throw AppletError("Background session missing") }
+    let (near, far) = try {
+      var fds: [Int32] = [0, 0]
+      guard socketpair(AF_UNIX, SOCK_STREAM, 0, &fds) == 0 else { throw AppletError("No socket pair") }
+      return (SurfaceSocket(fd: fds[0], held: true), SurfaceSocket(fd: fds[1]))
+    }()
+    let streamed = await runtime.handle(
+      AppletRequest(.surfaceStream, sessionID: cold.sessionID), identity: AppletBuildIdentity.current.noodleID, surface: near)
+    near.start(with: try JSONEncoder().encode(streamed))
+    try require(streamed.error == nil, "Live view refused: \(streamed.error ?? "")")
+    let frame = await withTaskGroup(of: SurfacePacket?.self) { group in
+      group.addTask {
+        for await data in far.frames { if let packet = SurfacePacket.decode(data)?.first { return packet } }
+        return nil
+      }
+      group.addTask { try? await Task.sleep(for: .seconds(5)); return nil }
+      let first = await group.next() ?? nil
+      group.cancelAll()
+      return first
+    }
+    try require(frame?.keyFrame == true, "A background noodlet sent no live view within 5 seconds")
+    try await Task.sleep(for: .milliseconds(300))
+    // What the live view captures, as it captures it.
+    let picture = try await session.snapshot()
+    let captured = NSBitmapImageRep(data: picture.tiffRepresentation!)!
+    func pixels(_ y: ClosedRange<Double>, _ match: (NSColor) -> Bool) -> Int {
+      var count = 0
+      for py in stride(from: 0, to: captured.pixelsHigh, by: 2) {
+        let point = Double(py) * picture.size.height / Double(captured.pixelsHigh)
+        guard y.contains(point) else { continue }
+        for px in stride(from: 0, to: min(captured.pixelsWide, Int(160 * Double(captured.pixelsWide) / picture.size.width)), by: 2) {
+          if let color = captured.colorAt(x: px, y: py)?.usingColorSpace(.deviceRGB), match(color) { count += 1 }
+        }
+      }
+      return count
+    }
+    let redShown = pixels(0...119) { $0.redComponent > 0.8 && $0.greenComponent < 0.2 }
+    let greenShown = pixels(120...239) { $0.greenComponent > 0.8 && $0.redComponent < 0.2 }
+    print("INFO watched background capture: static red \(redShown), animation-frame green \(greenShown)")
+    try require(redShown > 500, "The live view of a background noodlet is blank")
+    try require(greenShown > 500, "The live view of a background noodlet lacks what it drew in an animation frame")
+    try require(web.window.alphaValue == 0 && web.window.ignoresMouseEvents && !NSApp.isActive,
+      "A watched background noodlet became visible or took focus on this Mac")
+    far.close()
+    try await Task.sleep(for: .milliseconds(500))
+    try require(!web.window.isVisible && web.window.alphaValue == 1, "The noodlet stayed on screen after the live view ended")
+    _ = try await call(["close"] + watchedTarget)
+    print("PASS live view: a noodlet opened only in the background draws for its viewer and stays out of sight on this Mac")
     let open = try await call(["open", "--mode", "headless", "--test-clock"] + target)
     let exact = target + ["--session", open.sessionID!.uuidString]
     try require(open.testClock == true && open.dataScope == "test", "Clock did not use test data")

@@ -37,18 +37,23 @@ import Foundation
     /// Someone is watching, which keeps bots off the surface until they leave.
     public var isWatched: Bool { !viewers.isEmpty }
 
+    /// Told when the first viewer arrives and when the last one leaves.
+    public var watchingChanged: (@MainActor (Bool) -> Void)?
+
     /// Starts pushing video to `socket` and taking its viewer's controls, until either side closes it.
     public func attach(_ socket: SurfaceSocket) {
         let id = ObjectIdentifier(socket)
+        let first = viewers.isEmpty
         viewers[id] = Viewer(socket: socket)
         wantsKeyFrame = true
+        if first { watchingChanged?(true) }
         if loop == nil { start() }
         Task { [weak self] in
             for await frame in socket.frames {
                 guard let control = SurfaceControl(frame) else { continue }
                 await self?.handle(control, from: id)
             }
-            self?.viewers[id] = nil
+            self?.leave(id)
         }
     }
 
@@ -56,7 +61,14 @@ import Foundation
         loop?.cancel()
         loop = nil
         viewers.values.forEach { $0.socket.close() }
+        let watched = isWatched
         viewers = [:]
+        if watched { watchingChanged?(false) }
+    }
+
+    private func leave(_ id: ObjectIdentifier) {
+        guard viewers.removeValue(forKey: id) != nil, viewers.isEmpty else { return }
+        watchingChanged?(false)
     }
 
     private func handle(_ control: SurfaceControl, from id: ObjectIdentifier) async {

@@ -134,6 +134,7 @@ final class WebRunner: NSObject, WKNavigationDelegate, WKUIDelegate,
     }
   }
   func show() {
+    restoreSeen()
     setMuted(false)
     window.makeKeyAndOrderFront(nil)
     NSApp.activate(ignoringOtherApps: true)
@@ -141,6 +142,26 @@ final class WebRunner: NSObject, WKNavigationDelegate, WKUIDelegate,
   func hide() {
     setMuted(true)
     window.orderOut(nil)
+    if watched { presentUnseen() }
+  }
+  /// While a person watches from another device the page must draw as if seen, which WebKit
+  /// only does for a window on screen, so a window the Mac does not show goes there transparent
+  /// and out of the way. Its sound stays as it was.
+  var watched = false {
+    didSet {
+      guard watched != oldValue else { return }
+      if watched, !window.isVisible { presentUnseen() }
+      if !watched, window.alphaValue == 0 { window.orderOut(nil); restoreSeen() }
+    }
+  }
+  private func presentUnseen() {
+    window.alphaValue = 0
+    window.ignoresMouseEvents = true
+    window.orderBack(nil)
+  }
+  private func restoreSeen() {
+    window.alphaValue = 1
+    window.ignoresMouseEvents = false
   }
   /// Page muting is WebKit's own, so media elements and Web Audio go silent
   /// without pausing: a background noodlet keeps running, it just makes no sound.

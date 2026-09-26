@@ -377,6 +377,7 @@ import AppletCore
           guard let self, let session else { return }
           try await self.deliver(input, to: session)
         })
+        streamer.watchingChanged = { [weak session] watched in session?.web?.watched = watched }
         surfaceStreamers[session.id] = streamer
         streamer.attach(socket)
         return status(session)
