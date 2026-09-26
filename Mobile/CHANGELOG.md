@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### What to Test
+
+- Tap the plus by the message field and send a photo, a file or a camera shot from the panel.
+- Record and send a voice message.
+- Open a conversation with many pictures: it should not jump while they load.
+- Send a message, and scroll up while a bot replies: you stay where you are.
+
 ### Changed
 
 - The message field is taller, as in Messages, and holds the microphone and send button. The plus opens a panel with Camera, Photos and Files that grows out of it.
