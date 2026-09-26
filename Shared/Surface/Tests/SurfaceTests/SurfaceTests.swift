@@ -219,15 +219,14 @@ final class SurfaceTests: XCTestCase {
     /// line has cleared and that key frame comes.
     func testTheRelaySlowsVideoForAViewerThatFallsBehind() async throws {
         let (companion, hub) = try pair()
-        let lock = NSLock()
-        var stalled = true, backlog = 0, forwarded: [SurfacePacket] = []
+        let link = FakeLink()
         let relay = Task {
             await hub.relay(to: { frame in
-                lock.withLock {
-                    forwarded += SurfacePacket.decode(frame) ?? []
-                    if stalled { backlog += frame.count }
+                link.lock.withLock {
+                    link.forwarded += SurfacePacket.decode(frame) ?? []
+                    if link.stalled { link.backlog += frame.count }
                 }
-            }, backlog: { lock.withLock { stalled ? backlog : 0 } })
+            }, backlog: { link.lock.withLock { link.stalled ? link.backlog : 0 } })
         }
         func frame(_ sequence: UInt64, key: Bool, bytes: Int) -> Data {
             SurfacePacket.encode([SurfacePacket(sequence: sequence, keyFrame: key, width: 800, height: 500,
@@ -245,14 +244,64 @@ final class SurfaceTests: XCTestCase {
         }
         XCTAssertLessThan(rate, 20_000_000)
 
-        lock.withLock { stalled = false }
+        link.lock.withLock { link.stalled = false }
         companion.send(frame(3, key: false, bytes: 20_000))
         companion.send(frame(4, key: true, bytes: 100_000))
         companion.send(frame(5, key: false, bytes: 20_000))
-        for _ in 0..<250 where lock.withLock({ forwarded.count }) < 3 { try await Task.sleep(for: .milliseconds(20)) }
-        XCTAssertEqual(lock.withLock { forwarded.map(\.sequence) }, [1, 4, 5])
+        for _ in 0..<250 where link.lock.withLock({ link.forwarded.count }) < 3 { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertEqual(link.lock.withLock { link.forwarded.map(\.sequence) }, [1, 4, 5])
         companion.close()
         await relay.value
+    }
+
+    /// Frames are captured on a steady beat: time spent capturing one does not push the next back.
+    @MainActor func testTheStreamerKeepsItsBeatWhileCapturingTakesTime() async throws {
+        let picture = image(width: 800, height: 500, gray: 0.5)
+        var starts: [ContinuousClock.Instant] = []
+        let streamer = SurfaceStreamer(fps: 20, maxPixelSize: 800, capture: {
+            starts.append(.now)
+            try await Task.sleep(for: .milliseconds(30))
+            return (picture, CGSize(width: 800, height: 500))
+        }, apply: { _ in })
+        defer { streamer.stop() }
+        let (companion, _) = try pair()
+        streamer.attach(companion)
+        for _ in 0..<250 where starts.count < 12 { try await Task.sleep(for: .milliseconds(20)) }
+        let intervals = zip(starts, starts.dropFirst()).map { ($1 - $0) / .milliseconds(1) }.sorted()
+        XCTAssertLessThan(intervals[intervals.count / 2], 60, "frames came every \(Int(intervals[intervals.count / 2])) ms instead of every 50")
+    }
+
+    /// Encoding happens away from the main thread, which the surface and its app need for themselves.
+    @MainActor func testEncodingLeavesTheMainThreadFree() async throws {
+        let pictures = (0..<4).map { noise(width: 3200, height: 2000, seed: CGFloat($0) / 4) }
+        var next = 0
+        let streamer = SurfaceStreamer(fps: 30, maxPixelSize: 1600, capture: {
+            next += 1
+            return (pictures[next % pictures.count], CGSize(width: 1600, height: 1000))
+        }, apply: { _ in })
+        defer { streamer.stop() }
+        let (companion, hub) = try pair()
+        streamer.attach(companion)
+        _ = try await packets(from: hub) { $0.count >= 3 }
+        let drain = Task.detached { for await _ in hub.frames {} }
+        defer { drain.cancel() }
+        // Time the main thread spends working, which other processes on a busy machine cannot add to.
+        func working() -> Double {
+            var info = thread_basic_info()
+            var count = mach_msg_type_number_t(MemoryLayout<thread_basic_info>.size / MemoryLayout<integer_t>.size)
+            let thread = mach_thread_self()
+            defer { mach_port_deallocate(mach_task_self_, thread) }
+            _ = withUnsafeMutablePointer(to: &info) {
+                $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { thread_info(thread, thread_flavor_t(THREAD_BASIC_INFO), $0, &count) }
+            }
+            return Double(info.user_time.seconds + info.system_time.seconds) * 1000
+                + Double(info.user_time.microseconds + info.system_time.microseconds) / 1000
+        }
+        XCTAssertEqual(pthread_main_np(), 1)
+        let before = working()
+        try await Task.sleep(for: .seconds(1))
+        let held = working() - before
+        XCTAssertLessThan(held, 100, "the main thread worked \(Int(held)) ms of one second")
     }
 
     private func noise(width: Int, height: Int, seed: CGFloat) -> CGImage {
@@ -275,4 +324,12 @@ final class SurfaceTests: XCTestCase {
         XCTAssertEqual(SurfaceGeometry.surfacePoint(CGPoint(x: 320, y: 300), in: view, surface: surface), CGPoint(x: 640, y: 400))
         XCTAssertNil(SurfaceGeometry.surfacePoint(CGPoint(x: 320, y: 10), in: view, surface: surface), "a click in the letterbox reaches nothing")
     }
+}
+
+/// A viewer's link as the relay sees it: what got through, and what is still waiting while it stalls.
+private final class FakeLink: @unchecked Sendable {
+    let lock = NSLock()
+    var stalled = true
+    var backlog = 0
+    var forwarded: [SurfacePacket] = []
 }

@@ -5,6 +5,7 @@
 ### Fixed
 
 - Lighten live video when Noodle Hub says the viewer's connection is slow, so the view keeps up instead of stuttering.
+- Live video keeps a steady frame rate, and the app stays responsive while someone watches. Encoding each frame no longer holds up the app.
 
 ## [0.6.0] - 2026-09-26
 

@@ -1,8 +1,9 @@
 import CoreGraphics
 import Foundation
 
-/// A companion's side of its live views: while anyone watches, it captures the surface at a
-/// steady rate, encodes each picture and pushes it to every viewer at once. A viewer that falls
+/// A companion's side of its live views: while anyone watches, it captures the surface on a
+/// steady beat, encodes each picture away from the main thread while the next is captured, and
+/// pushes it to every viewer at once. A beat that comes while the encoder is still busy is skipped. A viewer that falls
 /// behind misses frames instead of getting old ones late, and picks up again at the next key
 /// frame. What viewers do comes back on their sockets and reaches the surface in order.
 @MainActor public final class SurfaceStreamer {
@@ -20,20 +21,21 @@ import Foundation
 
     private let capture: @MainActor () async throws -> (image: CGImage, size: CGSize)?
     private let apply: @MainActor (SurfaceInput) async throws -> Void
-    private let encoder: SurfaceEncoder
-    private let interval: Duration
+    private let encoder: EncoderQueue
+    private let fps: Int
     private var viewers: [ObjectIdentifier: Viewer] = [:]
     private var sequence: UInt64 = 0
     private var loop: Task<Void, Never>?
     private var wantsKeyFrame = false
+    private var encoding = false
 
     public init(fps: Int = 30, maxPixelSize: Int = 1600,
                 capture: @escaping @MainActor () async throws -> (image: CGImage, size: CGSize)?,
                 apply: @escaping @MainActor (SurfaceInput) async throws -> Void) {
         self.capture = capture
         self.apply = apply
-        encoder = SurfaceEncoder(maxPixelSize: maxPixelSize, fps: Int32(fps))
-        interval = .milliseconds(1000 / max(1, fps))
+        encoder = EncoderQueue(SurfaceEncoder(maxPixelSize: maxPixelSize, fps: Int32(fps)))
+        self.fps = fps
     }
 
     /// Someone is watching, which keeps bots off the surface until they leave.
@@ -70,7 +72,7 @@ import Foundation
 
     private func leave(_ id: ObjectIdentifier) {
         guard viewers.removeValue(forKey: id) != nil else { return }
-        encoder.bitRate = rate
+        encoder.setBitRate(rate)
         if viewers.isEmpty { watchingChanged?(false) }
     }
 
@@ -85,15 +87,18 @@ import Foundation
             wantsKeyFrame = true
         case .rate(let bitsPerSecond):
             viewers[id]?.rate = bitsPerSecond
-            encoder.bitRate = rate
+            encoder.setBitRate(rate)
         }
     }
 
     private func start() {
-        loop = Task { [weak self] in
+        loop = Task { [weak self, fps] in
+            var pacer = SurfacePacer(fps: fps)
+            let start = ContinuousClock.now
             while let self, !Task.isCancelled, self.isWatched {
                 await self.step()
-                try? await Task.sleep(for: self.interval)
+                let due = pacer.next(after: (ContinuousClock.now - start) / .seconds(1))
+                try? await Task.sleep(until: start + .seconds(due), clock: .continuous)
             }
             self?.loop = nil
         }
@@ -110,11 +115,20 @@ import Foundation
     private var rate: Double? { viewers.values.compactMap(\.rate).min() }
 
     private func step() async {
-        guard let picture = try? await capture(),
-              let encoded = try? encoder.encode(picture.image, size: picture.size, keyFrame: wantsKeyFrame, fitting: fit) else { return }
-        if encoded.keyFrame { wantsKeyFrame = false }
+        guard !encoding, let picture = try? await capture() else { return }
+        let keyFrame = wantsKeyFrame
+        wantsKeyFrame = false
+        encoding = true
+        Task {
+            let encoded = await encoder.encode(picture.image, size: picture.size, keyFrame: keyFrame, fitting: fit)
+            encoding = false
+            if let encoded { send(encoded, size: picture.size) } else if keyFrame { wantsKeyFrame = true }
+        }
+    }
+
+    private func send(_ encoded: (sample: Data, parameterSets: [Data], keyFrame: Bool), size: CGSize) {
         sequence += 1
-        let packet = SurfacePacket(sequence: sequence, keyFrame: encoded.keyFrame, width: picture.size.width, height: picture.size.height,
+        let packet = SurfacePacket(sequence: sequence, keyFrame: encoded.keyFrame, width: size.width, height: size.height,
                                    parameterSets: encoded.parameterSets, sample: encoded.sample)
         let frame = SurfacePacket.encode([packet])
         for (id, viewer) in viewers {
@@ -127,5 +141,27 @@ import Foundation
             viewers[id]?.waiting = false
             viewer.socket.send(frame)
         }
+    }
+}
+
+/// The encoder on a queue of its own, so encoding a frame never holds the main thread.
+/// Nothing touches the encoder except on that queue.
+private final class EncoderQueue: @unchecked Sendable {
+    private let encoder: SurfaceEncoder
+    private let queue = DispatchQueue(label: "com.pdparchitect.noodle.surface-encoder", qos: .userInteractive)
+
+    init(_ encoder: SurfaceEncoder) { self.encoder = encoder }
+
+    func encode(_ image: CGImage, size: CGSize, keyFrame: Bool,
+                fitting: CGSize?) async -> (sample: Data, parameterSets: [Data], keyFrame: Bool)? {
+        await withCheckedContinuation { done in
+            queue.async { [self] in
+                done.resume(returning: try? encoder.encode(image, size: size, keyFrame: keyFrame, fitting: fitting))
+            }
+        }
+    }
+
+    func setBitRate(_ bitRate: Double?) {
+        queue.async { [self] in encoder.bitRate = bitRate }
     }
 }
