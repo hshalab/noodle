@@ -281,7 +281,8 @@ import SwiftUI
     func send(_ body: String, files: [OutgoingFile] = [], to agent: LinkBot) async throws {
         let attachments = try files.map { file in
             LinkAttachment(id: file.id, filename: file.filename, mediaType: file.mediaType,
-                           byteCount: try file.url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0, voice: file.voice)
+                           byteCount: try file.url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0, voice: file.voice,
+                           pixelSize: file.mediaType.hasPrefix("image/") ? LinkPixelSize(pictureAt: file.url) : nil)
         }
         // As on the Mac, a message of files alone says how many.
         let text = body.isEmpty && !files.isEmpty ? "Sent \(files.count) attachment\(files.count == 1 ? "" : "s")" : body

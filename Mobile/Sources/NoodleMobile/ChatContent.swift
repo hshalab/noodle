@@ -89,17 +89,40 @@ struct AttachmentView: View {
         }
     }
 
+    /// The most room a picture takes in the conversation.
+    private static let pictureBounds = CGSize(width: 240, height: 320)
+    /// The least, so a long strip stays big enough to tap.
+    private static let pictureMinimum: CGFloat = 44
+
+    /// The room a picture of this size takes, known before it loads so the conversation does not shift.
+    /// Nil without a size: a placeholder stands in and the picture takes its own room once loaded.
+    static func pictureFrame(for size: LinkPixelSize?) -> CGSize? {
+        guard let size else { return nil }
+        let scale = min(pictureBounds.width / CGFloat(size.width), pictureBounds.height / CGFloat(size.height))
+        return CGSize(width: max(pictureMinimum, (CGFloat(size.width) * scale).rounded()),
+                      height: max(pictureMinimum, (CGFloat(size.height) * scale).rounded()))
+    }
+
     @ViewBuilder private var picture: some View {
+        let frame = Self.pictureFrame(for: attachment.pixelSize)
         if let image {
-            Image(uiImage: image)
-                .resizable()
-                .scaledToFit()
-                .frame(maxWidth: 240, maxHeight: 320)
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            if let frame {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: frame.width, height: frame.height)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            } else {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: Self.pictureBounds.width, maxHeight: Self.pictureBounds.height)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
         } else {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(Color(.secondarySystemBackground))
-                .frame(width: 240, height: 160)
+                .frame(width: frame?.width ?? 240, height: frame?.height ?? 160)
                 .overlay { status }
         }
     }

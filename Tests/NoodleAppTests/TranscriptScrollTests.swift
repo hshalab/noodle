@@ -25,6 +25,27 @@ import NoodleCore
         }
     }
 
+    /// Content that finishes loading in rows above the one being read, such as a
+    /// picture replacing its placeholder, leaves that row where it was on screen.
+    func testRowsGrowingAboveKeepTheReadRowInPlace() async throws {
+        let ids = (0..<180).map { _ in UUID() }
+        let reading = ids[100]
+        let model = StartupModel(initialViewport: TranscriptViewport(offset: 1, isAtBottom: false, messageID: reading))
+        let root = mount(StartupFixture(model: model))
+        model.ids = ids
+        model.overlay = 75
+        let opened = await eventually { model.tops[reading] != nil }
+        XCTAssertTrue(opened, "The read message was not rendered")
+        // Let restoration settle before measuring.
+        _ = await eventually(seconds: 1) { false }
+        let before = try XCTUnwrap(model.tops[reading])
+        model.grown = Set(ids[90..<100])
+        _ = await eventually(seconds: 1) { false }
+        let after = try XCTUnwrap(model.tops[reading], "The read message scrolled out of view")
+        XCTAssertEqual(after, before, accuracy: 2, "The read message moved \(after - before)pt when rows above it grew")
+        _ = root
+    }
+
     // MARK: - Helpers
 
     /// Hosted transcripts; a window that is never ordered in gets no display
@@ -54,7 +75,11 @@ import NoodleCore
     let conversationID = UUID()
     @Published var ids: [UUID] = []
     @Published var overlay: CGFloat = 0
+    /// Rows whose late content has loaded, making them taller.
+    @Published var grown: Set<UUID> = []
     var visible: Set<UUID> = []
+    /// Each rendered row's top, in the scroll view's visible coordinates.
+    var tops: [UUID: CGFloat] = [:]
     let initialViewport: TranscriptViewport
     var lastMessageIsFromUser = false
     var persist: ((TranscriptViewport) -> Void)?
@@ -97,13 +122,17 @@ private struct StartupFixture: View {
                                 }
                             }
                         }
+                        if model.grown.contains(id) {
+                            RoundedRectangle(cornerRadius: 12).fill(.gray.opacity(0.2)).frame(width: 280, height: 200)
+                        }
                     }
                     Spacer(minLength: 120)
                 }
+                .onGeometryChange(for: CGFloat.self) { $0.frame(in: .scrollView).minY } action: { model.tops[id] = $0 }
                 .onScrollVisibilityChange(threshold: 0.01) { visible in
                     if visible { model.visible.insert(id) } else { model.visible.remove(id) }
                 }
-                .onDisappear { model.visible.remove(id) }
+                .onDisappear { model.visible.remove(id); model.tops[id] = nil }
                 .id(TranscriptScrollTarget.message(id))
             }
         }

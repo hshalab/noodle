@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import ImageIO
 @_exported import Surface
 
 /// The version of the requests below. A Hub serves the versions it knows and names the app
@@ -672,9 +673,11 @@ public struct LinkAttachment: Codable, Equatable, Identifiable, Sendable {
     public var url: URL?
     /// What a link to a browser tab, computer or noodlet shows.
     public var card: LinkCardInfo?
+    /// Set for a picture, so a device holds its place before the file arrives.
+    public var pixelSize: LinkPixelSize?
 
     public init(id: UUID, filename: String, mediaType: String, byteCount: Int, voice: LinkVoice? = nil,
-                url: URL? = nil, card: LinkCardInfo? = nil) {
+                url: URL? = nil, card: LinkCardInfo? = nil, pixelSize: LinkPixelSize? = nil) {
         self.id = id
         self.filename = filename
         self.mediaType = mediaType
@@ -682,9 +685,10 @@ public struct LinkAttachment: Codable, Equatable, Identifiable, Sendable {
         self.voice = voice
         self.url = url
         self.card = card
+        self.pixelSize = pixelSize
     }
 
-    private enum CodingKeys: String, CodingKey { case id, filename, mediaType, byteCount, voice, url, card }
+    private enum CodingKeys: String, CodingKey { case id, filename, mediaType, byteCount, voice, url, card, pixelSize }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -695,6 +699,44 @@ public struct LinkAttachment: Codable, Equatable, Identifiable, Sendable {
         voice = try c.decodeIfPresent(LinkVoice.self, forKey: .voice)
         url = try c.decodeIfPresent(URL.self, forKey: .url)
         card = try c.decodeIfPresent(LinkCardInfo.self, forKey: .card)
+        // Only a hint: a size that makes no sense is left out rather than failing the message.
+        pixelSize = try? c.decodeIfPresent(LinkPixelSize.self, forKey: .pixelSize)
+    }
+}
+
+/// A picture's size in pixels, as it is shown once turned upright.
+public struct LinkPixelSize: Codable, Equatable, Sendable {
+    public let width: Int
+    public let height: Int
+
+    /// Larger than any picture a conversation holds.
+    private static let limit = 100_000
+
+    public init?(width: Int, height: Int) {
+        guard (1...Self.limit).contains(width), (1...Self.limit).contains(height) else { return nil }
+        self.width = width
+        self.height = height
+    }
+
+    /// Reads only the file's header; nil for anything that is not a picture.
+    public init?(pictureAt url: URL) {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let width = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue,
+              let height = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue else { return nil }
+        // Orientations 5 to 8 turn the picture a quarter.
+        let turned = (5...8).contains((properties[kCGImagePropertyOrientation] as? NSNumber)?.intValue ?? 1)
+        self.init(width: turned ? height : width, height: turned ? width : height)
+    }
+
+    private enum CodingKeys: String, CodingKey { case width, height }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        guard let size = Self(width: try c.decode(Int.self, forKey: .width), height: try c.decode(Int.self, forKey: .height)) else {
+            throw DecodingError.dataCorruptedError(forKey: .width, in: c, debugDescription: "Not a picture's size")
+        }
+        self = size
     }
 }
 

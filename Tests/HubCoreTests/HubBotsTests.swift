@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import HubCore
 import HubLink
@@ -247,6 +248,26 @@ import XCTest
         addTeardownBlock { try? FileManager.default.removeItem(at: copy) }
         try await f.device.download(attachment, from: bot.conversationID, to: copy)
         XCTAssertEqual(try Data(contentsOf: copy), bytes)
+    }
+
+    func testPicturesArriveWithTheirSize() async throws {
+        let f = try await fixture()
+        let bot = try await createBot(f)
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("hub-picture-\(UUID()).png")
+        addTeardownBlock { try? FileManager.default.removeItem(at: file) }
+        let context = try XCTUnwrap(CGContext(data: nil, width: 40, height: 30, bitsPerComponent: 8, bytesPerRow: 0,
+                                              space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        let png = try XCTUnwrap(NSBitmapImageRep(cgImage: try XCTUnwrap(context.makeImage())).representation(using: .png, properties: [:]))
+        try png.write(to: file)
+        let attachment = LinkAttachment(id: UUID(), filename: "Photo.png", mediaType: "image/png", byteCount: png.count)
+        try await f.device.upload(file, as: attachment, to: bot.conversationID)
+        _ = try await f.device.request(.send(LinkOutgoingMessage(conversationID: bot.conversationID, id: UUID(), body: "Look",
+                                             attachmentIDs: [attachment.id])))
+        guard case .messages(let page) = try await f.device.request(.messagePage(LinkMessagePage(conversationID: bot.conversationID,
+                                                                                                 before: nil, limit: 50))) else {
+            return XCTFail("no messages")
+        }
+        XCTAssertEqual(page.messages.first?.attachments.first?.pixelSize, LinkPixelSize(width: 40, height: 30))
     }
 
     func testVoiceMessagesKeepTheirTranscript() async throws {

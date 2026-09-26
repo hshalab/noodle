@@ -26,4 +26,15 @@ import Testing
         #expect(!ConversationScroll.isAtBottom(contentOffset: 400, contentHeight: 1000, viewportHeight: 600, bottomInset: 100))
         #expect(ConversationScroll.isAtBottom(contentOffset: -50, contentHeight: 200, viewportHeight: 600, bottomInset: 100))
     }
+
+    @Test func aPictureOfKnownSizeHoldsItsPlaceBeforeItLoads() {
+        // Without a size, as from an older Hub, the placeholder stands in until the picture arrives.
+        #expect(AttachmentView.pictureFrame(for: nil) == nil)
+        #expect(AttachmentView.pictureFrame(for: LinkPixelSize(width: 1200, height: 900)) == CGSize(width: 240, height: 180))
+        #expect(AttachmentView.pictureFrame(for: LinkPixelSize(width: 900, height: 1600)) == CGSize(width: 180, height: 320))
+        // Small pictures fill the width, as they do once loaded.
+        #expect(AttachmentView.pictureFrame(for: LinkPixelSize(width: 12, height: 12)) == CGSize(width: 240, height: 240))
+        // A long strip stays big enough to tap.
+        #expect(AttachmentView.pictureFrame(for: LinkPixelSize(width: 20_000, height: 10)) == CGSize(width: 240, height: 44))
+    }
 }

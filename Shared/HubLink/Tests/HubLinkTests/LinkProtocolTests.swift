@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 @testable import HubLink
 import XCTest
 
@@ -91,5 +92,48 @@ final class LinkProtocolTests: XCTestCase {
         let first = try LinkIdentity.loadOrCreate(at: url)
         XCTAssertEqual(try LinkIdentity.loadOrCreate(at: url).publicKey, first.publicKey)
         XCTAssertEqual(try FileManager.default.attributesOfItem(atPath: url.path)[.posixPermissions] as? Int, 0o600)
+    }
+}
+
+/// A picture's size travels with it, so devices hold its place before the file arrives.
+final class LinkPixelSizeTests: XCTestCase {
+    private func picture(width: Int, height: Int, orientation: Int = 1) throws -> URL {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID()).png")
+        addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+        let context = try XCTUnwrap(CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                                              space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, try XCTUnwrap(context.makeImage()),
+                                   [kCGImagePropertyOrientation: orientation] as CFDictionary)
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+        return url
+    }
+
+    func testReadsAPicturesSizeAsItIsShown() throws {
+        XCTAssertEqual(LinkPixelSize(pictureAt: try picture(width: 30, height: 20)), LinkPixelSize(width: 30, height: 20))
+        // Turned a quarter, as phone photos often are.
+        XCTAssertEqual(LinkPixelSize(pictureAt: try picture(width: 30, height: 20, orientation: 6)), LinkPixelSize(width: 20, height: 30))
+        let text = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID()).txt")
+        try Data("not a picture".utf8).write(to: text)
+        addTeardownBlock { try? FileManager.default.removeItem(at: text) }
+        XCTAssertNil(LinkPixelSize(pictureAt: text))
+    }
+
+    func testImplausibleSizesAreIgnored() throws {
+        XCTAssertNil(LinkPixelSize(width: 0, height: 20))
+        XCTAssertNil(LinkPixelSize(width: 20, height: 1_000_000))
+        let id = UUID()
+        let file = try LinkProtocol.decoder.decode(LinkAttachment.self, from: Data(
+            #"{"id":"\#(id)","filename":"a.png","mediaType":"image/png","byteCount":3,"pixelSize":{"width":-4,"height":20}}"#.utf8))
+        XCTAssertNil(file.pixelSize)
+    }
+
+    func testTravelsWithTheAttachment() throws {
+        let sized = LinkAttachment(id: UUID(), filename: "a.png", mediaType: "image/png", byteCount: 3,
+                                   pixelSize: LinkPixelSize(width: 1200, height: 900))
+        XCTAssertEqual(try LinkProtocol.decoder.decode(LinkAttachment.self, from: LinkProtocol.encoder.encode(sized)), sized)
+        let unsized = try LinkProtocol.decoder.decode(LinkAttachment.self, from: Data(
+            #"{"id":"\#(UUID())","filename":"a.png","mediaType":"image/png","byteCount":3}"#.utf8))
+        XCTAssertNil(unsized.pixelSize)
     }
 }
