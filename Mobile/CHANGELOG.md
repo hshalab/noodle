@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- The message field is taller, as in Messages, and holds the microphone and send button. The plus opens a panel with Camera, Photos and Files that grows out of it.
+
 ### Fixed
 
 - Sending a message scrolls the conversation down to it. At the bottom, a new reply scrolls into view from its first line; scrolled up to read, you stay where you are.

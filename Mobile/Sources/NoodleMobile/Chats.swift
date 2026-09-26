@@ -607,7 +607,7 @@ enum ConversationScroll {
 /// One agent's conversation, laid out like Messages.
 struct ChatView: View {
     /// The height of a one-line message field, which the buttons beside it match.
-    private static let controlHeight: CGFloat = 36
+    private static let controlHeight: CGFloat = 40
     let chats: HubChats
     let agentID: UUID
     @State private var position = ScrollPosition(edge: .bottom)
@@ -622,6 +622,9 @@ struct ChatView: View {
     @State private var photos: [PhotosPickerItem] = []
     @State private var takingPhoto = false
     @State private var importing = false
+    /// Whether the panel of things to attach is open over the conversation.
+    @State private var attaching = false
+    @Namespace private var attachGlass
     @State private var recorder: VoiceRecorder
     @Environment(\.dismiss) private var dismiss
 
@@ -684,6 +687,14 @@ struct ChatView: View {
         }
         .onChange(of: draft) { chats.setDraft(draft, for: agent) }
         .onChange(of: messages.last?.id) { chats.markRead(agent) }
+        // Behind the attach panel, as in Messages: the conversation blurs, and tapping it closes the panel.
+        .overlay {
+            if attaching {
+                Rectangle().fill(.ultraThinMaterial).ignoresSafeArea()
+                    .onTapGesture { setAttaching(false) }
+                    .transition(.opacity)
+            }
+        }
         .safeAreaInset(edge: .bottom) { composer }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -749,46 +760,112 @@ struct ChatView: View {
                     }
                 }
             }
-            HStack(alignment: .bottom, spacing: 8) {
-                Menu {
-                    Button("Photo Library", systemImage: "photo.on.rectangle") { pickingPhotos = true }
-                    if CameraPicker.isAvailable {
-                        Button("Take Photo", systemImage: "camera") { takingPhoto = true }
-                    }
-                    Button("Files", systemImage: "folder") { importing = true }
-                } label: {
-                    Image(systemName: "plus").font(.system(size: 17, weight: .semibold))
+            GlassEffectContainer {
+                HStack(alignment: .bottom, spacing: 8) {
+                    attachButton
+                        // Above the field, which the open panel covers.
+                        .zIndex(1)
+                    messageField
+                }
+            }
+        }
+    }
+
+    /// The plus, which grows into the panel of things to attach, as in Messages.
+    private var attachButton: some View {
+        ZStack(alignment: .bottomLeading) {
+            if attaching {
+                attachPanel
+                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+                    .glassEffectID("attach", in: attachGlass)
+                    .fixedSize()
+            } else {
+                Button { setAttaching(true) } label: {
+                    Image(systemName: "plus").font(.system(size: 18, weight: .medium))
                         .foregroundStyle(.secondary)
                         .frame(width: Self.controlHeight, height: Self.controlHeight)
-                        .glassEffect(.regular.interactive(), in: Circle())
+                        .contentShape(Circle())
                 }
-                // A menu otherwise drops the circle and tints the plus.
                 .buttonStyle(.plain)
-                .menuIndicator(.hidden)
+                .glassEffect(.regular.interactive(), in: Circle())
+                .glassEffectID("attach", in: attachGlass)
                 .accessibilityLabel("Add")
-                ComposerField(text: $draft, caret: $caret, placeholder: "Message") { image in
-                    attach { try PickedFiles.store(image.pngData() ?? Data(), named: "Image.png", type: .png) }
+            }
+        }
+        // The open panel spills over the conversation without moving the field.
+        .frame(width: Self.controlHeight, height: Self.controlHeight, alignment: .bottomLeading)
+    }
+
+    private var attachPanel: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            if CameraPicker.isAvailable {
+                attachOption("Camera", systemImage: "camera.fill", tint: .gray) { takingPhoto = true }
+            }
+            attachOption("Photos", systemImage: "photo.on.rectangle.angled", tint: .blue) { pickingPhotos = true }
+            attachOption("Files", systemImage: "folder.fill", tint: .cyan) { importing = true }
+        }
+        .padding(8)
+        .frame(width: 230, alignment: .leading)
+        .accessibilityAction(.escape) { setAttaching(false) }
+    }
+
+    private func attachOption(_ title: String, systemImage: String, tint: Color, action: @escaping () -> Void) -> some View {
+        Button {
+            setAttaching(false)
+            action()
+        } label: {
+            HStack(spacing: 14) {
+                Image(systemName: systemImage).font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 32, height: 32)
+                    .background(tint.gradient, in: Circle())
+                Text(title).font(.body).foregroundStyle(.primary)
+            }
+            .padding(.horizontal, 8)
+            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func setAttaching(_ open: Bool) {
+        // As in Messages, the keyboard goes while the panel is open.
+        if open { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }
+        withAnimation(.bouncy(duration: 0.4, extraBounce: 0.05)) { attaching = open }
+    }
+
+    /// The field, with the microphone or send button inside it, as in Messages.
+    private var messageField: some View {
+        HStack(alignment: .bottom, spacing: 6) {
+            ComposerField(text: $draft, caret: $caret, placeholder: "Message") { image in
+                attach { try PickedFiles.store(image.pngData() ?? Data(), named: "Image.png", type: .png) }
+            }
+            .padding(.vertical, 9)
+            // As in Messages: the microphone until there is something to send.
+            if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && files.isEmpty {
+                Button { recorder.start() } label: {
+                    Image(systemName: "mic").font(.system(size: 18, weight: .regular))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 30, height: Self.controlHeight)
+                        .contentShape(Rectangle())
                 }
-                    .padding(.horizontal, 14).padding(.vertical, 8)
-                    .frame(minHeight: Self.controlHeight)
-                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: Self.controlHeight / 2, style: .continuous))
-                // As in Messages: the microphone until there is something to send.
-                if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && files.isEmpty {
-                    Button { recorder.start() } label: {
-                        Image(systemName: "mic.fill").font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                            .frame(width: Self.controlHeight, height: Self.controlHeight)
-                            .glassEffect(.regular.interactive(), in: Circle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Record Voice Message")
-                } else {
-                    Button(action: send) {
-                        Image(systemName: "arrow.up.circle.fill").font(.system(size: 30))
-                            .frame(width: Self.controlHeight, height: Self.controlHeight)
-                    }
-                    .accessibilityLabel("Send")
+                .buttonStyle(.plain)
+                .accessibilityLabel("Record Voice Message")
+            } else {
+                Button(action: send) {
+                    Image(systemName: "arrow.up.circle.fill").font(.system(size: 30))
+                        .frame(width: 30, height: Self.controlHeight)
                 }
+                .accessibilityLabel("Send")
+            }
+        }
+        .padding(.leading, 16).padding(.trailing, 5)
+        .frame(minHeight: Self.controlHeight)
+        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: Self.controlHeight / 2, style: .continuous))
+        // Tapping the field while the panel is open closes the panel first.
+        .overlay {
+            if attaching {
+                Color.clear.contentShape(Rectangle()).onTapGesture { setAttaching(false) }
             }
         }
     }
