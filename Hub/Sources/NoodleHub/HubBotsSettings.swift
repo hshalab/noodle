@@ -47,7 +47,7 @@ struct HubBotsSettingsView: View {
                 NSWorkspace.shared.activateFileViewerSelecting([host.repository.directory(for: agent)])
             }
             Button("Activity") {
-                NSApp.activate()
+                NSApp.activate(ignoringOtherApps: true)
                 host.activityWindows.show(agent: agent, log: host.runtime.activity.log(for: agent.id))
             }
         }

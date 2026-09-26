@@ -5,6 +5,7 @@
 ### Fixed
 
 - Live views keep up on a slow or busy connection: video gets lighter to fit the link instead of arriving seconds late and stuttering.
+- Settings, Usage and bot Activity windows open in front of other apps instead of behind them.
 
 ## [0.3.1] - 2026-09-26
 

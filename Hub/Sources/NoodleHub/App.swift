@@ -74,13 +74,15 @@ struct HubMenu: View {
     var body: some View {
         Button("Usage…") {
             hub.usage.agentFilter = nil
-            NSApp.activate()
+            NSApp.unhide(nil)
+            NSApp.activate(ignoringOtherApps: true)
             openWindow(id: UsageView.windowID)
         }
         .keyboardShortcut("u", modifiers: [.command, .shift])
         Button("Settings…") {
-            // A menu bar app is never frontmost on its own; bring Settings forward.
-            NSApp.activate()
+            // A menu bar app is never frontmost on its own, and cooperative activation leaves it behind.
+            NSApp.unhide(nil)
+            NSApp.activate(ignoringOtherApps: true)
             openSettings()
         }
         .keyboardShortcut(",")
