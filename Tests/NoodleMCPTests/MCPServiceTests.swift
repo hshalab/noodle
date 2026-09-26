@@ -399,4 +399,23 @@ final class MCPServiceTests: XCTestCase {
             XCTAssertNil(vault.load(record.id)?.accessToken)
         }
     }
+
+    /// A failed call runs on a background task but reports its error on the main actor, where
+    /// the settings that show it keep their state.
+    @MainActor func testConnectionFailuresAreReportedOnTheMainActor() async throws {
+        let registry = ToolProviderRegistry()
+        let providers = MCPConnectionProviders(registry: registry, service: MCPService(credentials: TestVault(), oauth: MCPOAuth(),
+                                                                                     httpConfiguration: { .ephemeral }))
+        let reported = expectation(description: "error reported")
+        providers.onError = { _, _ in
+            XCTAssertTrue(Thread.isMainThread)
+            reported.fulfill()
+        }
+        let connection = try MCPConnectionRecord(name: "Fixture tools", endpoint: URL(string: "https://example.invalid/mcp")!)
+        providers.synchronize([connection]) { _ in connection }
+        let provider = try registry.provider(connection.skillName, assignments: [ConnectionToolProvider.grantKind: [connection.id.uuidString]])
+        let context = ToolCallContext(agentID: UUID(), workspace: FileManager.default.temporaryDirectory)
+        _ = try? await Task.detached { try await provider.tools(context: context) }.value
+        await fulfillment(of: [reported], timeout: 10)
+    }
 }

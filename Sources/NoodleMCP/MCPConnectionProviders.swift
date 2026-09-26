@@ -7,8 +7,9 @@ import NoodleCore
     private let registry: ToolProviderRegistry
     private let service: MCPService
     private var signatures: [UUID: String] = [:]
-    /// Called with a failure already safe to show, for the connection it happened on.
-    public var onError: ((UUID, String) -> Void)?
+    /// Called on the main actor with a failure already safe to show, for the connection it
+    /// happened on. Calls fail on background tasks, and whoever shows the error keeps it there.
+    public var onError: (@MainActor (UUID, String) -> Void)?
 
     public init(registry: ToolProviderRegistry, service: MCPService) {
         self.registry = registry
