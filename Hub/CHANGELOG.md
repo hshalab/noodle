@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- The menu bar icon shows a green dot while someone is connected to the Hub.
+
 ### Fixed
 
 - Live views keep up on a slow or busy connection: video gets lighter to fit the link instead of arriving seconds late and stuttering.
