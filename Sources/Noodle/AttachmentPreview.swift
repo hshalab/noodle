@@ -148,6 +148,11 @@ private struct CompanionRow: View {
         .help(title)
         .task {
             guard let url = attachment.url, NoodletLink.id(in: url) != nil else { return }
+            if let shown = NoodletAttachmentCard.shown(url) {
+                noodletTitle = shown.title
+                noodletPreview = shown.image
+                return
+            }
             do {
                 let preview = try await NoodletAttachmentCard.load(url, from: store.applets)
                 noodletTitle = preview.title
@@ -167,7 +172,7 @@ private struct CompanionRow: View {
                 .lineLimit(12).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading).padding(4)
                 .background(.black)
         } else {
-            Image(systemName: noodletUnavailable ? "exclamationmark.link" : attachment.companionSymbolName)
+            Image(systemName: noodletUnavailable ? "questionmark.square.dashed" : attachment.companionSymbolName)
                 .font(.system(size: 20))
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

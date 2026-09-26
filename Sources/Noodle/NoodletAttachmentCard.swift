@@ -16,7 +16,7 @@ struct NoodletAttachmentCard: View {
         VStack(alignment: .leading, spacing: 10) {
             Group {
                 if let thumbnail { Image(nsImage: thumbnail).resizable().scaledToFit() }
-                else { Image(systemName: unavailable ? "exclamationmark.link" : "square.grid.2x2")
+                else { Image(systemName: unavailable ? "questionmark.square.dashed" : "square.grid.2x2")
                     .font(.system(size: 42)).foregroundStyle(.secondary) }
             }
             .frame(maxWidth: .infinity).frame(height: 150)
@@ -41,16 +41,22 @@ struct NoodletAttachmentCard: View {
         }
     }
 
-    /// The live noodlet's title and thumbnail, shared with the conversation's Shared popover.
-    static func load(_ url: URL, from applets: AppletController) async throws -> (title: String, image: NSImage?) {
+    /// What each noodlet's card last showed, so the Shared popover shows the same without asking again.
+    @MainActor private static var loaded: [URL: (title: String, image: NSImage?)] = [:]
+
+    @MainActor static func shown(_ url: URL) -> (title: String, image: NSImage?)? { loaded[url] }
+
+    /// The live noodlet's title and thumbnail, kept for the conversation's Shared popover.
+    @MainActor static func load(_ url: URL, from applets: AppletController) async throws -> (title: String, image: NSImage?) {
         let access = try await applets.resolvePreview(url)
         defer { withExtendedLifetime(access) {} }
-        if let image = access.imageData.flatMap(NSImage.init(data:)) ?? NSImage(contentsOf: access.url.appendingPathComponent("preview.png")) {
-            return (access.title, image)
+        var image = access.imageData.flatMap(NSImage.init(data:)) ?? NSImage(contentsOf: access.url.appendingPathComponent("preview.png"))
+        if image == nil {
+            let request = QLThumbnailGenerator.Request(fileAt: access.url,
+                size: CGSize(width: 560, height: 300), scale: 1, representationTypes: .all)
+            image = (try? await QLThumbnailGenerator.shared.generateBestRepresentation(for: request))?.nsImage
         }
-        let request = QLThumbnailGenerator.Request(fileAt: access.url,
-            size: CGSize(width: 560, height: 300), scale: 1, representationTypes: .all)
-        let result = try? await QLThumbnailGenerator.shared.generateBestRepresentation(for: request)
-        return (access.title, result?.nsImage)
+        loaded[url] = (access.title, image)
+        return (access.title, image)
     }
 }

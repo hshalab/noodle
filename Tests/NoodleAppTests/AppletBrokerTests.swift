@@ -139,6 +139,32 @@ import XCTest
         XCTAssertNil(requests.first?.mode)
     }
 
+    /// The Shared popover shows what the conversation's card already loaded, without asking Applet again.
+    func testSharedPopoverReusesTheCardTheConversationLoaded() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let package = root.appendingPathComponent("Flap.noodlet")
+        try FileManager.default.createDirectory(at: package, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data("{}".utf8).write(to: package.appendingPathComponent("noodlet.json"))
+        let id = UUID()
+        var response = AppletResponse()
+        response.noodletID = id
+        response.title = "Flap"
+        response.previewBookmark = try package.bookmarkData()
+        let previewResponse = response
+        let recorder = AppletRequestRecorder()
+        let controller = AppletController(repository: WorkspaceRepository(rootURL: root), connection: {
+            _ = await recorder.respond($0)
+            return previewResponse
+        })
+        let url = NoodletLink.url(for: id)
+        XCTAssertNil(NoodletAttachmentCard.shown(url))
+        _ = try await NoodletAttachmentCard.load(url, from: controller)
+        XCTAssertEqual(NoodletAttachmentCard.shown(url)?.title, "Flap")
+        let requests = await recorder.requests
+        XCTAssertEqual(requests.count, 1)
+    }
+
     func testAttachmentOpenRequestsTheLiveForegroundRuntimeAndReportsFailures() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let repository = WorkspaceRepository(rootURL: root)

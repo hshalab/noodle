@@ -8,6 +8,7 @@ All notable changes to Noodle are documented here, following
 
 ### Fixed
 
+- The Shared button shows each noodlet with the name and picture its card already shows in the conversation, instead of “Noodlet unavailable”.
 - When this Mac is your Hub, it sends each picture's size with it, so Noodle for iPhone keeps its place in a conversation while pictures load.
 - When this Mac is your Hub, live views keep up on a slow or busy connection: video gets lighter to fit the link instead of arriving seconds late and stuttering.
 
