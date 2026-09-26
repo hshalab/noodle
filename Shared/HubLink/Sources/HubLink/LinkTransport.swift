@@ -50,9 +50,9 @@ enum LinkQUIC {
 
     /// Reads a request: a channel sends it as one frame and keeps its side open, anything else
     /// sends it whole and finishes. A frame starts with a zero byte, a JSON request with "{".
-    static func receiveRequest(_ connection: NWConnection) async throws -> (request: Data, channel: Bool) {
-        // An empty request finishes at once.
-        guard let first = try await read(1, from: connection) else { return (Data(), false) }
+    /// Nil for a stream that ends without a byte, which QUIC can hand over beside a real one.
+    static func receiveRequest(_ connection: NWConnection) async throws -> (request: Data, channel: Bool)? {
+        guard let first = try await read(1, from: connection) else { return nil }
         if first.first == 0 {
             guard let rest = try await read(3, from: connection) else { throw LinkError("The request was cut short.") }
             let length = Int((first + rest).withUnsafeBytes { UInt32(bigEndian: $0.loadUnaligned(as: UInt32.self)) })
@@ -300,7 +300,7 @@ public final class LinkServer: @unchecked Sendable {
     }
 
     private func serve(_ stream: NWConnection) async {
-        guard let key = LinkQUIC.peerKey(of: stream), let request = try? await LinkQUIC.receiveRequest(stream) else {
+        guard let key = LinkQUIC.peerKey(of: stream), let request = try? await LinkQUIC.receiveRequest(stream) ?? nil else {
             stream.cancel()
             return
         }

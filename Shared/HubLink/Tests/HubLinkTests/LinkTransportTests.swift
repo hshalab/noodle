@@ -35,6 +35,25 @@ final class LinkTransportTests: XCTestCase {
         XCTAssertEqual(response, answer)
     }
 
+    /// A QUIC listener can be handed a stream that ends without a byte alongside a real one;
+    /// it is not a request, so the handler never sees it.
+    func testAStreamThatSendsNothingIsNotARequest() async throws {
+        let hub = LinkIdentity(), requests = FrameBox()
+        let server = try LinkServer(identity: hub, port: 0, admits: { _ in true }) { _, request in
+            requests.append(request)
+            return .response(request)
+        }
+        try await server.start()
+        addTeardownBlock { server.stop() }
+        let endpoint = LinkEndpoint(host: "::1", port: try XCTUnwrap(server.port))
+        _ = try? await LinkClient.exchange(Data(), identity: LinkIdentity(), hubKey: hub.publicKey, endpoints: [endpoint],
+                                           timeout: .seconds(5))
+        let (response, _) = try await LinkClient.exchange(Data("status".utf8), identity: LinkIdentity(), hubKey: hub.publicKey,
+                                                          endpoints: [endpoint])
+        XCTAssertEqual(response, Data("status".utf8))
+        XCTAssertEqual(requests.frames, [Data("status".utf8)])
+    }
+
     func testDeviceRefusesAHubWithAnotherKey() async throws {
         let server = try await server(LinkIdentity())
         let endpoint = LinkEndpoint(host: "::1", port: try XCTUnwrap(server.port))
@@ -70,7 +89,7 @@ final class LinkTransportTests: XCTestCase {
         let hub = LinkIdentity()
         let server = try await server(hub)
         let port = try XCTUnwrap(server.port)
-        let (_, used) = try await LinkClient.exchange(Data(), identity: LinkIdentity(), hubKey: hub.publicKey,
+        let (_, used) = try await LinkClient.exchange(Data("status".utf8), identity: LinkIdentity(), hubKey: hub.publicKey,
             endpoints: [LinkEndpoint(host: "unreachable.invalid", port: port), LinkEndpoint(host: "127.0.0.1", port: port)])
         XCTAssertEqual(used.host, "127.0.0.1")
     }
@@ -170,7 +189,7 @@ final class LinkStreamTests: XCTestCase {
         })
         try await server.start()
         addTeardownBlock { server.stop() }
-        let frames = try await LinkClient.subscribe(Data(), identity: LinkIdentity(), hubKey: hub.publicKey,
+        let frames = try await LinkClient.subscribe(Data("subscribe".utf8), identity: LinkIdentity(), hubKey: hub.publicKey,
                                                     endpoints: [LinkEndpoint(host: "::1", port: try XCTUnwrap(server.port))])
         await fulfillment(of: [opened], timeout: 5)
         box.stream?.close()
