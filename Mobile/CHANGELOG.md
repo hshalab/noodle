@@ -5,6 +5,7 @@
 ### Fixed
 
 - Sending a message scrolls the conversation down to it. At the bottom, a new reply scrolls into view from its first line; scrolled up to read, you stay where you are.
+- Recording a voice message no longer closes the app.
 
 ## [0.2.1] - 2026-09-26
 

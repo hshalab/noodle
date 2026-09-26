@@ -68,9 +68,7 @@ import SwiftUI
                 try check(token)
                 let engine = AVAudioEngine()
                 let input = engine.inputNode
-                input.installTap(onBus: 0, bufferSize: 4096, format: input.outputFormat(forBus: 0)) { buffer, _ in
-                    sink.consume(buffer)
-                }
+                Self.tap(input, into: sink)
                 try engine.start()
                 self.engine = engine
                 phase = .recording
@@ -81,6 +79,13 @@ import SwiftUI
                 self.error = error.localizedDescription
                 phase = .failed
             }
+        }
+    }
+
+    /// Nonisolated so the block doesn't inherit the main actor: the engine calls it on its audio thread.
+    nonisolated static func tap(_ node: AVAudioNode, into sink: VoiceAudioSink) {
+        node.installTap(onBus: 0, bufferSize: 4096, format: node.outputFormat(forBus: 0)) { buffer, _ in
+            sink.consume(buffer)
         }
     }
 
