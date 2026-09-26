@@ -588,12 +588,31 @@ private struct AgentRow: View {
     }
 }
 
+/// Where a conversation moves when a message lands at its end.
+enum ConversationScroll {
+    /// Your own message always shows, down at the bottom. Anyone else's shows from its top, so a
+    /// long reply reads from its start, and only when you were at the bottom: reading further up,
+    /// you stay where you are.
+    static func target(for message: LinkMessage, wasAtBottom: Bool) -> UnitPoint? {
+        if message.author == .you { return .bottom }
+        return wasAtBottom ? .top : nil
+    }
+
+    /// Whether the end shows above the composer. A conversation shorter than the screen always is.
+    static func isAtBottom(contentOffset: CGFloat, contentHeight: CGFloat, viewportHeight: CGFloat, bottomInset: CGFloat) -> Bool {
+        contentOffset + viewportHeight - bottomInset >= contentHeight - 2
+    }
+}
+
 /// One agent's conversation, laid out like Messages.
 struct ChatView: View {
     /// The height of a one-line message field, which the buttons beside it match.
     private static let controlHeight: CGFloat = 36
     let chats: HubChats
     let agentID: UUID
+    @State private var position = ScrollPosition(edge: .bottom)
+    /// Whether the end of the conversation shows. Only then does it keep to the end as it grows.
+    @State private var atBottom = true
     @State private var draft = ""
     @State private var caret = 0
     @State private var files: [OutgoingFile] = []
@@ -638,10 +657,24 @@ struct ChatView: View {
                         .id(message.id)
                 }
             }
+            // Rows keep their place by ID, so earlier messages loading above do not move the one being read.
+            .scrollTargetLayout()
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
         }
-        .defaultScrollAnchor(.bottom)
+        .scrollPosition($position, anchor: .top)
+        .defaultScrollAnchor(.bottom, for: .initialOffset)
+        .defaultScrollAnchor(atBottom ? .bottom : .top, for: .sizeChanges)
+        .onScrollGeometryChange(for: Bool.self) { geometry in
+            ConversationScroll.isAtBottom(contentOffset: geometry.contentOffset.y, contentHeight: geometry.contentSize.height,
+                                          viewportHeight: geometry.containerSize.height, bottomInset: geometry.contentInsets.bottom)
+        } action: { _, bottom in atBottom = bottom }
+        // Read before the new row is laid out, so atBottom still says where the person was.
+        .onChange(of: messages.last?.id) { _, _ in
+            guard let latest = messages.last,
+                  let anchor = ConversationScroll.target(for: latest, wasAtBottom: atBottom) else { return }
+            withAnimation { position.scrollTo(id: latest.id, anchor: anchor) }
+        }
         .scrollDismissesKeyboard(.interactively)
         .background { ConversationBackdrop(background: chats.background(for: agent), imageURL: chats.backgroundImageURL(for: agent)) }
         // Open means read, including replies that arrive while it is open.

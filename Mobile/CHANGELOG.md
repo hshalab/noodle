@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Sending a message scrolls the conversation down to it. At the bottom, a new reply scrolls into view from its first line; scrolled up to read, you stay where you are.
+
 ## [0.2.1] - 2026-09-26
 
 ### What to Test
