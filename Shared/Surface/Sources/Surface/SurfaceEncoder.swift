@@ -20,6 +20,12 @@ public final class SurfaceEncoder {
 
     deinit { if let session { VTCompressionSessionInvalidate(session) } }
 
+    /// The most bits per second a viewer's link takes, when one has said. Video never goes above
+    /// what the picture size calls for, and follows a change from the next frame on.
+    public var bitRate: Double? {
+        didSet { if let session { Self.setBitRate(session, pixels: pixels, cap: bitRate) } }
+    }
+
     /// The encoded frame, with the parameter sets when it is a key frame. `size` is the surface's
     /// size in points. `keyFrame` asks for one now, as when a new viewer arrives. `fitting` is the
     /// most pixels a viewer shows, rounded up in steps of 128 so resizing a window does not
@@ -64,12 +70,17 @@ public final class SurfaceEncoder {
         VTSessionSetProperty(created, key: kVTCompressionPropertyKey_ProfileLevel, value: kVTProfileLevel_H264_High_AutoLevel)
         VTSessionSetProperty(created, key: kVTCompressionPropertyKey_MaxKeyFrameInterval, value: (fps * 2) as CFNumber)
         VTSessionSetProperty(created, key: kVTCompressionPropertyKey_ExpectedFrameRate, value: fps as CFNumber)
-        // Sharp text matters more than smooth motion for a desktop or page.
-        VTSessionSetProperty(created, key: kVTCompressionPropertyKey_AverageBitRate, value: (width * height * 3) as CFNumber)
+        Self.setBitRate(created, pixels: (width, height), cap: bitRate)
         VTCompressionSessionPrepareToEncodeFrames(created)
         session = created
         pixels = (width, height)
         frame = 0
+    }
+
+    private static func setBitRate(_ session: VTCompressionSession, pixels: (width: Int, height: Int), cap: Double?) {
+        // Sharp text matters more than smooth motion for a desktop or page.
+        let full = Double(pixels.width * pixels.height * 3)
+        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_AverageBitRate, value: Int(min(full, cap ?? full)) as CFNumber)
     }
 
     private static func pixelBuffer(_ image: CGImage, width: Int, height: Int) -> CVPixelBuffer? {

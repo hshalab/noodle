@@ -179,7 +179,8 @@ final class LinkVersion1Tests: XCTestCase {
                                    parameterSets: [Data([0x67, 1]), Data([0x68, 2])], sample: Data([0x65, 3, 4]))
         XCTAssertEqual(LinkSurface.message(bytes), .packets([packet]))
         let controls: [SurfaceControl] = [.input(.pointer(.down, x: 10, y: 20, clickCount: 2)), .input(.scroll(x: 1, y: 2, dx: 0, dy: -40)),
-                                          .input(.key(.enter)), .input(.text("hi")), .view(width: 1206, height: 2622), .keyFrame]
+                                          .input(.key(.enter)), .input(.text("hi")), .view(width: 1206, height: 2622), .keyFrame,
+                                          .rate(bitsPerSecond: 1_500_000)]
         XCTAssertEqual(Self.controlJSON.map { SurfaceControl(Data($0.utf8)) }, controls)
     }
 
@@ -235,7 +236,8 @@ final class LinkVersion1Tests: XCTestCase {
         #"{"input":{"_0":{"key":{"_0":"enter"}}}}"#,
         #"{"input":{"_0":{"text":{"_0":"hi"}}}}"#,
         #"{"view":{"height":2622,"width":1206}}"#,
-        #"{"keyFrame":{}}"#
+        #"{"keyFrame":{}}"#,
+        #"{"rate":{"bitsPerSecond":1500000}}"#
     ]
 
     func testVersion1RequestsStillRead() throws {

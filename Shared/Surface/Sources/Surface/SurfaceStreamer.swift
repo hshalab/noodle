@@ -11,6 +11,8 @@ import Foundation
         var fit: CGSize?
         /// Skipping frames until a key frame, as a new viewer and one that fell behind do.
         var waiting = true
+        /// Bits per second the viewer's link takes, once it has said.
+        var rate: Double?
     }
 
     /// Frames a viewer may have queued before it counts as behind.
@@ -67,8 +69,9 @@ import Foundation
     }
 
     private func leave(_ id: ObjectIdentifier) {
-        guard viewers.removeValue(forKey: id) != nil, viewers.isEmpty else { return }
-        watchingChanged?(false)
+        guard viewers.removeValue(forKey: id) != nil else { return }
+        encoder.bitRate = rate
+        if viewers.isEmpty { watchingChanged?(false) }
     }
 
     private func handle(_ control: SurfaceControl, from id: ObjectIdentifier) async {
@@ -80,6 +83,9 @@ import Foundation
         case .keyFrame:
             viewers[id]?.waiting = true
             wantsKeyFrame = true
+        case .rate(let bitsPerSecond):
+            viewers[id]?.rate = bitsPerSecond
+            encoder.bitRate = rate
         }
     }
 
@@ -99,6 +105,9 @@ import Foundation
         guard !fits.isEmpty, fits.allSatisfy({ $0 != nil }) else { return nil }
         return fits.compactMap { $0 }.reduce(.zero) { CGSize(width: max($0.width, $1.width), height: max($0.height, $1.height)) }
     }
+
+    /// One encoding serves every viewer, so it goes at the pace of the slowest link.
+    private var rate: Double? { viewers.values.compactMap(\.rate).min() }
 
     private func step() async {
         guard let picture = try? await capture(),

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Live views keep up on a slow or busy connection: video gets lighter to fit the link instead of arriving seconds late and stuttering.
+
 ## [0.3.1] - 2026-09-26
 
 ### Changed

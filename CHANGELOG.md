@@ -6,6 +6,10 @@ All notable changes to Noodle are documented here, following
 
 ## [Unreleased]
 
+### Fixed
+
+- When this Mac is your Hub, live views keep up on a slow or busy connection: video gets lighter to fit the link instead of arriving seconds late and stuttering.
+
 ## [0.28.1] - 2026-09-26
 
 ### Fixed

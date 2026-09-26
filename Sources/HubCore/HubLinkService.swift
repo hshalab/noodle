@@ -270,34 +270,22 @@ import Observation
 
     /// Relays a live view between the companion showing it and the device watching it, both
     /// ways and as it happens: video down as the companion encodes it, the person's controls up
-    /// in the order they sent them. A device that falls behind misses frames rather than getting
-    /// old ones late, and picks up again at a key frame. While the view is open, bots wait.
+    /// in the order they sent them. Video comes only as fast as the device's link takes it, so a
+    /// slow link gets less of it rather than getting it late. While the view is open, bots wait.
     private static func relay(_ companion: SurfaceSocket, to stream: LinkStream) {
         stream.onFrame { data in
-            if SurfaceControl(data) != nil { companion.send(data) }
+            // How fast the device's link goes is the Hub's to measure, not the device's to say.
+            switch SurfaceControl(data) {
+            case .rate?, nil: break
+            case _?: companion.send(data)
+            }
         }
         stream.onClose { companion.close() }
         Task {
-            var waiting = false
-            for await frame in companion.frames {
-                guard !stream.isClosed else { break }
-                let keyFrame = SurfacePacket.decode(frame)?.first?.keyFrame ?? false
-                if waiting, !keyFrame { continue }
-                if stream.pendingBytes > behindBytes {
-                    waiting = true
-                    companion.send(SurfaceControl.keyFrame.encoded)
-                    continue
-                }
-                waiting = false
-                stream.send(frame)
-            }
-            companion.close()
+            await companion.relay(to: stream.send, backlog: { stream.pendingBytes })
             stream.close()
         }
     }
-
-    /// Video a device may have waiting before it counts as behind.
-    private static let behindBytes = 512_000
 
     private func push(_ event: LinkEvent, toDevice key: LinkPublicKey) -> Bool {
         guard let stream = streams.values.first(where: { $0.peer == key && !$0.isClosed }) else { return false }

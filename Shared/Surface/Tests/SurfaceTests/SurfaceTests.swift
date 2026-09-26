@@ -24,7 +24,7 @@ final class SurfaceTests: XCTestCase {
         for input in inputs {
             XCTAssertEqual(try JSONDecoder().decode(SurfaceInput.self, from: JSONEncoder().encode(input)), input)
         }
-        for control in inputs.map(SurfaceControl.input) + [.view(width: 1200, height: 800), .keyFrame] {
+        for control in inputs.map(SurfaceControl.input) + [.view(width: 1200, height: 800), .keyFrame, .rate(bitsPerSecond: 1_000_000)] {
             XCTAssertEqual(SurfaceControl(control.encoded), control)
         }
     }
@@ -191,6 +191,68 @@ final class SurfaceTests: XCTestCase {
             XCTAssertTrue(after.keyFrame, "after missing frames, video resumed at \(after.sequence), which is not a key frame")
         }
         XCTAssertGreaterThan(gaps, 0, "a viewer that fell behind got every frame late")
+    }
+
+    /// A viewer on a slow link asks for less, and the video it gets shrinks to fit.
+    @MainActor func testTheStreamerKeepsToTheRateAViewerAsksFor() async throws {
+        let pictures = (0..<8).map { noise(width: 800, height: 500, seed: CGFloat($0) / 8) }
+        var next = 0
+        let streamer = SurfaceStreamer(fps: 30, maxPixelSize: 800, capture: {
+            next += 1
+            return (pictures[next % pictures.count], CGSize(width: 800, height: 500))
+        }, apply: { _ in })
+        defer { streamer.stop() }
+        let (companion, hub) = try pair()
+        streamer.attach(companion)
+        func averageSize() async throws -> Double {
+            let frames = try await packets(from: hub) { $0.count >= 20 }.filter { !$0.keyFrame }.suffix(10)
+            return Double(frames.reduce(0) { $0 + $1.sample.count }) / Double(max(1, frames.count))
+        }
+        let full = try await averageSize()
+        hub.send(SurfaceControl.rate(bitsPerSecond: 100_000).encoded)
+        let slowed = try await averageSize()
+        XCTAssertLessThan(slowed, full / 2, "video stayed at \(Int(slowed)) bytes a frame after the viewer asked for less")
+    }
+
+    /// The Hub passes video to a viewer only as fast as the viewer's link takes it: when the link
+    /// stalls it asks the companion for less and a key frame, and passes nothing on until the
+    /// line has cleared and that key frame comes.
+    func testTheRelaySlowsVideoForAViewerThatFallsBehind() async throws {
+        let (companion, hub) = try pair()
+        let lock = NSLock()
+        var stalled = true, backlog = 0, forwarded: [SurfacePacket] = []
+        let relay = Task {
+            await hub.relay(to: { frame in
+                lock.withLock {
+                    forwarded += SurfacePacket.decode(frame) ?? []
+                    if stalled { backlog += frame.count }
+                }
+            }, backlog: { lock.withLock { stalled ? backlog : 0 } })
+        }
+        func frame(_ sequence: UInt64, key: Bool, bytes: Int) -> Data {
+            SurfacePacket.encode([SurfacePacket(sequence: sequence, keyFrame: key, width: 800, height: 500,
+                                                parameterSets: key ? [Data([1]), Data([2])] : [], sample: Data(count: bytes))])
+        }
+        companion.send(frame(1, key: true, bytes: 1_000_000))
+        companion.send(frame(2, key: false, bytes: 20_000))
+        var controls: [SurfaceControl] = []
+        for await data in companion.frames {
+            if let control = SurfaceControl(data) { controls.append(control) }
+            if controls.contains(.keyFrame) { break }
+        }
+        guard case .rate(let rate)? = controls.first(where: { if case .rate = $0 { true } else { false } }) else {
+            return XCTFail("the relay never asked for less video, only \(controls)")
+        }
+        XCTAssertLessThan(rate, 20_000_000)
+
+        lock.withLock { stalled = false }
+        companion.send(frame(3, key: false, bytes: 20_000))
+        companion.send(frame(4, key: true, bytes: 100_000))
+        companion.send(frame(5, key: false, bytes: 20_000))
+        for _ in 0..<250 where lock.withLock({ forwarded.count }) < 3 { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertEqual(lock.withLock { forwarded.map(\.sequence) }, [1, 4, 5])
+        companion.close()
+        await relay.value
     }
 
     private func noise(width: Int, height: Int, seed: CGFloat) -> CGImage {
