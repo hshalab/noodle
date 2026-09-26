@@ -6,6 +6,8 @@ All notable changes to Noodle are documented here, following
 
 ## [Unreleased]
 
+## [0.28.2] - 2026-09-27
+
 ### Fixed
 
 - The Shared button shows each noodlet with the name and picture its card already shows in the conversation, instead of “Noodlet unavailable”.

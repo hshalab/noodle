@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-09-27
+
 ### What to Test
 
 - Tap the plus by the message field and send a photo, a file or a camera shot from the panel.

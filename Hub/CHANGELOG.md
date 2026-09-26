@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-09-27
+
 ### Added
 
 - The menu bar icon shows a green dot while someone is connected to the Hub.

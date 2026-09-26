@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.15.1] - 2026-09-27
+
 ### Fixed
 
 - Lighten live video when Noodle Hub says the viewer's connection is slow, so the view keeps up instead of stuttering.
