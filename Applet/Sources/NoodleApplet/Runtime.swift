@@ -34,6 +34,10 @@ import AppletCore
     lock = try InstanceLock(
       location: package.url, directory: root.appendingPathComponent("Locks"))
   }
+  func place() async -> WindowPlace? {
+    if let web { return web.place }
+    return await native?.place()
+  }
   func snapshot() async throws -> NSImage {
     guard state == "running" else {
       throw AppletError("Session \(id) (\(mode)) is \(state).", code: "session-not-running")
@@ -159,6 +163,7 @@ import AppletCore
       if request.operation.isSurface, identity == AppletBuildIdentity.current.cliID {
         throw AppletError("Unknown command. Use --help.")
       }
+      if identity == AppletBuildIdentity.current.cliID { try request.keepOutOfSight() }
       let owner =
         identity == AppletBuildIdentity.current.noodleID
         ? (request.owner ?? "local") : "local"
@@ -398,12 +403,22 @@ import AppletCore
         start.mode = request.mode ?? (session.dataRoot.lastPathComponent == "Testing" ? "headless" : session.mode)
         start.testClock = request.testClock ?? (start.mode == "headless" && session.testClock)
         try validateClock(start, package: session.package)
-        session.stop()
-        _ = status(session)
+        // A noodlet the user is watching stays up until its next version takes its place.
+        let place = start.mode == "foreground" ? await session.place() : nil
+        func retire() {
+          session.stop()
+          _ = status(session)
+        }
+        if place == nil { retire() } else {
+          session.lock = nil
+          // The new window remembers where the user puts it from now on.
+          session.web?.window.setFrameAutosaveName("")
+        }
+        defer { if place != nil { retire(); objectWillChange.send() } }
         start.width = request.width ?? Int(session.size.width)
         start.height = request.height ?? Int(session.size.height)
         return try await launch(
-          NoodletPackage(url: session.package.url), request: start, owner: session.owner)
+          NoodletPackage(url: session.package.url), request: start, owner: session.owner, in: place)
       case .show:
         try await show(session)
         return status(session)
@@ -561,8 +576,9 @@ import AppletCore
       throw AppletError("--test-clock requires HTML and --mode headless.", code: "unsupported-operation")
     }
   }
-  private func launch(_ package: NoodletPackage, request: AppletRequest, owner: String)
-    async throws -> AppletResponse
+  private func launch(
+    _ package: NoodletPackage, request: AppletRequest, owner: String, in place: WindowPlace? = nil
+  ) async throws -> AppletResponse
   {
     try validateClock(request, package: package)
     let session = try AppletSession(
@@ -613,7 +629,7 @@ import AppletCore
         }
         runner.castChanged = { [weak self] in self?.objectWillChange.send() }
         session.web = runner
-        try await runner.start(foreground: session.mode == "foreground")
+        try await runner.start(foreground: session.mode == "foreground", in: place)
       } else {
         let runner = NativeRunner(
           package: package, dataRoot: session.dataRoot,
@@ -649,7 +665,7 @@ import AppletCore
         }
         try await runner.start(
           mode: session.mode, size: session.size,
-          rememberFrame: request.width == nil && request.height == nil)
+          rememberFrame: request.width == nil && request.height == nil, in: place)
       }
       session.state = "running"
       session.log.append("lifecycle", "Ready.")

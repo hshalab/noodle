@@ -6,6 +6,10 @@ All notable changes to Noodle are documented here, following
 
 ## [Unreleased]
 
+### Changed
+
+- Bots can no longer pop a noodlet window up on your screen. Their noodlets run out of sight until you open one yourself.
+
 ## [0.29.1] - 2026-09-27
 
 ### Changed

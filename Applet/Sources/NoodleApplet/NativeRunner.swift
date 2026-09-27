@@ -317,7 +317,9 @@ import AppletCore
       toolchain.frontend, interpreterArguments(program, sdk: toolchain.sdk), directory: buildRoot,
       log: log, control: buildControl)
   }
-  func start(mode: String, size: CGSize, rememberFrame: Bool = true) async throws {
+  func start(
+    mode: String, size: CGSize, rememberFrame: Bool = true, in place: WindowPlace? = nil
+  ) async throws {
     let stdin = Pipe()
     let stdout = Pipe()
     let stderr = Pipe()
@@ -333,7 +335,7 @@ import AppletCore
     foreground = mode == "foreground"
     audible = Self.audible(mode: mode)
     if !audible {
-      log.append("audio", "Silent: a noodlet started outside the foreground has no audio output. NoodletContext.audioEngine runs there silently, so a recording still hears it; other audio APIs cannot start. Restart it with --mode foreground for sound.")
+      log.append("audio", "Silent: a noodlet started outside the foreground has no audio output. NoodletContext.audioEngine runs there silently, so a recording still hears it; other audio APIs cannot start. It has sound once the user opens it.")
     }
     var env = Self.environment(home: home)
     // Match swift-driver's interpreter environment so JIT symbol lookup
@@ -350,6 +352,9 @@ import AppletCore
       as: UTF8.self)
     env["NOODLET_REMEMBER_FRAME"] = rememberFrame && mode != "headless" ? "1" : "0"
     env["NOODLET_PROTOCOL"] = prefix
+    if mode == "foreground", let place {
+      env["NOODLET_PLACE"] = String(decoding: try JSONEncoder().encode(place), as: UTF8.self)
+    }
     // The noodlet reads its build and the module cache and writes only its own
     // data and home. Nothing else of Applet's, or the user's, is in reach.
     var launch = NoodletLaunch(
@@ -508,18 +513,30 @@ import AppletCore
     return true
   }
   func perform(_ request: AppletRequest) async throws -> String {
+    try await exchange(id: request.id.uuidString, JSONEncoder().encode(request))
+  }
+  /// The window is the noodlet's own, so the noodlet says where it is. One too busy to answer
+  /// soon is restarted as if nobody were watching.
+  func place() async -> WindowPlace? {
+    let id = UUID().uuidString
+    guard let command = try? JSONSerialization.data(withJSONObject: ["id": id, "operation": "place"]),
+      let reply = try? await exchange(id: id, command, within: .seconds(2))
+    else { return nil }
+    return try? JSONDecoder().decode(WindowPlace.self, from: Data(reply.utf8))
+  }
+  private func exchange(id: String, _ command: Data, within limit: Duration = .seconds(20))
+    async throws -> String
+  {
     guard let process, process.isRunning, let input else {
       throw AppletError("Native process is not running.")
     }
-    let id = request.id.uuidString
     return try await withCheckedThrowingContinuation { continuation in
       pending[id] = continuation
       do {
-        try input.fileHandleForWriting.write(
-          contentsOf: JSONEncoder().encode(request) + Data([10]))
+        try input.fileHandleForWriting.write(contentsOf: command + Data([10]))
       } catch { pending.removeValue(forKey: id)?.resume(throwing: error) }
       Task { [weak self] in
-        try? await Task.sleep(for: .seconds(20))
+        try? await Task.sleep(for: limit)
         self?.pending.removeValue(forKey: id)?.resume(
           throwing: AppletError(
             "Native operation timed out. The noodlet may be blocked; terminate or restart it."

@@ -17,9 +17,9 @@ public enum AppletGuidance {
     public static var cliHelp: String {
         """
         noodlet COMMAND [--path PACKAGE | --session UUID | --id UUID_OR_URL] [options]
-        \(AppletOperation.allCases.filter { !$0.isSurface }.map { "\($0.rawValue): \(operation($0))" }.joined(separator: "\n"))
+        \(AppletOperation.allCases.filter { !$0.isSurface && $0 != .show }.map { "\($0.rawValue): \(operation($0))" }.joined(separator: "\n"))
 
-        Options: --mode background|foreground|headless, --width POINTS, --height POINTS,
+        Options: --mode background|headless, --width POINTS, --height POINTS,
         --target CSS_SELECTOR, --x POINTS, --y POINTS, --to-x POINTS, --to-y POINTS,
         --text TEXT, --file SOURCE.js, --output FILE, --offset BYTES, --duration SECONDS,
         --follow, --text-output, --artifact UUID, --conversation UUID, --test-clock, --frames COUNT.
@@ -83,7 +83,7 @@ public enum AppletGuidance {
         case .screenshot: "Capture the current view as PNG; use --output FILE to retrieve it. Works without activating the desktop."
         case .recordStart: "Start video capture with the noodlet's sound, even while it is muted out of sight; --duration defaults to 30 seconds, maximum 60. Also accepts `record start`."
         case .recordStop: "Finalize active capture and retrieve the MP4 with --output FILE. Also accepts `record stop`."
-        case .show: "Explicitly bring the running noodlet into the foreground."
+        case .show: "Only the user brings a noodlet to the foreground, by opening it."
         case .hide: "Hide the noodlet window; HTML animation or game simulation may pause."
         case .step: "Advance --frames COUNT animation frames in an HTML session opened with --mode headless --test-clock. Returns synthetic timing and rendering diagnostics in value."
         case .close: "Stop the session and release its instance lock. Durable data and logs remain."
@@ -194,7 +194,7 @@ public enum AppletGuidance {
         its package, NoodletContext.dataDirectory and a private home directory. It
         cannot read the user's files, other noodlets, Applet's storage or the
         Keychain, NSOpenPanel and NSSavePanel do not work, and UserDefaults does not
-        persist. In foreground mode `try await NoodletContext.files.open()` lets the
+        persist. Once the user opens it, `try await NoodletContext.files.open()` lets the
         user pick a file and returns a copy inside dataDirectory, or nil;
         `files.save("relative/path", suggestedName:)` saves a dataDirectory file
         where the user chooses. The network manifest flag restricts HTML only.
@@ -210,7 +210,8 @@ public enum AppletGuidance {
         Use typecheck to check any Swift file or folder without building a noodlet.
 
         Use headless mode for automated checks with separate test data. It still needs
-        a logged-in Mac. Prefer background for normal data without foreground activation.
+        a logged-in Mac. Use background for normal data. Only the user brings a noodlet
+        to the foreground, by opening it; foreground mode and show are refused.
         Only a foreground noodlet makes sound. HTML pages are muted until they are shown,
         and a Swift noodlet started in background or headless mode has no audio output for
         its whole run; only NoodletContext.audioEngine runs there, silently. Recordings
