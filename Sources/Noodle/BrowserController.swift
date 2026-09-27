@@ -160,7 +160,7 @@ struct BrowserAssignmentPicker: View {
             Text(controller.available ? "No browsers yet" : "No browsers available")
             if controller.installed { openLibraryButton }
             else {
-                Button("Get Noodle Browser…") { NSWorkspace.shared.open(URL(string: "https://github.com/pdparchitect/noodle")!) }
+                Button("Get Noodle Browser") { NSWorkspace.shared.open(URL(string: "https://github.com/pdparchitect/noodle")!) }
             }
         }.foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.horizontal, 12)
     }

@@ -305,7 +305,7 @@ struct ComputerAssignmentPicker: View {
                 .font(.caption).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
             if controller.installed { openLibraryButton }
             else {
-                Button(openingLibrary ? "Checking…" : "Get Noodle Computer…") {
+                Button(openingLibrary ? "Checking…" : "Get Noodle Computer") {
                     openingLibrary = true
                     Task {
                         defer { openingLibrary = false }

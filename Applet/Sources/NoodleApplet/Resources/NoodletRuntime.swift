@@ -275,7 +275,7 @@ public struct NoodletSecrets: Sendable {
                 item.target = self; item.tag = index
             }
             if !NSScreen.screens.isEmpty { screens.addItem(.separator()) }
-            let add = screens.addItem(withTitle: "Add TV or Display…", action: #selector(addDisplay), keyEquivalent: "")
+            let add = screens.addItem(withTitle: "Add TV or Display", action: #selector(addDisplay), keyEquivalent: "")
             add.target = self; add.toolTip = "Use an Apple TV or AirPlay TV as a separate display."
             menu.addItem(withTitle: "Play On", action: nil, keyEquivalent: "").submenu = screens
         }

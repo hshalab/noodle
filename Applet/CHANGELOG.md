@@ -6,6 +6,7 @@
 
 - Only you bring a noodlet to the front, by opening it. Agents working on noodlets can no longer show a window, from Noodle or the `noodlet` command.
 - When an agent updates a noodlet you have open, the new version replaces the old one in the same spot, with no gap. It takes the keyboard only if you were using the noodlet.
+- Buttons that only open System Settings or a web page no longer end in “…”; “…” is kept for commands that ask for something before they act.
 
 ## [0.11.1] - 2026-09-27
 

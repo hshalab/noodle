@@ -62,7 +62,7 @@ private func registrationStatus() -> LocalMacRegistrationStatus {
         enable.isEnabled = registration != .helperMissing && registration != .unknown
         switch registration {
         case .enabled: enable.title = "Repair Local Mac"
-        case .requiresApproval: enable.title = "Open Login Items…"
+        case .requiresApproval: enable.title = "Open Login Items"
         default: enable.title = "Enable Local Mac…"
         }
         if registration == .helperMissing {

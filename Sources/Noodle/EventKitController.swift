@@ -456,7 +456,7 @@ struct EventKitToolRow: View {
             case .denied:
                 Text("Turn \(title) on for Noodle in System Settings, then come back.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                Button { controller.openPrivacySettings() } label: { Label("Open Settings…", systemImage: "gear") }
+                Button { controller.openPrivacySettings() } label: { Label("Open Settings", systemImage: "gear") }
             case nil:
                 Text("Checking access…").foregroundStyle(.secondary)
             }

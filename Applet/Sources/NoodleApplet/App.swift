@@ -621,7 +621,7 @@ extension NativeRunner: NoodletCastTarget {}
           Button(screen.localizedName) { target.play(on: screen) }
         }
         if !NSScreen.screens.isEmpty { Divider() }
-        Button("Add TV or Display…") { NSWorkspace.shared.open(NoodletCast.displaysSettings) }
+        Button("Add TV or Display") { NSWorkspace.shared.open(NoodletCast.displaysSettings) }
           .help("Use an Apple TV or AirPlay TV as a separate display.")
       }
     }

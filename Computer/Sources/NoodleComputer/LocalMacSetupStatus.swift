@@ -13,8 +13,8 @@ enum LocalMacErrorRecovery: Equatable {
     }
     var actionTitle: String {
         switch self {
-        case .fullDiskAccess: "Open Full Disk Access…"
-        case .loginItems: "Open Login Items…"
+        case .fullDiskAccess: "Open Full Disk Access"
+        case .loginItems: "Open Login Items"
         case .setup: "Open Local Mac Setup…"
         case .repair: "Repair Local Mac…"
         }
@@ -40,7 +40,7 @@ extension LocalMacRegistrationStatus {
     }
     var setupActionTitle: String {
         switch self {
-        case .requiresApproval: "Open System Settings…"
+        case .requiresApproval: "Open System Settings"
         case .notRegistered: "Enable Local Mac…"
         default: "Open Local Mac Setup…"
         }

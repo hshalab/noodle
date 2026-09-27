@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Buttons that only open System Settings or a web page no longer end in “…”; “…” is kept for commands that ask for something before they act.
+
 ## [0.6.1] - 2026-09-27
 
 ### Fixed

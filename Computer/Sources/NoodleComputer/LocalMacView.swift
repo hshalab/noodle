@@ -136,7 +136,7 @@ struct LocalMacPermissionsSettings: View {
                 Text("Add the helper shown in Finder using + in System Settings, then enable it. Restart this computer after granting access.")
                     .font(.callout).foregroundStyle(.secondary)
                 HStack {
-                    Button("Open System Settings…") {
+                    Button("Open System Settings") {
                         showHelper(pane: !status.screenCapture ? "Privacy_ScreenCapture" : "Privacy_Accessibility")
                     }.disabled(preparing)
                     Button("Show Desktop Helper") { showHelper() }.disabled(preparing)

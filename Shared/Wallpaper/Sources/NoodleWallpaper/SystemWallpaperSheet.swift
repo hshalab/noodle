@@ -32,7 +32,7 @@ struct SystemWallpaperSheet: View {
                 Spacer()
                 Text("System Wallpapers").font(.headline).foregroundStyle(.primary)
                 Spacer()
-                Button("Wallpaper Settings…") { NSWorkspace.shared.open(Self.settingsURL) }.foregroundStyle(.blue)
+                Button("Wallpaper Settings") { NSWorkspace.shared.open(Self.settingsURL) }.foregroundStyle(.blue)
             }.buttonStyle(.plain).padding(16)
             Divider()
             ScrollView {
