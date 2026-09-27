@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Settings has a Companions tab to install, open and update Noodle Computer, Browser and Applet on the Hub's Mac. Its badge shows how many have an update.
+
 ### Changed
 
 - Bots can no longer pop a noodlet window up on the Hub's screen. Their noodlets run out of sight.

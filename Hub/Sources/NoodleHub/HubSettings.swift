@@ -44,10 +44,9 @@ enum HubSettingsTab: Hashable {
     func botProfileButton(_ agent: AgentRecord) -> AnyView { AnyView(BotAvatar(agent: agent, size: 32)) }
     func botRuntimeEditor(_ agent: AgentRecord) -> AnyView { AnyView(EmptyView()) }
 
-    /// The Hub does not publish companion skills to bots yet.
-    func refreshCompanionSkills() {}
+    /// Gives the Hub's bots Noodle Applet's skill as soon as it is installed.
+    func refreshCompanionSkills() { hub.bots.applets.refreshSkills() }
 
-    /// The Hub does not connect to companions yet, so it opens the installed app itself.
     func openCompanionLibrary(_ app: CompanionApp) async throws {
         guard let installation = CompanionApp.installedApps()[app] else { return }
         let configuration = NSWorkspace.OpenConfiguration()
@@ -59,8 +58,9 @@ enum HubSettingsTab: Hashable {
 }
 
 struct HubSettingsView: View {
-    /// Heartbeat, Sandbox, Tools and Companions configure the Hub's own bots, which come
-    /// with shared agents; until then their tabs stay out of Settings.
+    /// Heartbeat, Sandbox and Tools configure bots the way Noodle does, which the Hub's bots
+    /// do not follow yet; until then their tabs stay out of Settings. Companions always shows,
+    /// since the Hub's bots run on the companion apps of this Mac.
     static let showsAgentSettings = false
 
     @Bindable var host: HubSettingsHost
@@ -121,11 +121,11 @@ struct HubSettingsView: View {
                     .hubSettingsSize()
                     .tabItem { Label("Tools", systemImage: "puzzlepiece.extension") }
                     .tag(HubSettingsTab.tools)
-                CompanionAppsSettingsView(store: host)
-                    .hubSettingsSize()
-                    .tabItem { Label("Companions", systemImage: "square.stack.3d.up") }
-                    .tag(HubSettingsTab.companions)
             }
+            CompanionAppsSettingsView(store: host)
+                .hubSettingsSize()
+                .tabItem { Label("Companions", systemImage: "square.stack.3d.up") }
+                .tag(HubSettingsTab.companions)
             HubUpdatesSettingsView()
                 .hubSettingsSize()
                 .tabItem { Label("Update", systemImage: "arrow.triangle.2.circlepath") }
@@ -136,11 +136,11 @@ struct HubSettingsView: View {
         .background(SettingsTabBadge(counts: ["Harness": harnessesNeedingAttention,
                                               "Tools": Self.showsAgentSettings ? toolsNeedingAttention : 0,
                                               "Network": networkNeedsAttention ? 1 : 0,
-                                              "Companions": Self.showsAgentSettings ? companionUpdates.updates.count : 0,
+                                              "Companions": companionUpdates.updates.count,
                                               "Update": updater.availableVersion == nil ? 0 : 1]))
         // Check on opening Settings so the tabs are badged before they are selected.
         .onAppear {
-            if Self.showsAgentSettings { companionUpdates.refresh(CompanionApp.installedApps()) }
+            companionUpdates.refresh(CompanionApp.installedApps())
             updater.probeForUpdate()
         }
         .task { await host.setup.refreshAll(host.runtime) }
