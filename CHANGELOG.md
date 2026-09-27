@@ -6,6 +6,12 @@ All notable changes to Noodle are documented here, following
 
 ## [Unreleased]
 
+## [0.29.1] - 2026-09-27
+
+### Changed
+
+- When this Mac is your Hub, what happens to your phone's notifications goes to the system log, under the category Notifications, with any error from iCloud.
+
 ## [0.29.0] - 2026-09-27
 
 ### Added

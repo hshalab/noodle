@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-09-27
+
+### Changed
+
+- What happens to phones' notifications goes to the system log, under the category Notifications, with any error from iCloud.
+
 ## [0.4.0] - 2026-09-27
 
 ### Added
