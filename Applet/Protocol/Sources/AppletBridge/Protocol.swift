@@ -62,6 +62,13 @@ public struct AppletRequest: Codable, Sendable {
         self.operation = operation
         self.sessionID = sessionID
     }
+    /// A noodlet comes in front of a person only when they open it themselves; an agent's
+    /// noodlets stay out of sight.
+    public func keepOutOfSight() throws {
+        if operation == .show || mode == "foreground" {
+            throw AppletError("Only the user can bring a noodlet to the foreground, by opening it themselves.", code: "foreground-by-user")
+        }
+    }
     /// A request as the companion reads it. One from a newer app it cannot read says which app
     /// to update, rather than that the data could not be read.
     public static func read(_ data: Data) throws -> Self {

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Only you bring a noodlet to the front, by opening it. Agents working on noodlets can no longer show a window, from Noodle or the `noodlet` command.
+
 ## [0.11.1] - 2026-09-27
 
 ### Fixed

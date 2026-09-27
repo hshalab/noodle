@@ -216,6 +216,32 @@ import XCTest
         XCTAssertEqual(posted.compactMap(\.url).compactMap(NoodletLink.id), [id])
     }
 
+    /// A noodlet window reaches the screen only when a person opens it; a bot keeps its work out of sight.
+    func testBotsCannotBringNoodletsToTheForeground() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let repository = WorkspaceRepository(rootURL: root)
+        try repository.prepare()
+        let bot = try repository.createAgent(named: "Author").agent
+        let recorder = AppletRequestRecorder()
+        let controller = AppletController(repository: repository, connection: { await recorder.respond($0) })
+        controller.start(agents: [bot])
+        defer { controller.start(agents: []); try? FileManager.default.removeItem(at: root) }
+        let path = repository.directory(for: bot).appendingPathComponent("Counter.noodlet").path
+        func invoke(_ operation: AppletOperation, mode: String?) async throws {
+            var request = AppletRequest(operation, sessionID: operation == .open ? nil : UUID())
+            if operation == .open { request.path = path; request.files = ["index.html": Data("hi".utf8)] }
+            request.mode = mode
+            _ = try await controller.perform(AppletAgentEnvelope(token: try token(for: bot, repository: repository), request: request,
+                                                                 conversationID: nil), agent: bot)
+        }
+        for (operation, mode) in [(AppletOperation.open, "foreground"), (.restart, "foreground"), (.show, nil)] {
+            do { try await invoke(operation, mode: mode); XCTFail("A bot brought a noodlet forward with \(operation)") } catch {}
+        }
+        try await invoke(.open, mode: "background")
+        let requests = await recorder.requests
+        XCTAssertEqual(requests.map(\.mode), ["background"])
+    }
+
     /// A bot builds and opens noodlets from its own folder only, which is what makes a noodlet
     /// that bot's wherever it is linked; another bot's folder, or one outside, is refused.
     func testABotOpensNoodletsFromItsOwnFolderOnly() async throws {

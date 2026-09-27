@@ -333,7 +333,7 @@ import AppletCore
     foreground = mode == "foreground"
     audible = Self.audible(mode: mode)
     if !audible {
-      log.append("audio", "Silent: a noodlet started outside the foreground has no audio output. NoodletContext.audioEngine runs there silently, so a recording still hears it; other audio APIs cannot start. Restart it with --mode foreground for sound.")
+      log.append("audio", "Silent: a noodlet started outside the foreground has no audio output. NoodletContext.audioEngine runs there silently, so a recording still hears it; other audio APIs cannot start. It has sound once the user opens it.")
     }
     var env = Self.environment(home: home)
     // Match swift-driver's interpreter environment so JIT symbol lookup

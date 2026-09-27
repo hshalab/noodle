@@ -159,6 +159,7 @@ import AppletCore
       if request.operation.isSurface, identity == AppletBuildIdentity.current.cliID {
         throw AppletError("Unknown command. Use --help.")
       }
+      if identity == AppletBuildIdentity.current.cliID { try request.keepOutOfSight() }
       let owner =
         identity == AppletBuildIdentity.current.noodleID
         ? (request.owner ?? "local") : "local"

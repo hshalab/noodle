@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Bots can no longer pop a noodlet window up on the Hub's screen. Their noodlets run out of sight.
+
 ## [0.4.0] - 2026-09-27
 
 ### Added
