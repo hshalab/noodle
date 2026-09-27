@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-28
+
 ### What to Test
 
 - Create or edit a bot: after choosing a harness, choose its model. With a plan that limits models, only those are offered.

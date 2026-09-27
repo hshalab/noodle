@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-28
+
 ### Changed
 
 - Browsers Noodle Hub keeps for its bots are listed under Hub in the sidebar, apart from your own.

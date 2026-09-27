@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-09-28
+
 ### Changed
 
 - Computers Noodle Hub keeps for its bots are listed under Hub in the sidebar, apart from your own.

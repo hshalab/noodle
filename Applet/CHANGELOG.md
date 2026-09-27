@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-09-28
+
 ### Changed
 
 - Noodlets your bots make, in Noodle or on Noodle Hub on this Mac, stay in the bot's own folder. Applet finds them there and runs them where they are, instead of keeping its own copy. The copies it kept before are deleted when Applet updates; what a noodlet saved, its permissions and its links move to the bot's own noodlet.
