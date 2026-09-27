@@ -105,17 +105,16 @@ struct HubUsersSettingsView: View {
             }
             .labelsHidden()
             .fixedSize()
-            Toggle("Can Pair", isOn: Binding(
-                get: { user.canPairDevices },
-                set: { access.setCanPairDevices($0, for: user) }
-            ))
-            .toggleStyle(.checkbox)
-            .help("Lets \(user.name) pair more of their own devices from their phone.")
             Button("Invite…") { inviting = Invitation(user: user, invitation: host.hub.link.invite(user)) }
                 .buttonStyle(.link)
             Menu {
+                Toggle("Can Pair Devices", isOn: Binding(
+                    get: { user.canPairDevices },
+                    set: { access.setCanPairDevices($0, for: user) }
+                ))
+                Divider()
                 Button("Rename…") { naming = NamingRequest(.rename(user), name: user.name) }
-                Button("Remove…", role: .destructive) { removing = user }
+                Button("Remove", role: .destructive) { removing = user }
             } label: {
                 Image(systemName: "ellipsis.circle")
             }
@@ -232,7 +231,7 @@ struct HubPlanEditor: View {
             Divider()
             HStack {
                 if plan?.isDefault == false {
-                    Button("Delete Plan…", role: .destructive) { confirmingDelete = true }
+                    Button("Delete Plan", role: .destructive) { confirmingDelete = true }
                 }
                 Spacer()
                 Button("Done") {
