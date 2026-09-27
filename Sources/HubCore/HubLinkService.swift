@@ -354,7 +354,7 @@ import os
             }
         } else if let known, unread > known {
             let away = devices.filter { !isFollowing($0) }
-            Self.pushLog.info("\(unread, privacy: .public) unread: notifying \(away.count, privacy: .public) of \(devices.count, privacy: .public) devices that asked, the rest are connected")
+            Self.pushLog.notice("\(unread, privacy: .public) unread: notifying \(away.count, privacy: .public) of \(devices.count, privacy: .public) devices that asked, the rest are connected")
             for device in away {
                 do { try await pushes.publish(topic: device.pushTopic!, conversation: conversation, unread: unread) }
                 catch { Self.pushLog.error("Could not notify a device: \(error.localizedDescription, privacy: .public)") }
