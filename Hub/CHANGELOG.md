@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Settings has a Companions tab to install, open and update Noodle Computer, Browser and Applet on the Hub's Mac. Its badge shows how many have an update.
+
 ## [0.4.1] - 2026-09-27
 
 ### Changed
