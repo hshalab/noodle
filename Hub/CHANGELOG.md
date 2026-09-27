@@ -5,6 +5,7 @@
 ### Added
 
 - The Hub remembers how far each person has read their conversations, so reading on one device clears the unread dot on their others.
+- Phones away from the Hub are notified of new replies.
 
 ## [0.3.2] - 2026-09-27
 

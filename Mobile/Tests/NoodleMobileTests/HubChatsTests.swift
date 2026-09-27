@@ -1,3 +1,4 @@
+import CloudKit
 import Foundation
 import HubLink
 import NoodleWallpaperCore
@@ -16,6 +17,8 @@ private actor FakeHub {
     var pictureFetches = 0
     /// Bot edits as the phone sent them.
     var edits: [LinkBotDraft] = []
+    /// Where the phone asked to hear of unread replies, in order.
+    var pushTopics: [String?] = []
     var messages: [LinkMessage] = []
     /// Where it listens, which it tells the phone when pairing, as the real Hub does.
     var endpoints: [LinkEndpoint] = []
@@ -80,6 +83,9 @@ private actor FakeHub {
             }
             let end = min(page.before ?? messages.count, messages.count), start = max(0, end - page.limit)
             return .messages(LinkMessages(messages: Array(messages[start..<end]), count: messages.count, start: start))
+        case .success(.pushTopic(let registration)):
+            pushTopics.append(registration.topic)
+            return .done
         case .success(.markRead(let mark)):
             guard let message = messages.first(where: { $0.id == mark.messageID }) else { return .failure("No such message.") }
             bot.readUpTo = max(bot.readUpTo ?? .distantPast, message.createdAt)
@@ -114,6 +120,21 @@ private actor FakeHub {
             return .failure("Not in this test.")
         }
     }
+}
+
+/// Stands in for CloudKit, keeping the topics subscribed to.
+private actor RecordedSubscriptions: PushSubscriptions {
+    var topics: Set<String> = []
+    var failing = false
+
+    func fail() { failing = true }
+
+    func subscribe(topic: String) throws {
+        if failing { throw LinkError("Not signed in to iCloud.") }
+        topics.insert(topic)
+    }
+
+    func unsubscribe(topic: String) { topics.remove(topic) }
 }
 
 @MainActor @Suite struct HubChatsTests {
@@ -424,6 +445,76 @@ private actor FakeHub {
         _ = await hub.reply(to: try LinkProtocol.encode(.markRead(LinkReadMark(conversationID: scout.conversationID, messageID: latest.id))))
         try await chats.reload()
         #expect(!chats.isUnread(scout))
+    }
+
+    /// Each Hub gets its own topic, the same every time, once the phone listens on it; turned off, both stop.
+    @Test func eachHubHearsWhereToLeaveWordOfUnreadReplies() async throws {
+        let hub = FakeHub()
+        let (chats, server) = try await paired(to: hub)
+        defer { server.stop() }
+        let subscriptions = RecordedSubscriptions()
+        let notifications = HubNotifications(subscriptions: subscriptions, defaults: UserDefaults(suiteName: UUID().uuidString)!)
+
+        await notifications.register([chats.pairing], allowed: true)
+        let topic = HubNotifications.topic(for: chats.pairing)
+        #expect(await subscriptions.topics == [topic])
+        #expect(await hub.pushTopics == [topic])
+        #expect(HubNotifications.topic(for: HubPairing(directory: chats.pairing.directory, deviceName: "iPhone")) == topic)
+        #expect(HubNotifications.topic(for: HubPairing(directory: FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString), deviceName: "iPhone")) != topic)
+
+        await notifications.register([chats.pairing], allowed: false)
+        #expect(await subscriptions.topics.isEmpty)
+        #expect(await hub.pushTopics.last == .some(nil))
+    }
+
+    /// A Hub the phone left stops notifying it, though its folder, and the topic in it, are gone.
+    @Test func aHubLeftStopsNotifying() async throws {
+        let hub = FakeHub()
+        let (chats, server) = try await paired(to: hub)
+        defer { server.stop() }
+        let subscriptions = RecordedSubscriptions()
+        let defaults = UserDefaults(suiteName: UUID().uuidString)!
+        await HubNotifications(subscriptions: subscriptions, defaults: defaults).register([chats.pairing], allowed: true)
+        #expect(await subscriptions.topics.count == 1)
+
+        try FileManager.default.removeItem(at: chats.pairing.directory)
+        await HubNotifications(subscriptions: subscriptions, defaults: defaults).register([], allowed: true)
+        #expect(await subscriptions.topics.isEmpty)
+    }
+
+    /// Without iCloud nothing could arrive, so the Hub is not asked to leave word.
+    @Test func aHubIsGivenNoTopicNobodyListensOn() async throws {
+        let hub = FakeHub()
+        let (chats, server) = try await paired(to: hub)
+        defer { server.stop() }
+        let subscriptions = RecordedSubscriptions()
+        await subscriptions.fail()
+
+        await HubNotifications(subscriptions: subscriptions, defaults: UserDefaults(suiteName: UUID().uuidString)!)
+            .register([chats.pairing], allowed: true)
+        #expect(await hub.pushTopics == [nil])
+    }
+
+    /// The phone hears of its own topic only, as a notification it can change before showing, one per conversation.
+    @Test func theSubscriptionListensOnTheTopic() {
+        let subscription = CloudKitSubscriptions.subscription(topic: "abc")
+        #expect(subscription.recordType == LinkPush.recordType)
+        #expect(subscription.predicate == NSPredicate(format: "%K == %@", LinkPush.topicField, "abc"))
+        #expect(subscription.querySubscriptionOptions == [.firesOnRecordCreation, .firesOnRecordUpdate])
+        let info = subscription.notificationInfo
+        #expect(Set(info?.desiredKeys ?? []) == [LinkPush.topicField, LinkPush.conversationField, LinkPush.unreadField])
+        #expect(info?.collapseIDKey == LinkPush.conversationField)
+        #expect(info?.shouldSendMutableContent == true)
+        #expect(info?.alertBody?.isEmpty == false)
+        #expect(CloudKitSubscriptions.subscription(topic: "xyz").subscriptionID != subscription.subscriptionID)
+    }
+
+    @Test func aNotificationLeadsToItsConversation() {
+        let conversation = UUID()
+        let route = HubNotifications.route(fields: [LinkPush.topicField: "abc", LinkPush.conversationField: conversation.uuidString])
+        #expect(route == NotificationRoute(topic: "abc", conversation: conversation))
+        #expect(HubNotifications.route(fields: [LinkPush.topicField: "abc"]) == nil)
     }
 
     @Test func unsentTextIsKeptPerConversation() async throws {

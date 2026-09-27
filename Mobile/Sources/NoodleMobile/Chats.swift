@@ -116,6 +116,7 @@ import SwiftUI
         guard let latest = messages.last?.createdAt, (seen?[agent.conversationID] ?? .distantPast) < latest else { return }
         seen = (seen ?? [:]).merging([agent.conversationID: latest]) { $1 }
         saveSeen()
+        Task { await HubNotifications.clearDelivered(conversation: agent.conversationID) }
         guard let kept = messages.last(where: { !sending.contains($0.id) && !undelivered.contains($0.id) }) else { return }
         let mark = LinkReadMark(conversationID: agent.conversationID, messageID: kept.id)
         // A Hub from before read state was shared does not know the request; this phone keeps its own.
@@ -440,6 +441,10 @@ struct OutgoingFile: Identifiable, Equatable {
 /// The home screen once paired: the agents of the Hubs shown, newest conversation first.
 struct AgentsView: View {
     let pairings: [HubPairing]
+    /// A tapped notification's conversation, until it opens.
+    @Binding var opening: NotificationRoute?
+    @Environment(\.scenePhase) private var phase
+    @State private var path: [ChatLink] = []
     /// Kept per Hub while it stays shown, so switching the option keeps what each Hub loaded.
     @State private var chats: [HubChats] = []
     @State private var showingMore = false
@@ -462,7 +467,7 @@ struct AgentsView: View {
 
     var body: some View {
         let rows = rows
-        NavigationStack {
+        NavigationStack(path: $path) {
             List(rows) { row in
                 NavigationLink(value: row.id) {
                     AgentRow(agent: row.agent, latest: row.chats.latestMessage(of: row.agent), pinned: row.chats.isPinned(row.agent),
@@ -521,12 +526,25 @@ struct AgentsView: View {
                 if let first = chats.first { AgentEditor(chats: first, agent: nil, hubs: chats) }
             }
         }
-        .task(id: pairings.map(CurrentHub.name)) {
+        .onChange(of: opening, initial: true, open)
+        .onChange(of: rows.map(\.id)) { open() }
+        // Not while the phone is away, so the Hub knows at once to notify it instead.
+        .task(id: FollowKey(hubs: pairings.map(CurrentHub.name), away: phase == .background)) {
             chats = pairings.map { pairing in chats.first { $0.pairing === pairing } ?? HubChats(pairing: pairing) }
+            guard phase != .background else { return }
             await withTaskGroup(of: Void.self) { group in
                 for hub in chats { group.addTask { await hub.follow() } }
             }
         }
+    }
+
+    /// Opens a tapped notification's conversation once its Hub's bots have loaded.
+    private func open() {
+        guard let route = opening,
+              let row = rows.first(where: { $0.agent.conversationID == route.conversation
+                  && HubNotifications.topic(for: $0.chats.pairing) == route.topic }) else { return }
+        path = [row.id]
+        opening = nil
     }
 
     private func openChosen() {
@@ -537,6 +555,11 @@ struct AgentsView: View {
         }
         chosen = nil
     }
+}
+
+private struct FollowKey: Equatable {
+    let hubs: [String]
+    let away: Bool
 }
 
 /// A conversation in the list: the Hub, by the name of its folder, and the bot.

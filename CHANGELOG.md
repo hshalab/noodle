@@ -6,6 +6,10 @@ All notable changes to Noodle are documented here, following
 
 ## [Unreleased]
 
+### Added
+
+- When this Mac is your Hub, your phone is notified of new replies while Noodle for iPhone is closed.
+
 ### Changed
 
 - Opening a picture or file from a message lets you page through the message's other files in the same preview, with its arrows or the arrow keys.

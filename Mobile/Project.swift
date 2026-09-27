@@ -50,6 +50,7 @@ let project = Project(
             ]),
             sources: ["Sources/NoodleMobile/**"],
             resources: ["Support/Assets.xcassets"],
+            entitlements: .file(path: "Support/NoodleMobile.entitlements"),
             dependencies: [.package(product: "HubLink"), .package(product: "NoodleWallpaperCore"), .package(product: "NoodleBrand")],
             settings: .settings(base: [
                 "PRODUCT_BUNDLE_IDENTIFIER": "$(MOBILE_APP_BUNDLE_ID)",

@@ -25,15 +25,17 @@ public final class CloudKitPushes: HubPushPublisher {
 
     public func publish(topic: String, conversation: UUID, unread: Int) async throws {
         // The Hub alone writes these, so its copy always wins.
-        _ = try await database.modifyRecords(saving: [Self.record(topic: topic, conversation: conversation, unread: unread)],
-                                             deleting: [], savePolicy: .allKeys)
+        let results = try await database.modifyRecords(saving: [Self.record(topic: topic, conversation: conversation, unread: unread)],
+                                                       deleting: [], savePolicy: .allKeys)
+        // Each record's failure comes in its result rather than thrown.
+        for result in results.saveResults.values { _ = try result.get() }
     }
 
     public func withdraw(topic: String, conversation: UUID) async throws {
-        do {
-            _ = try await database.modifyRecords(saving: [], deleting: [Self.recordID(topic: topic, conversation: conversation)])
-        } catch let error as CKError where error.code == .unknownItem {
-            // Nothing was shown.
+        let results = try await database.modifyRecords(saving: [], deleting: [Self.recordID(topic: topic, conversation: conversation)])
+        for result in results.deleteResults.values {
+            // Unknown: nothing was shown.
+            do { try result.get() } catch let error as CKError where error.code == .unknownItem {}
         }
     }
 

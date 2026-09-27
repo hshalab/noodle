@@ -4,6 +4,9 @@ import UIKit
 
 @main
 struct NoodleMobileApp: App {
+    @UIApplicationDelegateAdaptor private var delegate: AppDelegate
+    @Environment(\.scenePhase) private var phase
+    @State private var notifications = HubNotifications()
     @State private var hubs = HubMemberships(
         directory: URL.applicationSupportDirectory.appendingPathComponent("Hubs", isDirectory: true),
         deviceName: UIDevice.current.name)
@@ -17,7 +20,7 @@ struct NoodleMobileApp: App {
                 if shown.isEmpty {
                     JoinView()
                 } else {
-                    AgentsView(pairings: shown)
+                    AgentsView(pairings: shown, opening: Binding(get: { delegate.opening }, set: { delegate.opening = $0 }))
                 }
             }
             .environment(hubs)
@@ -27,8 +30,26 @@ struct NoodleMobileApp: App {
                 if let joined = CurrentHub.joined(before: before, after: after) { current = joined }
             }
             .task { await hubs.stayConnected() }
+            // Again each time the app comes back, since notifications may have been turned off or on in Settings.
+            .task(id: NotificationKey(hubs: hubs.hubs.map(CurrentHub.name), active: phase == .active)) {
+                guard phase == .active else { return }
+                // Nobody is asked until there is a Hub to hear from.
+                let allowed = hubs.hubs.isEmpty ? true : await HubNotifications.allowed()
+                await notifications.register(hubs.hubs, allowed: allowed)
+            }
+            // A tapped notification's Hub is shown, so its conversation can open.
+            .onChange(of: delegate.opening) {
+                guard let route = delegate.opening, !together,
+                      let pairing = hubs.hubs.first(where: { HubNotifications.topic(for: $0) == route.topic }) else { return }
+                current = CurrentHub.name(of: pairing)
+            }
         }
     }
+}
+
+private struct NotificationKey: Equatable {
+    let hubs: [String]
+    let active: Bool
 }
 
 /// The Hub the phone shows, of those it joined; saved on the phone by the name of the Hub's folder.

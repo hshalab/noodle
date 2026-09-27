@@ -1,0 +1,145 @@
+import CloudKit
+import HubLink
+import Observation
+import UIKit
+import UserNotifications
+
+/// What notifications need from CloudKit: to hear of the records a Hub leaves under a topic.
+protocol PushSubscriptions: Sendable {
+    func subscribe(topic: String) async throws
+    func unsubscribe(topic: String) async throws
+}
+
+/// Listens in CloudKit's public database for the record a Hub leaves while replies wait unread, and
+/// has Apple show it as a notification, one per conversation, which the app may change before it shows.
+struct CloudKitSubscriptions: PushSubscriptions {
+    func subscribe(topic: String) async throws {
+        let results = try await database.modifySubscriptions(saving: [Self.subscription(topic: topic)], deleting: [])
+        for result in results.saveResults.values { _ = try result.get() }
+    }
+
+    func unsubscribe(topic: String) async throws {
+        let results = try await database.modifySubscriptions(saving: [], deleting: [Self.subscriptionID(topic)])
+        for result in results.deleteResults.values {
+            do { try result.get() } catch let error as CKError where error.code == .unknownItem {}
+        }
+    }
+
+    private var database: CKDatabase { CKContainer(identifier: LinkPush.container).publicCloudDatabase }
+
+    static func subscriptionID(_ topic: String) -> CKSubscription.ID { "unread-\(topic)" }
+
+    static func subscription(topic: String) -> CKQuerySubscription {
+        let subscription = CKQuerySubscription(recordType: LinkPush.recordType,
+                                               predicate: NSPredicate(format: "%K == %@", LinkPush.topicField, topic),
+                                               subscriptionID: subscriptionID(topic),
+                                               options: [.firesOnRecordCreation, .firesOnRecordUpdate])
+        let info = CKSubscription.NotificationInfo()
+        info.alertBody = "New reply"
+        info.soundName = "default"
+        info.desiredKeys = [LinkPush.topicField, LinkPush.conversationField, LinkPush.unreadField]
+        // A newer count replaces the conversation's notification rather than adding another.
+        info.collapseIDKey = LinkPush.conversationField
+        info.shouldSendMutableContent = true
+        subscription.notificationInfo = info
+        return subscription
+    }
+}
+
+/// The conversation a notification is about, on the Hub whose topic it came under.
+struct NotificationRoute: Equatable, Sendable {
+    let topic: String
+    let conversation: UUID
+}
+
+/// Tells each Hub the phone joined where to leave word of unread replies while the phone is away,
+/// and listens there.
+@MainActor final class HubNotifications {
+    private let subscriptions: any PushSubscriptions
+    private let defaults: UserDefaults
+    /// Topics listened on, so those of Hubs the phone has since left can be dropped.
+    private static let listeningKey = "pushTopics"
+
+    init(subscriptions: any PushSubscriptions = CloudKitSubscriptions(), defaults: UserDefaults = .standard) {
+        self.subscriptions = subscriptions
+        self.defaults = defaults
+    }
+
+    /// Random and kept in the Hub's folder, so only that Hub and this phone know it, and it goes when
+    /// the phone leaves the Hub.
+    static func topic(for pairing: HubPairing) -> String {
+        let url = pairing.directory.appendingPathComponent("push-topic")
+        if let topic = try? String(contentsOf: url, encoding: .utf8), !topic.isEmpty { return topic }
+        let topic = UUID().uuidString.lowercased()
+        try? topic.write(to: url, atomically: true, encoding: .utf8)
+        return topic
+    }
+
+    /// Listens for each Hub's word, or stops when notifications are not allowed. A Hub is given its
+    /// topic only once the phone listens on it; one out of reach hears the next time.
+    func register(_ pairings: [HubPairing], allowed: Bool) async {
+        var listening: Set<String> = []
+        for pairing in pairings {
+            let topic = Self.topic(for: pairing)
+            if allowed, (try? await subscriptions.subscribe(topic: topic)) != nil {
+                listening.insert(topic)
+            } else {
+                try? await subscriptions.unsubscribe(topic: topic)
+            }
+            _ = try? await pairing.request(.pushTopic(LinkPushTopic(topic: listening.contains(topic) ? topic : nil)))
+        }
+        for topic in Set(defaults.stringArray(forKey: Self.listeningKey) ?? []).subtracting(listening) {
+            try? await subscriptions.unsubscribe(topic: topic)
+        }
+        defaults.set(listening.sorted(), forKey: Self.listeningKey)
+    }
+
+    /// Asks the first time; after that the person's answer stands until they change it in Settings.
+    static func allowed() async -> Bool {
+        let granted = (try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])) ?? false
+        if granted { UIApplication.shared.registerForRemoteNotifications() }
+        return granted
+    }
+
+    nonisolated static func route(fields: [String: Any]) -> NotificationRoute? {
+        guard let topic = fields[LinkPush.topicField] as? String,
+              let conversation = (fields[LinkPush.conversationField] as? String).flatMap(UUID.init(uuidString:)) else { return nil }
+        return NotificationRoute(topic: topic, conversation: conversation)
+    }
+
+    nonisolated static func route(userInfo: [AnyHashable: Any]) -> NotificationRoute? {
+        guard let notification = CKNotification(fromRemoteNotificationDictionary: userInfo) as? CKQueryNotification,
+              let fields = notification.recordFields else { return nil }
+        return route(fields: fields)
+    }
+
+    /// A conversation read here needs no notification any more.
+    static func clearDelivered(conversation: UUID) async {
+        let center = UNUserNotificationCenter.current()
+        let delivered = await center.deliveredNotifications()
+        let read = delivered.filter { route(userInfo: $0.request.content.userInfo)?.conversation == conversation }
+        center.removeDeliveredNotifications(withIdentifiers: read.map(\.request.identifier))
+    }
+}
+
+/// Where tapped notifications arrive, and the conversation the app should open.
+@MainActor @Observable final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
+    var opening: NotificationRoute?
+
+    func application(_ application: UIApplication,
+                     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        UNUserNotificationCenter.current().delegate = self
+        return true
+    }
+
+    /// The app on screen shows replies as they come.
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                            willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
+        []
+    }
+
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        let route = HubNotifications.route(userInfo: response.notification.request.content.userInfo)
+        await MainActor.run { opening = route }
+    }
+}
