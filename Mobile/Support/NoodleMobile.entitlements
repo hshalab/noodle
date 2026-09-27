@@ -5,9 +5,10 @@
 	<!-- Notifications of unread replies while away from the Hub. Exporting for the App Store makes it production. -->
 	<key>aps-environment</key>
 	<string>development</string>
-	<!-- Where Hubs leave word of those replies. Production in every build, since that is where released Hubs write. -->
+	<!-- Where Hubs leave word of those replies: Production in a release, where released Hubs write. CloudKit takes
+	     a subscription there only from an app that pushes in production, so development builds use Development. -->
 	<key>com.apple.developer.icloud-container-environment</key>
-	<string>Production</string>
+	<string>$(MOBILE_CLOUDKIT_ENVIRONMENT)</string>
 	<key>com.apple.developer.icloud-container-identifiers</key>
 	<array>
 		<string>iCloud.com.pdparchitect.noodle</string>

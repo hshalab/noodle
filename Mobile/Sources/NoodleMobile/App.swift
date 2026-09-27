@@ -39,7 +39,7 @@ struct NoodleMobileApp: App {
             .task(id: NotificationKey(hubs: hubs.hubs.map(CurrentHub.name), active: phase == .active)) {
                 guard phase == .active else { return }
                 // Nobody is asked until there is a Hub to hear from.
-                let allowed = hubs.hubs.isEmpty ? true : await HubNotifications.allowed()
+                let allowed = hubs.hubs.isEmpty ? true : await HubNotifications.allowed(registering: delegate)
                 await notifications.register(hubs.hubs, allowed: allowed)
             }
             // A tapped notification's Hub is shown, so its conversation can open.

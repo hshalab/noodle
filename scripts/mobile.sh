@@ -98,7 +98,8 @@ case "$command" in
 import plistlib, sys
 support, unpacked = sys.argv[1:3]
 def fill(value):
-    if isinstance(value, str): return value.replace('$(MOBILE_APP_BUNDLE_ID)', 'com.pdparchitect.noodle.mobile')
+    if isinstance(value, str):
+        return value.replace('$(MOBILE_APP_BUNDLE_ID)', 'com.pdparchitect.noodle.mobile').replace('$(MOBILE_CLOUDKIT_ENVIRONMENT)', 'Production')
     if isinstance(value, list): return [fill(item) for item in value]
     return value
 for claimed_file, signed_file in [('NoodleMobile', 'app'), ('NoodleMobileNotifications', 'notifications')]:

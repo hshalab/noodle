@@ -1,6 +1,7 @@
 import CloudKit
 import HubLink
 import Observation
+import os
 import UIKit
 import UserNotifications
 
@@ -65,12 +66,22 @@ struct CloudKitSubscriptions: PushSubscriptions {
         var listening: Set<String> = []
         for pairing in pairings {
             let topic = PushTopic.topic(for: pairing)
-            if allowed, (try? await subscriptions.subscribe(topic: topic)) != nil {
-                listening.insert(topic)
-            } else {
-                try? await subscriptions.unsubscribe(topic: topic)
+            if allowed {
+                do {
+                    try await subscriptions.subscribe(topic: topic)
+                    listening.insert(topic)
+                    Self.log.notice("Listening in CloudKit for a Hub's unread replies")
+                } catch {
+                    Self.log.error("CloudKit refused to listen for a Hub's unread replies: \(Self.describe(error), privacy: .public)")
+                }
             }
-            _ = try? await pairing.request(.pushTopic(LinkPushTopic(topic: listening.contains(topic) ? topic : nil)))
+            if !listening.contains(topic) { try? await subscriptions.unsubscribe(topic: topic) }
+            do {
+                _ = try await pairing.request(.pushTopic(LinkPushTopic(topic: listening.contains(topic) ? topic : nil)))
+                Self.log.notice("A Hub was told \(listening.contains(topic) ? "where to notify this phone" : "not to notify this phone", privacy: .public)")
+            } catch {
+                Self.log.error("A Hub could not be told where to notify this phone: \(error.localizedDescription, privacy: .public)")
+            }
         }
         for topic in Set(defaults.stringArray(forKey: Self.listeningKey) ?? []).subtracting(listening) {
             try? await subscriptions.unsubscribe(topic: topic)
@@ -79,10 +90,22 @@ struct CloudKitSubscriptions: PushSubscriptions {
     }
 
     /// Asks the first time; after that the person's answer stands until they change it in Settings.
-    static func allowed() async -> Bool {
+    /// CloudKit takes a subscription only once the phone is registered for push, so this waits for that too.
+    static func allowed(registering delegate: AppDelegate) async -> Bool {
         let granted = (try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])) ?? false
-        if granted { UIApplication.shared.registerForRemoteNotifications() }
-        return granted
+        log.notice("Notifications \(granted ? "allowed" : "not allowed", privacy: .public)")
+        return granted ? await delegate.registerForPush() : false
+    }
+
+    /// What happens to notifications, without topics, keys or messages. Read in the Mac's Console
+    /// with the phone connected.
+    static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "NoodleMobile", category: "Notifications")
+
+    /// CloudKit's own words, which name what it refused.
+    static func describe(_ error: Error) -> String {
+        guard let error = error as? CKError else { return error.localizedDescription }
+        let server = error.userInfo["ServerErrorDescription"] as? String
+        return "\(error.code.rawValue) \(error.localizedDescription)" + (server.map { " (\($0))" } ?? "")
     }
 
     /// A conversation read here needs no notification any more.
@@ -97,6 +120,33 @@ struct CloudKitSubscriptions: PushSubscriptions {
 /// Where tapped notifications arrive, and the conversation the app should open.
 @MainActor @Observable final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     var opening: NotificationRoute?
+    /// Whether this launch registered for push, once known, and who waits to hear.
+    @ObservationIgnored private var registered: Bool?
+    @ObservationIgnored private var waiting: [CheckedContinuation<Bool, Never>] = []
+
+    func registerForPush() async -> Bool {
+        if let registered { return registered }
+        return await withCheckedContinuation { continuation in
+            waiting.append(continuation)
+            if waiting.count == 1 { UIApplication.shared.registerForRemoteNotifications() }
+        }
+    }
+
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        HubNotifications.log.notice("Registered for push")
+        finishRegistering(true)
+    }
+
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        HubNotifications.log.error("Could not register for push: \(error.localizedDescription, privacy: .public)")
+        finishRegistering(false)
+    }
+
+    private func finishRegistering(_ success: Bool) {
+        registered = success
+        waiting.forEach { $0.resume(returning: success) }
+        waiting = []
+    }
 
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {

@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### What to Test
+
+- Leave the app and have a bot reply: a notification arrives with the bot's name and its reply.
+
+### Fixed
+
+- Setting up notifications waits until the phone is registered for push, which CloudKit needs before it notifies it; before, CloudKit refused them.
+
 ## [0.3.0] - 2026-09-27
 
 ### What to Test

@@ -20,10 +20,12 @@ let project = Project(
             .debug(name: "Debug", settings: [
                 "MOBILE_APP_BUNDLE_ID": "com.pdparchitect.noodle.mobile.local",
                 "MOBILE_APP_NAME": "Noodle Dev",
+                "MOBILE_CLOUDKIT_ENVIRONMENT": "Development",
             ]),
             .release(name: "Release", settings: [
                 "MOBILE_APP_BUNDLE_ID": "com.pdparchitect.noodle.mobile",
                 "MOBILE_APP_NAME": "Noodle",
+                "MOBILE_CLOUDKIT_ENVIRONMENT": "Production",
             ]),
         ]
     ),

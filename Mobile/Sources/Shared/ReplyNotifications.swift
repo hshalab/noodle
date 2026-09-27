@@ -1,6 +1,7 @@
 import CloudKit
 import Foundation
 import HubLink
+import os
 
 /// The group the app shares with its notification extension, named in both Info.plists.
 enum AppGroup {
@@ -63,6 +64,8 @@ enum PushTopic {
 
 /// What a notification of unread replies shows: the bot, and what it said last.
 enum ReplyNotification {
+    static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "NoodleMobile", category: "Notifications")
+
     struct Content: Equatable, Sendable {
         let title: String
         let body: String
@@ -72,7 +75,12 @@ enum ReplyNotification {
     @MainActor static func content(for route: NotificationRoute, hubs: URL) async -> Content? {
         guard let directory = PushTopic.directory(of: route.topic, in: hubs) else { return nil }
         let pairing = HubPairing(directory: directory, deviceName: "")
-        guard case .bots(let bots)? = try? await pairing.request(.bots),
+        let listed: LinkResponse
+        do { listed = try await pairing.request(.bots) } catch {
+            log.error("The Hub could not be reached for a notification's reply: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+        guard case .bots(let bots) = listed,
               let bot = bots.first(where: { $0.conversationID == route.conversation }),
               case .messages(let page)? = try? await pairing.request(.messagePage(LinkMessagePage(conversationID: route.conversation, limit: 10))),
               let reply = page.messages.last(where: { if case .bot = $0.author { true } else { false } }) else { return nil }

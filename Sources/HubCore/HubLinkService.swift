@@ -6,6 +6,7 @@ import HubLink
 import NoodleCore
 import NoodleRuntime
 import Observation
+import os
 
 /// Where paired devices reach the Hub. Every request is answered for the user whose device
 /// key it arrived with, from that user's plan.
@@ -92,6 +93,7 @@ import Observation
         self.now = now
         self.pushes = pushes
         self.pushDelay = pushDelay
+        if pushes == nil { Self.pushLog.notice("Devices away are not notified: this build is not signed for iCloud") }
         // A Hub that cannot keep its key cannot be paired with; a fresh key each launch would say so loudly.
         identity = (try? LinkIdentity.loadOrCreate(at: directory.appendingPathComponent("hub.key"))) ?? LinkIdentity()
         key = identity.publicKey
@@ -346,13 +348,22 @@ import Observation
         pushedUnread[conversation] = unread
         let devices = access.devices.filter { $0.user == user && $0.pushTopic != nil }
         if unread == 0, read || (known ?? 0) > 0 {
-            for device in devices { try? await pushes.withdraw(topic: device.pushTopic!, conversation: conversation) }
+            for device in devices {
+                do { try await pushes.withdraw(topic: device.pushTopic!, conversation: conversation) }
+                catch { Self.pushLog.error("Could not take back a notification: \(error.localizedDescription, privacy: .public)") }
+            }
         } else if let known, unread > known {
-            for device in devices where !isFollowing(device) {
-                try? await pushes.publish(topic: device.pushTopic!, conversation: conversation, unread: unread)
+            let away = devices.filter { !isFollowing($0) }
+            Self.pushLog.info("\(unread, privacy: .public) unread: notifying \(away.count, privacy: .public) of \(devices.count, privacy: .public) devices that asked, the rest are connected")
+            for device in away {
+                do { try await pushes.publish(topic: device.pushTopic!, conversation: conversation, unread: unread) }
+                catch { Self.pushLog.error("Could not notify a device: \(error.localizedDescription, privacy: .public)") }
             }
         }
     }
+
+    /// What happens to notifications for devices away, without topics, names or messages.
+    private static let pushLog = Logger(subsystem: Bundle.main.bundleIdentifier ?? "HubCore", category: "Notifications")
 
     private func handle(_ request: LinkRequest, from key: LinkPublicKey) async throws -> LinkResponse {
         // On the owner's own Mac these are Noodle's, kept in its own settings.
@@ -415,6 +426,7 @@ import Observation
         case .pushTopic(let registration):
             let topic = registration.topic.flatMap { (1...128).contains($0.count) ? $0 : nil }
             access.setPushTopic(topic, for: try paired(key))
+            Self.pushLog.notice("A device \(topic == nil ? "stopped listening" : "listens", privacy: .public) for unread replies")
             return .done
         case .connections:
             return .connections(try hubConnections().link(for: try user(key)))
