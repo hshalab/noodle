@@ -305,30 +305,17 @@ struct HubPlanEditor: View {
         }
     }
 
-    /// Any model, or only those ticked; the last one ticked stays so the harness still lends something.
+    /// A link naming the models the harness lends, opening a popover to choose them.
     @ViewBuilder private func modelList(_ harness: HubHarness, in plan: HubPlan) -> some View {
         let known = host.runtime.models(for: harness.provider.rawValue)
         let allowed = plan.models[harness]
         let ids = known.map(\.id) + (allowed ?? []).subtracting(known.map(\.id)).sorted()
         if !ids.isEmpty {
-            VStack(alignment: .leading, spacing: 4) {
-                Toggle("All models", isOn: Binding(
-                    get: { allowed == nil },
-                    set: { access.setModels($0 ? nil : Set(ids), for: harness, in: plan) }
-                ))
-                if let allowed {
-                    ForEach(ids, id: \.self) { id in
-                        Toggle(known.first { $0.id == id }?.displayName ?? id, isOn: Binding(
-                            get: { allowed.contains(id) },
-                            set: { access.setModels($0 ? allowed.union([id]) : allowed.subtracting([id]), for: harness, in: plan) }
-                        ))
-                        .disabled(allowed == [id])
-                        .padding(.leading, 20)
-                    }
-                }
-            }
-            .toggleStyle(.checkbox)
-            .controlSize(.small)
+            HubModelPicker(
+                models: ids.map { id in (id, known.first { $0.id == id }?.displayName ?? id) },
+                allowed: allowed,
+                set: { access.setModels($0, for: harness, in: plan) }
+            )
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.leading, 44).padding(.trailing, 12).padding(.bottom, 10)
         }
@@ -342,6 +329,49 @@ struct HubPlanEditor: View {
         } catch {
             self.error = error.localizedDescription
         }
+    }
+}
+
+/// Any model, or only those ticked; the last one ticked stays so the harness still lends something.
+private struct HubModelPicker: View {
+    let models: [(id: String, name: String)]
+    let allowed: Set<String>?
+    let set: (Set<String>?) -> Void
+    @State private var showing = false
+
+    private var title: String {
+        guard let allowed else { return "All models" }
+        return models.filter { allowed.contains($0.id) }.map(\.name).joined(separator: ", ")
+    }
+
+    var body: some View {
+        Button(title) { showing = true }
+            .buttonStyle(.link)
+            .controlSize(.small)
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .popover(isPresented: $showing, arrowEdge: .bottom) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Toggle("All models", isOn: Binding(
+                        get: { allowed == nil },
+                        set: { set($0 ? nil : Set(models.map(\.id))) }
+                    ))
+                    Divider()
+                    ForEach(models, id: \.id) { model in
+                        Toggle(model.name, isOn: Binding(
+                            get: { allowed?.contains(model.id) ?? true },
+                            set: { on in
+                                let current = allowed ?? Set(models.map(\.id))
+                                set(on ? current.union([model.id]) : current.subtracting([model.id]))
+                            }
+                        ))
+                        .disabled(allowed == nil || allowed == [model.id])
+                    }
+                }
+                .toggleStyle(.checkbox)
+                .padding(14)
+                .frame(minWidth: 180, alignment: .leading)
+            }
     }
 }
 
