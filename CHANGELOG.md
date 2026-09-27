@@ -14,6 +14,7 @@ All notable changes to Noodle are documented here, following
 
 ### Changed
 
+- The remote address you added in Settings > Hub has an x beside it to remove it, and Add Remote Address… shows only while there is none.
 - Menu and button labels follow the macOS ellipsis rule: Remove and Delete no longer end in one since they only ask to confirm, and Edit Bot in the sidebar and Edit in Settings > Tools and local models now do, since they open an editor.
 - Check for Updates, in the app menu and Settings > Update, no longer ends in an ellipsis.
 - Bots can no longer pop a noodlet window up on your screen. Their noodlets run out of sight until you open one yourself.

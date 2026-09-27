@@ -79,22 +79,39 @@ private struct ThisMacRows: View {
             .help("Asks the router, through UPnP or NAT-PMP, to forward this Mac’s port so your devices reach it away from home")
         LabeledContent("Addresses") {
             VStack(alignment: .trailing, spacing: 2) {
-                ForEach(link.endpoints, id: \.self) { Text($0.description).font(.caption.monospaced()).textSelection(.enabled) }
-            }
-        }
-        HStack {
-            Spacer()
-            Button(link.manualEndpoint == nil ? "Add Remote Address…" : "Change Remote Address…") {
-                address = link.manualAddress
-                editingAddress = true
+                ForEach(link.endpoints, id: \.self) { endpoint in
+                    HStack(spacing: 4) {
+                        Text(endpoint.description).font(.caption.monospaced()).textSelection(.enabled)
+                        if endpoint == link.manualEndpoint {
+                            Button {
+                                link.manualAddress = ""
+                            } label: {
+                                Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.borderless)
+                            .controlSize(.small)
+                            .help("Remove this address")
+                        }
+                    }
+                }
             }
         }
         .alert("Remote Address", isPresented: $editingAddress) {
             TextField("Address", text: $address, prompt: Text("mac.example.com"))
             Button("Cancel", role: .cancel) {}
             Button("Save") { link.manualAddress = address.trimmingCharacters(in: .whitespaces) }
+                .disabled(LinkEndpoint(text: address, defaultPort: LinkEndpoint.defaultPort) == nil)
         } message: {
-            Text("A domain, public address or forwarded port that reaches this Mac from outside your network. Leave it empty to remove it.")
+            Text("A domain, public address or forwarded port that reaches this Mac from outside your network.")
+        }
+        if link.manualEndpoint == nil {
+            HStack {
+                Spacer()
+                Button("Add Remote Address…") {
+                    address = ""
+                    editingAddress = true
+                }
+            }
         }
     }
 
