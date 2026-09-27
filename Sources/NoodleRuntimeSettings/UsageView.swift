@@ -193,6 +193,7 @@ public struct UsageView: View {
                 }
             }
             .pickerStyle(.menu)
+            .padding(.horizontal, 6)
             .help("Bot")
         }
         ToolbarSpacer(.fixed)
@@ -201,6 +202,7 @@ public struct UsageView: View {
                 ForEach(UsageReport.Grouping.allCases) { Text("By \($0.rawValue)").tag($0) }
             }
             .pickerStyle(.menu)
+            .padding(.horizontal, 6)
             .help("Group By")
         }
         ToolbarSpacer(.fixed)
