@@ -46,12 +46,6 @@ struct CloudKitSubscriptions: PushSubscriptions {
     }
 }
 
-/// The conversation a notification is about, on the Hub whose topic it came under.
-struct NotificationRoute: Equatable, Sendable {
-    let topic: String
-    let conversation: UUID
-}
-
 /// Tells each Hub the phone joined where to leave word of unread replies while the phone is away,
 /// and listens there.
 @MainActor final class HubNotifications {
@@ -65,22 +59,12 @@ struct NotificationRoute: Equatable, Sendable {
         self.defaults = defaults
     }
 
-    /// Random and kept in the Hub's folder, so only that Hub and this phone know it, and it goes when
-    /// the phone leaves the Hub.
-    static func topic(for pairing: HubPairing) -> String {
-        let url = pairing.directory.appendingPathComponent("push-topic")
-        if let topic = try? String(contentsOf: url, encoding: .utf8), !topic.isEmpty { return topic }
-        let topic = UUID().uuidString.lowercased()
-        try? topic.write(to: url, atomically: true, encoding: .utf8)
-        return topic
-    }
-
     /// Listens for each Hub's word, or stops when notifications are not allowed. A Hub is given its
     /// topic only once the phone listens on it; one out of reach hears the next time.
     func register(_ pairings: [HubPairing], allowed: Bool) async {
         var listening: Set<String> = []
         for pairing in pairings {
-            let topic = Self.topic(for: pairing)
+            let topic = PushTopic.topic(for: pairing)
             if allowed, (try? await subscriptions.subscribe(topic: topic)) != nil {
                 listening.insert(topic)
             } else {
@@ -101,23 +85,11 @@ struct NotificationRoute: Equatable, Sendable {
         return granted
     }
 
-    nonisolated static func route(fields: [String: Any]) -> NotificationRoute? {
-        guard let topic = fields[LinkPush.topicField] as? String,
-              let conversation = (fields[LinkPush.conversationField] as? String).flatMap(UUID.init(uuidString:)) else { return nil }
-        return NotificationRoute(topic: topic, conversation: conversation)
-    }
-
-    nonisolated static func route(userInfo: [AnyHashable: Any]) -> NotificationRoute? {
-        guard let notification = CKNotification(fromRemoteNotificationDictionary: userInfo) as? CKQueryNotification,
-              let fields = notification.recordFields else { return nil }
-        return route(fields: fields)
-    }
-
     /// A conversation read here needs no notification any more.
     static func clearDelivered(conversation: UUID) async {
         let center = UNUserNotificationCenter.current()
         let delivered = await center.deliveredNotifications()
-        let read = delivered.filter { route(userInfo: $0.request.content.userInfo)?.conversation == conversation }
+        let read = delivered.filter { PushTopic.route(userInfo: $0.request.content.userInfo)?.conversation == conversation }
         center.removeDeliveredNotifications(withIdentifiers: read.map(\.request.identifier))
     }
 }
@@ -139,7 +111,7 @@ struct NotificationRoute: Equatable, Sendable {
     }
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
-        let route = HubNotifications.route(userInfo: response.notification.request.content.userInfo)
+        let route = PushTopic.route(userInfo: response.notification.request.content.userInfo)
         await MainActor.run { opening = route }
     }
 }

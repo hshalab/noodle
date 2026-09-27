@@ -47,16 +47,45 @@ let project = Project(
                 "NSCameraUsageDescription": "Noodle scans the QR code of a Noodle Hub invitation.",
                 "NSLocalNetworkUsageDescription": "Noodle connects to your Noodle Hub on this network.",
                 "NSMicrophoneUsageDescription": "Record voice messages you choose to send in your conversations. Speech is transcribed on this device.",
+                // Shared with the notification extension, which reaches the Hubs kept there.
+                "NoodleAppGroup": "group.$(MOBILE_APP_BUNDLE_ID)",
             ]),
-            sources: ["Sources/NoodleMobile/**"],
+            sources: ["Sources/NoodleMobile/**", "Sources/Shared/**"],
             resources: ["Support/Assets.xcassets"],
             entitlements: .file(path: "Support/NoodleMobile.entitlements"),
-            dependencies: [.package(product: "HubLink"), .package(product: "NoodleWallpaperCore"), .package(product: "NoodleBrand")],
+            dependencies: [.package(product: "HubLink"), .package(product: "NoodleWallpaperCore"), .package(product: "NoodleBrand"),
+                           .target(name: "NoodleMobileNotifications")],
             settings: .settings(base: [
                 "PRODUCT_BUNDLE_IDENTIFIER": "$(MOBILE_APP_BUNDLE_ID)",
                 "CODE_SIGN_STYLE": "Automatic",
                 "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
                 "ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME": "",
+            ])
+        ),
+        // Names the bot and shows its reply in a notification of unread replies, asking the Hub.
+        .target(
+            name: "NoodleMobileNotifications",
+            destinations: .iOS,
+            product: .appExtension,
+            productName: "NoodleMobileNotifications",
+            bundleId: "com.pdparchitect.noodle.mobile.notifications",
+            deploymentTargets: .iOS("26.0"),
+            infoPlist: .extendingDefault(with: [
+                "CFBundleDisplayName": "$(MOBILE_APP_NAME)",
+                "CFBundleShortVersionString": "$(MARKETING_VERSION)",
+                "CFBundleVersion": "$(CURRENT_PROJECT_VERSION)",
+                "NoodleAppGroup": "group.$(MOBILE_APP_BUNDLE_ID)",
+                "NSExtension": [
+                    "NSExtensionPointIdentifier": "com.apple.usernotifications.service",
+                    "NSExtensionPrincipalClass": "$(PRODUCT_MODULE_NAME).NotificationService",
+                ],
+            ]),
+            sources: ["Sources/NoodleMobileNotifications/**", "Sources/Shared/**"],
+            entitlements: .file(path: "Support/NoodleMobileNotifications.entitlements"),
+            dependencies: [.package(product: "HubLink")],
+            settings: .settings(base: [
+                "PRODUCT_BUNDLE_IDENTIFIER": "$(MOBILE_APP_BUNDLE_ID).notifications",
+                "CODE_SIGN_STYLE": "Automatic",
             ])
         ),
         // Runs inside the app, so it sees the bundle as the phone does.

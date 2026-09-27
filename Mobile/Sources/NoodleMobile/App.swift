@@ -7,11 +7,16 @@ struct NoodleMobileApp: App {
     @UIApplicationDelegateAdaptor private var delegate: AppDelegate
     @Environment(\.scenePhase) private var phase
     @State private var notifications = HubNotifications()
-    @State private var hubs = HubMemberships(
-        directory: URL.applicationSupportDirectory.appendingPathComponent("Hubs", isDirectory: true),
-        deviceName: UIDevice.current.name)
+    @State private var hubs: HubMemberships
     @AppStorage(CurrentHub.key) private var current = ""
     @AppStorage(CurrentHub.togetherKey) private var together = false
+
+    init() {
+        let own = URL.applicationSupportDirectory.appendingPathComponent("Hubs", isDirectory: true)
+        let shared = AppGroup.hubs ?? own
+        AppGroup.moveHubs(from: own, to: shared)
+        _hubs = State(initialValue: HubMemberships(directory: shared, deviceName: UIDevice.current.name))
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -40,7 +45,7 @@ struct NoodleMobileApp: App {
             // A tapped notification's Hub is shown, so its conversation can open.
             .onChange(of: delegate.opening) {
                 guard let route = delegate.opening, !together,
-                      let pairing = hubs.hubs.first(where: { HubNotifications.topic(for: $0) == route.topic }) else { return }
+                      let pairing = hubs.hubs.first(where: { PushTopic.topic(for: $0) == route.topic }) else { return }
                 current = CurrentHub.name(of: pairing)
             }
         }

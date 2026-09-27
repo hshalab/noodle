@@ -9,12 +9,12 @@
 - Open a picture in a message with several files and swipe to the others.
 - Read a conversation on your Mac: its unread dot on the phone goes away. Read one on the phone: it clears on your Mac.
 - Pair a second phone or iPad: conversations you already read elsewhere are not unread there.
-- Allow notifications, then leave the app and have a bot reply: a notification arrives, and tapping it opens the conversation. Several replies in a row leave one notification.
+- Allow notifications, then leave the app and have a bot reply: a notification arrives with the bot's name and its reply, and tapping it opens the conversation. Several replies in a row leave one notification.
 - With the app open, no notification arrives. Reading the conversation removes its notification.
 
 ### Added
 
-- Notifications of new replies while the app is closed or in the background. This needs a Hub from this release on.
+- Notifications of new replies while the app is closed or in the background, with the bot's name and what it said. This needs a Hub from this release on.
 
 ### Changed
 

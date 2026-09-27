@@ -16,5 +16,10 @@
 	<array>
 		<string>CloudKit</string>
 	</array>
+	<!-- Shared with the notification extension, which reaches the Hubs kept here. -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.$(MOBILE_APP_BUNDLE_ID)</string>
+	</array>
 </dict>
 </plist>

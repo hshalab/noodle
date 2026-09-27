@@ -83,6 +83,29 @@ case "$command" in
         ipa=("$output"/*.ipa)
         (( ${#ipa} == 1 )) || { print -u2 "Expected one exported app in $output."; exit 1; }
         mv "$ipa[1]" "$output/Noodle-Mobile.ipa"
+        # The archive is unsigned, so the export has to give the app its entitlements; without them the
+        # phone quietly never hears of unread replies. App Store builds push in production.
+        unpacked="$(mktemp -d)"
+        ditto -x -k "$output/Noodle-Mobile.ipa" "$unpacked"
+        app=("$unpacked"/Payload/*.app)
+        codesign -d --entitlements :- "$app[1]" > "$unpacked/app.plist" 2>/dev/null
+        codesign -d --entitlements :- "$app[1]/PlugIns/NoodleMobileNotifications.appex" > "$unpacked/notifications.plist" 2>/dev/null
+        python3 - "$folder/Support" "$unpacked" <<'PY'
+import plistlib, sys
+support, unpacked = sys.argv[1:3]
+def fill(value):
+    if isinstance(value, str): return value.replace('$(MOBILE_APP_BUNDLE_ID)', 'com.pdparchitect.noodle.mobile')
+    if isinstance(value, list): return [fill(item) for item in value]
+    return value
+for claimed_file, signed_file in [('NoodleMobile', 'app'), ('NoodleMobileNotifications', 'notifications')]:
+    claimed = {key: fill(value) for key, value in plistlib.load(open(f'{support}/{claimed_file}.entitlements', 'rb')).items()}
+    signed = plistlib.load(open(f'{unpacked}/{signed_file}.plist', 'rb'))
+    if 'aps-environment' in claimed: claimed['aps-environment'] = 'production'
+    missing = [key for key, value in claimed.items() if signed.get(key) != value]
+    if missing:
+        sys.exit(f'The exported {claimed_file} lacks {", ".join(missing)} of Mobile/Support/{claimed_file}.entitlements:\n{signed}')
+PY
+        rm -rf "$unpacked"
         # App Store Connect's own checks, so a rejected app fails before its version is tagged.
         xcrun altool --validate-app -f "$output/Noodle-Mobile.ipa" -t ios --api-key "$APPLE_API_KEY_ID" \
             --api-issuer "$APPLE_API_ISSUER_ID" --p8-file-path "$APPLE_API_KEY_PATH"

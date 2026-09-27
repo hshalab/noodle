@@ -542,7 +542,7 @@ struct AgentsView: View {
     private func open() {
         guard let route = opening,
               let row = rows.first(where: { $0.agent.conversationID == route.conversation
-                  && HubNotifications.topic(for: $0.chats.pairing) == route.topic }) else { return }
+                  && PushTopic.topic(for: $0.chats.pairing) == route.topic }) else { return }
         path = [row.id]
         opening = nil
     }

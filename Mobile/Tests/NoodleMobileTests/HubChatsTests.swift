@@ -456,11 +456,11 @@ private actor RecordedSubscriptions: PushSubscriptions {
         let notifications = HubNotifications(subscriptions: subscriptions, defaults: UserDefaults(suiteName: UUID().uuidString)!)
 
         await notifications.register([chats.pairing], allowed: true)
-        let topic = HubNotifications.topic(for: chats.pairing)
+        let topic = PushTopic.topic(for: chats.pairing)
         #expect(await subscriptions.topics == [topic])
         #expect(await hub.pushTopics == [topic])
-        #expect(HubNotifications.topic(for: HubPairing(directory: chats.pairing.directory, deviceName: "iPhone")) == topic)
-        #expect(HubNotifications.topic(for: HubPairing(directory: FileManager.default.temporaryDirectory
+        #expect(PushTopic.topic(for: HubPairing(directory: chats.pairing.directory, deviceName: "iPhone")) == topic)
+        #expect(PushTopic.topic(for: HubPairing(directory: FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString), deviceName: "iPhone")) != topic)
 
         await notifications.register([chats.pairing], allowed: false)
@@ -512,9 +512,24 @@ private actor RecordedSubscriptions: PushSubscriptions {
 
     @Test func aNotificationLeadsToItsConversation() {
         let conversation = UUID()
-        let route = HubNotifications.route(fields: [LinkPush.topicField: "abc", LinkPush.conversationField: conversation.uuidString])
+        let route = PushTopic.route(fields: [LinkPush.topicField: "abc", LinkPush.conversationField: conversation.uuidString])
         #expect(route == NotificationRoute(topic: "abc", conversation: conversation))
-        #expect(HubNotifications.route(fields: [LinkPush.topicField: "abc"]) == nil)
+        #expect(PushTopic.route(fields: [LinkPush.topicField: "abc"]) == nil)
+    }
+
+    /// A notification names the bot and shows its latest reply, fetched from the Hub whose topic it came under.
+    @Test func aNotificationShowsTheBotAndItsReply() async throws {
+        let hub = FakeHub()
+        await hub.botSays("All done.")
+        let hubs = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let (chats, server) = try await paired(to: hub, directory: hubs.appendingPathComponent(UUID().uuidString))
+        defer { server.stop() }
+        let conversation = await hub.bot.conversationID
+
+        let route = NotificationRoute(topic: PushTopic.topic(for: chats.pairing), conversation: conversation)
+        let reply = await ReplyNotification.content(for: route, hubs: hubs)
+        #expect(reply == ReplyNotification.Content(title: "Scout", body: "All done."))
+        #expect(await ReplyNotification.content(for: NotificationRoute(topic: "unknown", conversation: conversation), hubs: hubs) == nil)
     }
 
     @Test func unsentTextIsKeptPerConversation() async throws {
