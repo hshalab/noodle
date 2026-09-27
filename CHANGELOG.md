@@ -26,6 +26,7 @@ All notable changes to Noodle are documented here, following
 ### Fixed
 
 - Settings > Hub updates this Mac's addresses when its network changes, such as when Tailscale connects, instead of showing the ones it found when the window opened.
+- Scan with Camera, when joining a Noodle Hub, reads the invitation's QR code instead of making Noodle quit unexpectedly.
 
 ## [0.29.1] - 2026-09-27
 

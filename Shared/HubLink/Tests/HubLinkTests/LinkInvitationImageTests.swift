@@ -32,6 +32,16 @@ final class LinkInvitationImageTests: XCTestCase {
         XCTAssertEqual(try LinkInvitation(image: image), invitation)
     }
 
+    func testInvitationsAreReadFromACameraFrame() throws {
+        let image = CIImage(cgImage: try picture(of: invitation.url().absoluteString))
+        var frame: CVPixelBuffer?
+        CVPixelBufferCreate(nil, Int(image.extent.width), Int(image.extent.height), kCVPixelFormatType_32BGRA,
+                            [kCVPixelBufferIOSurfacePropertiesKey: [:]] as CFDictionary, &frame)
+        let buffer = try XCTUnwrap(frame)
+        CIContext().render(image, to: buffer)
+        XCTAssertEqual(try LinkInvitation(frame: buffer), invitation)
+    }
+
     func testPicturesWithoutAnInvitationSaySo() throws {
         XCTAssertThrowsError(try LinkInvitation(image: try picture(of: "https://example.com")))
         let blank = try XCTUnwrap(CIContext().createCGImage(CIImage(color: .white).cropped(to: CGRect(x: 0, y: 0, width: 200, height: 200)),

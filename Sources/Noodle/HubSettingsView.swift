@@ -398,10 +398,11 @@ private struct QRCameraView: NSViewRepresentable {
 
     static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) { coordinator.stop() }
 
-    final class Coordinator: NSObject, AVCaptureMetadataOutputObjectsDelegate, @unchecked Sendable {
+    final class Coordinator: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @unchecked Sendable {
         private let session = AVCaptureSession()
         private let found: @MainActor (String) -> Void
         private let failed: @MainActor (String) -> Void
+        private let frames = DispatchQueue(label: "com.pdparchitect.noodle.qr-camera")
         private var reported = false
 
         init(found: @escaping @MainActor (String) -> Void, failed: @escaping @MainActor (String) -> Void) {
@@ -421,14 +422,15 @@ private struct QRCameraView: NSViewRepresentable {
                     return
                 }
                 session.addInput(input)
-                let output = AVCaptureMetadataOutput()
+                // Mac cameras offer no QR metadata, so frames are read like a chosen picture.
+                let output = AVCaptureVideoDataOutput()
+                output.alwaysDiscardsLateVideoFrames = true
                 guard session.canAddOutput(output) else {
                     failed("The camera cannot read QR codes.")
                     return
                 }
                 session.addOutput(output)
-                output.setMetadataObjectsDelegate(self, queue: .main)
-                output.metadataObjectTypes = [.qr]
+                output.setSampleBufferDelegate(self, queue: frames)
                 let preview = AVCaptureVideoPreviewLayer(session: session)
                 preview.videoGravity = .resizeAspectFill
                 preview.frame = view.bounds
@@ -444,15 +446,14 @@ private struct QRCameraView: NSViewRepresentable {
             DispatchQueue.global(qos: .userInitiated).async { session.stopRunning() }
         }
 
-        func metadataOutput(_ output: AVCaptureMetadataOutput, didOutput objects: [AVMetadataObject], from connection: AVCaptureConnection) {
-            guard !reported else { return }
-            for case let code as AVMetadataMachineReadableCodeObject in objects {
-                guard let text = code.stringValue, (try? LinkInvitation(text: text)) != nil else { continue }
-                reported = true
-                stop()
-                MainActor.assumeIsolated { found(text) }
-                return
-            }
+        func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+            guard !reported, let frame = sampleBuffer.imageBuffer,
+                  let invitation = try? LinkInvitation(frame: frame) else { return }
+            reported = true
+            stop()
+            let text = invitation.url().absoluteString
+            let found = found
+            DispatchQueue.main.async { MainActor.assumeIsolated { found(text) } }
         }
     }
 }
