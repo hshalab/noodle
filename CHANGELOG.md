@@ -6,6 +6,8 @@ All notable changes to Noodle are documented here, following
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-09-27
+
 ### Added
 
 - When this Mac is your Hub, your phone is notified of new replies while Noodle for iPhone is closed.

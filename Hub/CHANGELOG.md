@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-27
+
 ### Added
 
 - The Hub remembers how far each person has read their conversations, so reading on one device clears the unread dot on their others.
