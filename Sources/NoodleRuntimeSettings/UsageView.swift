@@ -152,79 +152,105 @@ public struct UsageView: View {
         let range = UsageReport.range(span, now: now)
         let days = history.days(from: range.lowerBound, to: range.upperBound, agentID: history.agentFilter)
         let report = UsageReport(days: days, span: span, grouping: grouping, metric: metric, now: now)
-        VStack(alignment: .leading, spacing: 16) {
-            controls(history)
+        Group {
             if days.isEmpty {
-                ContentUnavailableView("No Usage", systemImage: "chart.bar")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                ContentUnavailableView("No Usage", systemImage: "chart.bar.xaxis",
+                                       description: Text("No tokens were used in this period."))
             } else {
-                tiles(report)
-                chart(report)
-                    .frame(minHeight: 240)
-                ScrollView { breakdown(report) }
-                    .frame(maxHeight: 200)
-            }
-        }
-        .padding(20)
-        .frame(minWidth: 720, minHeight: 560)
-    }
-
-    private func controls(_ history: UsageHistory) -> some View {
-        @Bindable var history = history
-        return HStack(spacing: 12) {
-            Picker("Bot", selection: $history.agentFilter) {
-                Text("All Bots").tag(UUID?.none)
-                ForEach(agents) { agent in
-                    Text(agent.displayName).tag(Optional(agent.id))
+                VStack(spacing: 0) {
+                    summary(report)
+                        .padding([.horizontal, .top], 20)
+                    chart(report)
+                        .frame(minHeight: 200)
+                        .padding(20)
+                    Divider()
+                    breakdown(report)
+                        .frame(minHeight: 140)
                 }
             }
-            .labelsHidden()
-            .fixedSize()
-            Picker("Group By", selection: $grouping) {
-                ForEach(UsageReport.Grouping.allCases) { Text("By \($0.rawValue)").tag($0) }
-            }
-            .labelsHidden()
-            .fixedSize()
-            .help("Group By")
-            Picker("Measure", selection: $metric) {
-                ForEach(UsageReport.Metric.allCases) { Text($0.rawValue).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
-            Spacer()
+        }
+        .frame(minWidth: 840, minHeight: 560)
+        .navigationSubtitle(rangeText(range))
+        .toolbar { toolbar() }
+    }
+
+    @ToolbarContentBuilder
+    private func toolbar() -> some ToolbarContent {
+        let filter = Binding(get: { history.agentFilter }, set: { history.agentFilter = $0 })
+        ToolbarItem(placement: .principal) {
             Picker("Period", selection: $span) {
                 ForEach(UsageReport.Span.allCases) { Text($0.rawValue).tag($0) }
             }
             .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
+            .help("Period")
+        }
+        ToolbarItem(placement: .primaryAction) {
+            Picker("Bot", selection: filter) {
+                Text("All Bots").tag(UUID?.none)
+                Divider()
+                ForEach(agents) { agent in
+                    Text(agent.displayName).tag(Optional(agent.id))
+                }
+            }
+            .pickerStyle(.menu)
+            .help("Bot")
+        }
+        ToolbarSpacer(.fixed)
+        ToolbarItem(placement: .primaryAction) {
+            Picker("Group By", selection: $grouping) {
+                ForEach(UsageReport.Grouping.allCases) { Text("By \($0.rawValue)").tag($0) }
+            }
+            .pickerStyle(.menu)
+            .help("Group By")
+        }
+        ToolbarSpacer(.fixed)
+        ToolbarItem(placement: .primaryAction) {
+            Picker("Measure", selection: $metric) {
+                ForEach(UsageReport.Metric.allCases) { Text($0.rawValue).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .help("Measure")
         }
     }
 
-    private func tiles(_ report: UsageReport) -> some View {
-        HStack(spacing: 12) {
-            tile("Tokens", Self.tokenText(report.tokens.total))
-            tile("Cost", report.cost.map(Self.costText) ?? "—")
+    /// The period's first and last day, or first and last month.
+    private func rangeText(_ range: Range<Date>) -> String {
+        let last = Calendar.current.date(byAdding: .day, value: -1, to: range.upperBound) ?? range.upperBound
+        let style: Date.IntervalFormatStyle = span == .year
+            ? .interval.month(.abbreviated).year()
+            : .interval.day().month(.abbreviated).year()
+        return (range.lowerBound..<last).formatted(style)
+    }
+
+    private func summary(_ report: UsageReport) -> some View {
+        HStack(spacing: 0) {
+            stat("Tokens", Self.tokenText(report.tokens.total))
+            Divider().frame(height: 36)
+            stat("Cost", report.cost.map(Self.costText) ?? "—")
                 .help("Only harnesses that report cost are included.")
-            tile("Cache Hits", report.cacheHitRate.formatted(.percent.precision(.fractionLength(0))))
+            Divider().frame(height: 36)
+            stat("Cache Hits", report.cacheHitRate.formatted(.percent.precision(.fractionLength(0))))
                 .help("Share of input tokens read from the cache.")
-            tile("Input", Self.tokenText(report.tokens.input + report.tokens.cacheWrite))
+            Divider().frame(height: 36)
+            stat("Input", Self.tokenText(report.tokens.input + report.tokens.cacheWrite))
                 .help("Input tokens not read from the cache.")
-            tile("Output", Self.tokenText(report.tokens.output))
-            tile("Daily Average", text(report.dailyAverage))
+            Divider().frame(height: 36)
+            stat("Output", Self.tokenText(report.tokens.output))
+            Divider().frame(height: 36)
+            stat("Daily Average", text(report.dailyAverage))
         }
+        .padding(.vertical, 12)
+        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
     }
 
-    private func tile(_ title: String, _ value: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title).font(.caption).foregroundStyle(.secondary)
+    private func stat(_ title: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title).font(.subheadline).foregroundStyle(.secondary)
             Text(value).font(.title2.weight(.semibold)).monospacedDigit()
                 .lineLimit(1).minimumScaleFactor(0.6)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
+        .padding(.horizontal, 16)
     }
 
     private func chart(_ report: UsageReport) -> some View {
@@ -277,35 +303,37 @@ public struct UsageView: View {
     }
 
     private func breakdown(_ report: UsageReport) -> some View {
-        Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 6) {
-            GridRow {
-                Text(grouping.rawValue)
-                Text("Tokens").gridColumnAlignment(.trailing)
-                Text("Input").gridColumnAlignment(.trailing)
-                Text("Output").gridColumnAlignment(.trailing)
-                Text("Cached").gridColumnAlignment(.trailing)
-                Text("Cost").gridColumnAlignment(.trailing)
-                Text("Share").gridColumnAlignment(.trailing)
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            Divider()
-            ForEach(report.rows) { row in
-                GridRow {
-                    HStack(spacing: 6) {
-                        Circle().fill(color(for: row.group, in: report.groups)).frame(width: 8, height: 8)
-                        Text(row.group).lineLimit(1)
-                    }
-                    Text(Self.tokenText(row.tokens.total))
-                    Text(Self.tokenText(row.tokens.input + row.tokens.cacheWrite))
-                    Text(Self.tokenText(row.tokens.output))
-                    Text(Self.tokenText(row.tokens.cacheRead))
-                    Text(row.cost.map(Self.costText) ?? "—")
-                    Text(report.share(of: row)?.formatted(.percent.precision(.fractionLength(0))) ?? "—")
+        Table(report.rows) {
+            TableColumn(grouping.rawValue) { row in
+                HStack(spacing: 6) {
+                    Circle().fill(color(for: row.group, in: report.groups)).frame(width: 8, height: 8)
+                    Text(row.group).lineLimit(1)
                 }
-                .monospacedDigit()
             }
+            .width(min: 140, ideal: 200)
+            TableColumn("Tokens") { row in Text(Self.tokenText(row.tokens.total)) }
+                .width(min: 64, ideal: 88)
+                .alignment(.numeric)
+            TableColumn("Input") { row in Text(Self.tokenText(row.tokens.input + row.tokens.cacheWrite)) }
+                .width(min: 64, ideal: 88)
+                .alignment(.numeric)
+            TableColumn("Output") { row in Text(Self.tokenText(row.tokens.output)) }
+                .width(min: 64, ideal: 88)
+                .alignment(.numeric)
+            TableColumn("Cached") { row in Text(Self.tokenText(row.tokens.cacheRead)) }
+                .width(min: 64, ideal: 88)
+                .alignment(.numeric)
+            TableColumn("Cost") { row in Text(row.cost.map(Self.costText) ?? "—") }
+                .width(min: 64, ideal: 88)
+                .alignment(.numeric)
+            TableColumn("Share") { row in
+                Text(report.share(of: row)?.formatted(.percent.precision(.fractionLength(0))) ?? "—")
+            }
+            .width(min: 64, ideal: 88)
+            .alignment(.numeric)
         }
+        .tableStyle(.inset(alternatesRowBackgrounds: true))
+        .monospacedDigit()
     }
 
     private func color(for group: String, in groups: [String]) -> Color {

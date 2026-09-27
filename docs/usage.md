@@ -88,7 +88,7 @@ Choose **Noodle → Usage** (**⇧⌘U**) to chart token use over the last 7 day
 30 days or 12 months. Stack the bars by bot, harness or model, switch between
 tokens and cost, and hover a bar for that day's figures. The table below the
 chart breaks the period down by input, output and cached tokens. To see one bot,
-pick it from the menu at the top left, or open its profile and click **Usage**.
+pick it from the **All Bots** menu in the toolbar, or open its profile and click **Usage**.
 
 History is kept across restarts and after a bot is deleted. Claude Code, Codex,
 Grok Build, FX and OpenCode report tokens; only Claude Code reports cost. Muse,
