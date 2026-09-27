@@ -107,6 +107,8 @@ import WebKit
     ], to: watched)
     library.scan()
     let watchedTarget = ["--id", try library.linkID(for: NoodletPackage(url: watched)).uuidString]
+    // A runner with nothing else in front activates the app at launch, so only a change counts.
+    let wasActive = NSApp.isActive
     let cold = try await call(["open", "--mode", "background"] + watchedTarget)
     guard let session = runtime.sessions[cold.sessionID!], let web = session.web else { throw AppletError("Background session missing") }
     let (near, far) = try {
@@ -149,8 +151,9 @@ import WebKit
     print("INFO watched background capture: static red \(redShown), animation-frame green \(greenShown)")
     try require(redShown > 500, "The live view of a background noodlet is blank")
     try require(greenShown > 500, "The live view of a background noodlet lacks what it drew in an animation frame")
-    try require(web.window.alphaValue == 0 && web.window.ignoresMouseEvents && !NSApp.isActive,
-      "A watched background noodlet became visible or took focus on this Mac")
+    try require(web.window.alphaValue == 0, "A watched background noodlet became visible on this Mac")
+    try require(web.window.ignoresMouseEvents, "A watched background noodlet takes clicks on this Mac")
+    try require(wasActive || !NSApp.isActive, "A watched background noodlet took focus on this Mac")
     far.close()
     try await Task.sleep(for: .milliseconds(500))
     try require(!web.window.isVisible && web.window.alphaValue == 1, "The noodlet stayed on screen after the live view ended")
