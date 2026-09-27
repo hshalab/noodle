@@ -7,7 +7,7 @@ let version = (try? String(contentsOfFile: "VERSION", encoding: .utf8))?
 
 let project = Project(
     name: "NoodleMobile",
-    packages: [.local(path: "../Shared/HubLink"), .local(path: "../Shared/Wallpaper")],
+    packages: [.local(path: "../Shared/HubLink"), .local(path: "../Shared/Wallpaper"), .local(path: "../Shared/Brand")],
     settings: .settings(
         base: [
             "DEVELOPMENT_TEAM": "S8VNVK39LH",
@@ -50,7 +50,7 @@ let project = Project(
             ]),
             sources: ["Sources/NoodleMobile/**"],
             resources: ["Support/Assets.xcassets"],
-            dependencies: [.package(product: "HubLink"), .package(product: "NoodleWallpaperCore")],
+            dependencies: [.package(product: "HubLink"), .package(product: "NoodleWallpaperCore"), .package(product: "NoodleBrand")],
             settings: .settings(base: [
                 "PRODUCT_BUNDLE_IDENTIFIER": "$(MOBILE_APP_BUNDLE_ID)",
                 "CODE_SIGN_STYLE": "Automatic",

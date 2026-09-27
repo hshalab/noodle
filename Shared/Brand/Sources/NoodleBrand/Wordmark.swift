@@ -1,20 +1,20 @@
 import SwiftUI
 
-/// The Noodle wordmark as one pen stroke, which the first screen writes on as the website does.
+/// The Noodle wordmark as one pen stroke, which the apps' first screens write on as the website does.
 ///
 /// The strokes are the website's wordmark paths, in its 3819 × 851 box, in the order a hand
 /// would write them.
-struct Wordmark: Shape {
+public struct Wordmark: Shape {
     /// How much of the stroke has been written, from nothing to the whole word.
-    var progress: Double = 1
+    public var progress: Double
 
-    var animatableData: Double {
+    public var animatableData: Double {
         get { progress }
         set { progress = newValue }
     }
 
-    static let pen: CGFloat = 128
-    static let bounds = CGRect(x: 0, y: 119, width: 3819, height: 851)
+    public static let pen: CGFloat = 128
+    public static let bounds = CGRect(x: 0, y: 119, width: 3819, height: 851)
 
     static let strokes = [
         "M64,906 L64,569 C64,444.18 165.18,343 290,343 C414.82,343 516,444.18 516,569 L516,818 C516,913 583,910 643,899",
@@ -27,7 +27,7 @@ struct Wordmark: Shape {
     ]
 
     /// The whole word in design units. The strokes use only absolute M, L and C commands.
-    static let skeleton: Path = {
+    public static let skeleton: Path = {
         var path = Path()
         for stroke in strokes {
             var command: Character = "M"
@@ -57,11 +57,16 @@ struct Wordmark: Shape {
     }()
 
     /// How wide the word is drawn, centred in the shape's rect.
-    var wordWidth: CGFloat
+    public var wordWidth: CGFloat
+
+    public init(progress: Double = 1, wordWidth: CGFloat) {
+        self.progress = progress
+        self.wordWidth = wordWidth
+    }
 
     /// The word centred in `rect`, led in by a swirl that rises from the bottom edge, curls once
     /// and runs up into the `n`. The swirl's end follows the pen in, so only the word is left.
-    func path(in rect: CGRect) -> Path {
+    public func path(in rect: CGRect) -> Path {
         let scale = wordWidth / Self.bounds.width
         guard scale > 0 else { return Path() }
         let height = Self.bounds.height * scale
@@ -103,7 +108,7 @@ struct Wordmark: Shape {
     }
 
     /// The pen width for a word drawn `wordWidth` wide.
-    static func lineWidth(forWordWidth wordWidth: CGFloat) -> CGFloat { pen * wordWidth / bounds.width }
+    public static func lineWidth(forWordWidth wordWidth: CGFloat) -> CGFloat { pen * wordWidth / bounds.width }
 
     private static func length(of path: Path) -> CGFloat {
         var length: CGFloat = 0, current = CGPoint.zero, first = CGPoint.zero

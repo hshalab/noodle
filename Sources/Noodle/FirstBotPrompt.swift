@@ -1,15 +1,15 @@
 import SwiftUI
 
-/// Help > Set Up a Bot…: the first-run flow again, for anyone who closed it or wants another harness.
+/// Help > Set Up a Bot…: the welcome again, for anyone who closed it or wants another harness.
 struct BotSetupCommand: View {
     let store: NoodleStore
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         Button("Set Up a Bot…") {
-            // The sheet belongs to the main window, which may be closed.
+            // The welcome fills the main window, which may be closed.
             openWindow(id: "main")
-            store.showsFirstBotSetup = true
+            store.showWelcome()
         }
         .disabled(!store.storageReady)
     }

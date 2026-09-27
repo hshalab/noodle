@@ -6,6 +6,10 @@ All notable changes to Noodle are documented here, following
 
 ## [Unreleased]
 
+### Changed
+
+- The first launch opens on a welcome: the Noodle wordmark writes itself across the window, and Continue brings up setting up your first bot in the same place. Help > Set Up a Bot… opens it again.
+
 ## [0.28.2] - 2026-09-27
 
 ### Fixed

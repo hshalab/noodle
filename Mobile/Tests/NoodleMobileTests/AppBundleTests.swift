@@ -13,13 +13,6 @@ import UIKit
         #expect(version?.split(separator: ".").count == 3)
     }
 
-    /// The written word, pen included, fills the website's wordmark box.
-    @Test func wordmarkFillsItsBox() {
-        let drawn = Wordmark.skeleton.boundingRect.insetBy(dx: -Wordmark.pen / 2, dy: -Wordmark.pen / 2)
-        #expect(abs(drawn.minX - Wordmark.bounds.minX) < 1 && abs(drawn.maxX - Wordmark.bounds.maxX) < 1)
-        #expect(abs(drawn.minY - Wordmark.bounds.minY) < 1 && abs(drawn.maxY - Wordmark.bounds.maxY) < 1)
-    }
-
     /// Invitation links and QR codes are noodle://join-hub links, the same as on the Mac.
     @Test func invitationLinksOpenTheApp() {
         let types = Bundle.main.object(forInfoDictionaryKey: "CFBundleURLTypes") as? [[String: Any]] ?? []

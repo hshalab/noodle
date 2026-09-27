@@ -1,4 +1,5 @@
 import HubLink
+import NoodleBrand
 import PhotosUI
 import SwiftUI
 import VisionKit

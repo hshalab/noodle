@@ -299,11 +299,18 @@ struct RootView: View {
     @State private var sidebarFocusRequest = UUID()
 
     var body: some View {
-        AttachmentPreviewScope(conversationID: store.selectedConversationID) { attachmentPreview in
-            content(attachmentPreview: attachmentPreview)
+        Group {
+            if store.showsWelcome {
+                WelcomeView()
+            } else {
+                AttachmentPreviewScope(conversationID: store.selectedConversationID) { attachmentPreview in
+                    content(attachmentPreview: attachmentPreview)
+                }
+            }
         }
         .task(id: store.storageReady) {
             guard store.storageReady else { return }
+            store.offerFirstBotSetup()
             store.conversationWindows.openMainWindow = { openWindow(id: "main") }
             await store.thisMac.restore()
             store.conversationWindows.restoreWindows { id in
@@ -465,7 +472,6 @@ struct RootView: View {
                 .environment(store)
                 .noodleSheetSizing(animated: true)
         }
-        .task { store.offerFirstBotSetup() }
         .sheet(item: $store.agentBeingEdited) { agent in
             EditBotSheet(agent: agent)
                 .environment(store)

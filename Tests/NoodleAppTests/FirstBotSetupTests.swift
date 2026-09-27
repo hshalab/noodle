@@ -143,17 +143,30 @@ import XCTest
         XCTAssertEqual(setup.step, .harness)
     }
 
-    func testTheSheetIsOfferedOnceToSomeoneWithNoBots() throws {
+    func testTheWelcomeIsOfferedOnceToSomeoneWithNoBots() throws {
         let repository = WorkspaceRepository(rootURL: root.appendingPathComponent("storage"))
         try repository.prepare()
         let store = NoodleStore(repository: repository, runtime: runtime, connectsServices: false)
         addTeardownBlock { @MainActor in store.stopMonitoring() }
         store.offerFirstBotSetup(defaults: defaults)
-        XCTAssertTrue(store.showsFirstBotSetup)
+        XCTAssertTrue(store.showsWelcome)
+        XCTAssertFalse(store.showsFirstBotSetup, "The welcome fills the window; the sheet is not stacked on it.")
         store.finishFirstBotSetup(defaults: defaults)
-        XCTAssertFalse(store.showsFirstBotSetup)
+        XCTAssertFalse(store.showsWelcome)
         store.offerFirstBotSetup(defaults: defaults)
-        XCTAssertFalse(store.showsFirstBotSetup, "Not Now is remembered; the empty window still offers it.")
+        XCTAssertFalse(store.showsWelcome, "Not Now is remembered; the empty window still offers it.")
+    }
+
+    func testTheHelpMenuBringsTheWelcomeBackEvenWithBots() throws {
+        let repository = WorkspaceRepository(rootURL: root.appendingPathComponent("storage"))
+        try repository.prepare()
+        _ = try repository.createAgent(named: "Existing Bot")
+        let store = NoodleStore(repository: repository, runtime: runtime, connectsServices: false)
+        addTeardownBlock { @MainActor in store.stopMonitoring() }
+        store.finishFirstBotSetup(defaults: defaults)
+        store.showWelcome()
+        XCTAssertTrue(store.showsWelcome)
+        XCTAssertFalse(store.showsFirstBotSetup)
     }
 
     func testSomeoneWithABotIsNotInterrupted() throws {
@@ -163,6 +176,7 @@ import XCTest
         let store = NoodleStore(repository: repository, runtime: runtime, connectsServices: false)
         addTeardownBlock { @MainActor in store.stopMonitoring() }
         store.offerFirstBotSetup(defaults: defaults)
+        XCTAssertFalse(store.showsWelcome)
         XCTAssertFalse(store.showsFirstBotSetup)
     }
 }

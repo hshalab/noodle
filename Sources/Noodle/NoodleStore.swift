@@ -86,6 +86,8 @@ final class NoodleStore {
     }
     var creationSheet: CreationSheet?
     var showsFirstBotSetup = false
+    /// The first launch's full-window welcome, which ends in setting up the first bot.
+    var showsWelcome = false
     var selectedSettingsTab: NoodleSettingsTab = .general
     var agentBeingEdited: AgentRecord?
     var groupBeingEdited: BotConversation?
@@ -253,15 +255,22 @@ final class NoodleStore {
         storageReady && (!runtime.availableInstallations.isEmpty || hubs.hubs.contains { $0.status?.harnesses.isEmpty == false })
     }
 
-    /// Once, for someone with no bots yet. Afterwards the empty window offers it.
+    /// The welcome, once, for someone with no bots yet. Afterwards the empty window offers the sheet.
     func offerFirstBotSetup(defaults: UserDefaults = .standard) {
         guard storageReady, agents.isEmpty, !defaults.bool(forKey: FirstBotSetup.dismissedKey) else { return }
-        showsFirstBotSetup = true
+        showsWelcome = true
+    }
+
+    /// Help > Set Up a Bot…: the welcome again, bots or not.
+    func showWelcome() {
+        showsFirstBotSetup = false
+        showsWelcome = true
     }
 
     func finishFirstBotSetup(defaults: UserDefaults = .standard) {
         defaults.set(true, forKey: FirstBotSetup.dismissedKey)
         showsFirstBotSetup = false
+        showsWelcome = false
     }
 
     func showNewBot() {

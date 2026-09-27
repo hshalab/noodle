@@ -4,6 +4,9 @@ import NoodleRuntime
 import NoodleRuntimeSettings
 
 struct FirstBotSetupSheet: View {
+    /// A sheet over the window, or the steps the welcome brings up under the wordmark.
+    enum Placement { case sheet, welcome }
+
     @Environment(NoodleStore.self) private var store
     @AppStorage(BotNameStyle.defaultsKey) private var botNameStyle = BotNameStyle.real.rawValue
     @State private var model: FirstBotSetup
@@ -11,8 +14,11 @@ struct FirstBotSetupSheet: View {
     @State private var avatarColorIndex = Int.random(in: BotAvatarPalette.gradients.indices)
     @FocusState private var nameFocused: Bool
 
-    init(setup: HarnessSetupController, runtime: AgentRuntimeCoordinator) {
+    private let placement: Placement
+
+    init(setup: HarnessSetupController, runtime: AgentRuntimeCoordinator, placement: Placement = .sheet) {
         _model = State(initialValue: FirstBotSetup(setup: setup, runtime: runtime))
+        self.placement = placement
     }
 
     private var setup: HarnessSetupController { store.harnessSetup }
@@ -20,8 +26,10 @@ struct FirstBotSetupSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            Divider()
+            if placement == .sheet {
+                header
+                Divider()
+            }
             VStack(alignment: .leading, spacing: 16) {
                 switch model.step {
                 case .harness: harnessStep
@@ -30,6 +38,7 @@ struct FirstBotSetupSheet: View {
                 }
             }
             .padding(20)
+            if placement == .welcome { footer }
         }
         .frame(width: 640)
         .task { await setup.refreshAll(store.runtime) }
@@ -60,6 +69,24 @@ struct FirstBotSetupSheet: View {
             .keyboardShortcut(.defaultAction)
         }
         .padding(16)
+    }
+
+    /// The welcome's own title is the wordmark above, so only the actions are left.
+    private var footer: some View {
+        HStack {
+            Button(model.step == .harness ? "Not Now" : "Back") {
+                if model.step == .harness { store.finishFirstBotSetup() } else { model.back() }
+            }
+            Spacer()
+            Button(model.step == .bot ? "Create" : "Continue") {
+                if model.step == .bot { create() } else { model.proceed() }
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(!canAct)
+            .keyboardShortcut(.defaultAction)
+        }
+        .controlSize(.large)
+        .padding([.horizontal, .bottom], 20)
     }
 
     private var canAct: Bool {
