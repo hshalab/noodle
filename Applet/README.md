@@ -79,7 +79,7 @@ in and out only through the open and save dialogs you see.
 
 ## Updates
 
-Choose **Applet → Check for Updates…**, or use **Settings → Update**.
+Choose **Applet → Check for Updates**, or use **Settings → Update**.
 **Help → Noodle Applet Help** opens the project page.
 
 See [release preparation](RELEASING.md) and the [changelog](CHANGELOG.md).

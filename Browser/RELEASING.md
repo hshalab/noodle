@@ -31,7 +31,7 @@ update assets must be public.
 Both releases use `--latest=false`, preserving Noodle as the repository's latest
 release. Version tags identify source commits; `browser-latest` is a channel marker.
 
-Release builds offer **Noodle Browser → Check for Updates…** and **Settings → Update**.
+Release builds offer **Noodle Browser → Check for Updates** and **Settings → Update**.
 Local builds disable update checks. Automatic installation is opt-in. Updating
 restarts the app: website data and saved tab URLs persist, but live page state and
 unsent forms do not. Save your work before updating.

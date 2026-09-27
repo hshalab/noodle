@@ -54,6 +54,6 @@ extension BrowserUpdater: SPUUpdaterDelegate {
 struct BrowserCheckForUpdatesButton: View {
     @ObservedObject private var updater = BrowserUpdater.shared
     var body: some View {
-        Button("Check for Updates…") { updater.check() }.disabled(!updater.canCheck)
+        Button("Check for Updates") { updater.check() }.disabled(!updater.canCheck)
     }
 }

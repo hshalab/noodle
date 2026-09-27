@@ -59,7 +59,7 @@ extension AppletUpdater: SPUUpdaterDelegate {
 struct AppletCheckForUpdatesButton: View {
     @ObservedObject private var updater = AppletUpdater.shared
     var body: some View {
-        Button("Check for Updates…") { updater.check() }.disabled(!updater.canCheck)
+        Button("Check for Updates") { updater.check() }.disabled(!updater.canCheck)
     }
 }
 

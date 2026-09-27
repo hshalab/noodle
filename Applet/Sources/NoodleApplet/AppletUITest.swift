@@ -202,7 +202,7 @@ import AppletCore
         }
         let titles = menu.items.map(\.title)
         print("APPLICATION MENU: \(titles)")
-        guard titles.contains("About \(AppletBuildIdentity.current.appName)"), titles.contains("Check for Updates…"),
+        guard titles.contains("About \(AppletBuildIdentity.current.appName)"), titles.contains("Check for Updates"),
             let settings = menu.items.firstIndex(where: {
                 $0.keyEquivalent == "," && $0.keyEquivalentModifierMask.contains(.command)
             })
@@ -210,7 +210,7 @@ import AppletCore
             throw AppletError(
                 "Application menu must expose About, Settings (⌘,) and Check for Updates")
         }
-        guard let update = titles.firstIndex(of: "Check for Updates…"), update < settings,
+        guard let update = titles.firstIndex(of: "Check for Updates"), update < settings,
             menu.items[(update + 1)..<settings].allSatisfy({ $0.isSeparatorItem }),
             let help = NSApp.mainMenu?.items.first(where: { $0.title == "Help" })?.submenu,
             help.items.contains(where: { $0.title == "\(AppletBuildIdentity.current.appName) Help" })

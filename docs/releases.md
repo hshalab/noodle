@@ -191,7 +191,7 @@ no GitHub token.
 
 ## In-app updates
 
-Use **Noodle → Check for Updates…** or **Settings → Update**. Daily checks are on
+Use **Noodle → Check for Updates** or **Settings → Update**. Daily checks are on
 by default; automatic download/install is a separate opt-in.
 
 Save drafts and editor changes before **Install and Relaunch**. It restarts

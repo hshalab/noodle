@@ -17,7 +17,7 @@ import WebKit
         menu.update()
         let titles = menu.items.map(\.title)
         print("APPLICATION MENU: \(titles)")
-        guard titles.contains("About \(ComputerAppIdentity.name)"), titles.contains("Check for Updates…"),
+        guard titles.contains("About \(ComputerAppIdentity.name)"), titles.contains("Check for Updates"),
               let settings = menu.items.firstIndex(where: { $0.keyEquivalent == "," && $0.keyEquivalentModifierMask.contains(.command) }) else {
             throw ComputerError("Application menu must expose About, Settings (⌘,) and Check for Updates")
         }

@@ -28,7 +28,7 @@ release assets must be public for unauthenticated downloads and updates.
 Both releases use `--latest=false` so they never replace Noodle's latest release.
 Use version tags to identify source commits; `hub-latest` is a channel marker.
 
-Release builds offer **Check for Updates…** in the Hub's menu and check daily.
+Release builds offer **Check for Updates** in the Hub's menu and check daily.
 Local builds disable checks.
 
 Sparkle's signed installer replaces the app outside its sandbox. Bundle verification

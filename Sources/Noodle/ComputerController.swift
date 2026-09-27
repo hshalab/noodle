@@ -283,7 +283,7 @@ struct ComputerAssignmentPicker: View {
                 Label(controller.needsDocumentPreviewUpdate ? "Update Noodle Computer to enable native attachment previews." : "Update Noodle Computer to enable file transfers.", systemImage: "arrow.down.circle")
                     .font(.callout.weight(.medium))
                     .fixedSize(horizontal: false, vertical: true)
-                Text("In Noodle Computer, choose Check for Updates… from the app menu.")
+                Text("In Noodle Computer, choose Check for Updates from the app menu.")
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 openLibraryButton

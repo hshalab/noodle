@@ -108,7 +108,7 @@ import ScreenCaptureKit
             try await Task.sleep(for: .milliseconds(300))
             guard let appMenu = NSApp.mainMenu?.items.first?.submenu else { throw BrowserError("Missing application menu.") }
             appMenu.update()
-            guard appMenu.items.contains(where: { $0.title == "Check for Updates…" }),
+            guard appMenu.items.contains(where: { $0.title == "Check for Updates" }),
                   let settings = appMenu.items.firstIndex(where: { $0.keyEquivalent == "," }) else { throw BrowserError("Missing suite Settings or Check for Updates commands.") }
             guard NSApp.mainMenu?.items.contains(where: { $0.title == "Browser" }) == true,
                   NSApp.mainMenu?.items.contains(where: { $0.title == "Window" }) == true,

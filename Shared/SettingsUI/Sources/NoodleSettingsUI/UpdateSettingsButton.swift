@@ -18,6 +18,6 @@ public struct UpdateSettingsButton: View {
     }
 
     static func title(availableVersion: String?) -> String {
-        availableVersion == nil ? "Check for Updates…" : "Install Update…"
+        availableVersion == nil ? "Check for Updates" : "Install Update…"
     }
 }

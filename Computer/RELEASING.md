@@ -32,7 +32,7 @@ Both releases must use `--latest=false` so they never replace Noodle's latest
 release. Use version tags to identify source commits; `computer-latest` is a
 channel marker.
 
-Release builds offer **Computer → Check for Updates…** and **Settings → Update**.
+Release builds offer **Computer → Check for Updates** and **Settings → Update**.
 Local builds disable checks. Quiet provider launches do not start the updater.
 Updating stops guests; they are not automatically restarted after relaunch.
 

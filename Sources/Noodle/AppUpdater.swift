@@ -68,7 +68,7 @@ struct CheckForUpdatesButton: View {
     @ObservedObject private var updater = AppUpdater.shared
 
     var body: some View {
-        Button("Check for Updates…") { updater.checkForUpdates() }
+        Button("Check for Updates") { updater.checkForUpdates() }
             .disabled(!updater.canCheckForUpdates)
     }
 }

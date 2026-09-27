@@ -54,7 +54,7 @@ extension ComputerUpdater: SPUUpdaterDelegate {
 struct ComputerCheckForUpdatesButton: View {
     @ObservedObject private var updater = ComputerUpdater.shared
     var body: some View {
-        Button("Check for Updates…") { updater.check() }.disabled(!updater.canCheck)
+        Button("Check for Updates") { updater.check() }.disabled(!updater.canCheck)
     }
 }
 
