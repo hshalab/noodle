@@ -6,8 +6,10 @@
 #                              has App Store Connect validate it
 #   upload IPA                 sends a packaged app to App Store Connect, where TestFlight picks it up
 # package and upload sign in with the App Store Connect key in APPLE_API_KEY_PATH, APPLE_API_KEY_ID and
-# APPLE_API_ISSUER_ID. The archive is unsigned; the export signs it with Apple's cloud-managed
-# distribution certificate, so no certificate is installed and none is created per run.
+# APPLE_API_ISSUER_ID. The archive is signed for development and the export signs it again for
+# distribution, both with Apple's cloud-managed certificates, so no certificate is installed and none
+# is created per run. An unsigned archive would lose the app's entitlements: the export takes them from
+# the archive's signature alone.
 set -euo pipefail
 project_root="${0:A:h:h}"
 folder="$project_root/Mobile"
@@ -75,7 +77,9 @@ case "$command" in
         rm -rf "$archive" "$output"
         xcodebuild -workspace "$folder/NoodleMobile.xcworkspace" -scheme NoodleMobile -configuration Release \
             -derivedDataPath "$folder/Derived" -destination 'generic/platform=iOS' -archivePath "$archive" \
-            CODE_SIGNING_ALLOWED=NO CURRENT_PROJECT_VERSION="$build" archive
+            CURRENT_PROJECT_VERSION="$build" -allowProvisioningUpdates \
+            -authenticationKeyPath "$APPLE_API_KEY_PATH" -authenticationKeyID "$APPLE_API_KEY_ID" \
+            -authenticationKeyIssuerID "$APPLE_API_ISSUER_ID" archive
         xcodebuild -exportArchive -archivePath "$archive" -exportPath "$output" \
             -exportOptionsPlist "$folder/Support/ExportOptions.plist" -allowProvisioningUpdates \
             -authenticationKeyPath "$APPLE_API_KEY_PATH" -authenticationKeyID "$APPLE_API_KEY_ID" \
@@ -83,8 +87,8 @@ case "$command" in
         ipa=("$output"/*.ipa)
         (( ${#ipa} == 1 )) || { print -u2 "Expected one exported app in $output."; exit 1; }
         mv "$ipa[1]" "$output/Noodle-Mobile.ipa"
-        # The archive is unsigned, so the export has to give the app its entitlements; without them the
-        # phone quietly never hears of unread replies. App Store builds push in production.
+        # Without its entitlements the phone quietly never hears of unread replies, so an export that
+        # drops them fails here. App Store builds push in production.
         unpacked="$(mktemp -d)"
         ditto -x -k "$output/Noodle-Mobile.ipa" "$unpacked"
         app=("$unpacked"/Payload/*.app)
