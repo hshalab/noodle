@@ -6,13 +6,15 @@
 
 **A workspace for you and your AI agents.**
 
+<a href="https://github.com/pdparchitect/noodle/releases/latest/download/Noodle-arm64.dmg"><img alt="Download Noodle for Mac" src="https://img.shields.io/badge/Download%20for%20Mac-0a0a0a?style=for-the-badge&logo=apple&logoColor=white" height="48"></a>
+
 <p>
   <img alt="macOS 26+" src="https://img.shields.io/badge/macOS-%E2%89%A526-0a0a0a?style=flat-square&logo=apple&logoColor=white">
   <img alt="Persistent agents" src="https://img.shields.io/badge/agents-persistent-0a0a0a?style=flat-square">
   <img alt="Individual and team work" src="https://img.shields.io/badge/work-individual%20%2B%20teams-0a0a0a?style=flat-square">
 </p>
 
-[Website](https://pdparchitect.github.io/noodle/) · [Download](#download) · [Documentation](docs/README.md) · [Enterprise](docs/enterprise.md) · [Security](docs/security.md)
+[Website](https://pdparchitect.github.io/noodle/) · [Apps](#apps) · [Documentation](docs/README.md) · [Enterprise](docs/enterprise.md) · [Security](docs/security.md)
 
 </div>
 
@@ -42,7 +44,7 @@ Agents run on the [harness](docs/harness-setup.md) you choose, using your existi
   <img alt="Apple Intelligence, on device" src="https://img.shields.io/badge/Apple%20Intelligence-on%20device-a855f7?style=flat-square">
 </p>
 
-## Download
+## Apps
 
 | App | What it does | Minimum OS |
 | --- | --- | --- |
