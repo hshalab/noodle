@@ -4,6 +4,7 @@
 
 ### Changed
 
+- Browser follows the system's light or dark appearance instead of always being dark. A browser with a background picture or colour stays dark behind it.
 - Delete and Delete Browser no longer end in an ellipsis, since they only ask to confirm. Add for bookmarks now does, since it opens the bookmark form.
 - Check for Updates, in the app menu and Settings > Update, no longer ends in an ellipsis.
 - Buttons that only open System Settings or a web page no longer end in “…”; “…” is kept for commands that ask for something before they act.

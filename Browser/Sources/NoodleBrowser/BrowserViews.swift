@@ -26,6 +26,7 @@ struct BrowserLibraryView: View {
     @State private var columnVisibility = NavigationSplitViewVisibility.all
     @AppStorage("BrowserSidebarVisible") private var sidebarVisible = true
     @State private var dismissedLibraryFailure = false
+    @Environment(\.colorScheme) private var colorScheme
 
     init(presentation: BrowserPresentation) {
         self.presentation = presentation; library = presentation.library; runtime = presentation.runtime
@@ -56,7 +57,7 @@ struct BrowserLibraryView: View {
             }
             .listStyle(.sidebar)
             .scrollContentBackground(.hidden)
-            .background(Color.black.opacity(0.24).ignoresSafeArea())
+            .background(Color.black.opacity(colorScheme == .dark ? 0.24 : 0.04).ignoresSafeArea())
             .searchable(text: $search, placement: .sidebar, prompt: "Search")
             .controlSize(.large)
             .navigationSplitViewColumnWidth(min: 280, ideal: 326, max: 380)

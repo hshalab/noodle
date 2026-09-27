@@ -86,7 +86,6 @@ struct NoodleApp: App {
             RootView()
                 .environment(store)
                 .frame(minWidth: 980, minHeight: 670)
-                .preferredColorScheme(.dark)
                 .background(WindowConfiguration())
         } onOpenURL: {
             if !store.receiveHubInvitation($0) { store.mcp.receiveAuthorizationCallback($0) }
@@ -139,7 +138,6 @@ struct NoodleApp: App {
                 ConversationWindowView(conversationID: conversationID)
                     .environment(store)
                     .frame(minWidth: 560, minHeight: 500)
-                    .preferredColorScheme(.dark)
             }
         }
         .defaultSize(width: 760, height: 810)
@@ -151,7 +149,6 @@ struct NoodleApp: App {
         Window("Usage", id: UsageView.windowID) {
             NoodleUsageView()
                 .environment(store)
-                .preferredColorScheme(.dark)
         }
         .defaultSize(width: 860, height: 680)
         .windowResizability(.contentMinSize)
@@ -161,7 +158,6 @@ struct NoodleApp: App {
         Settings {
             NoodleSettingsView()
                 .environment(store)
-                .preferredColorScheme(.dark)
         }
         .windowResizability(.contentSize)
     }

@@ -300,11 +300,11 @@ struct AttachmentInlinePreview: View {
                 if let thumbnail {
                     Image(nsImage: thumbnail).resizable().scaledToFit().padding(6).transition(.opacity)
                 } else if let detail = card.detail, attachment.isComputerLink {
-                    Text(detail).font(.system(size: 9, design: .monospaced)).foregroundStyle(.white.opacity(0.8))
+                    Text(detail).font(.system(size: 9, design: .monospaced)).foregroundStyle(.primary.opacity(0.8))
                         .lineLimit(10).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading).padding(10)
                 } else {
                     Image(systemName: attachment.previewSymbolName)
-                        .font(.system(size: 38, weight: .light)).foregroundStyle(.white.opacity(0.42))
+                        .font(.system(size: 38, weight: .light)).foregroundStyle(.primary.opacity(0.42))
                 }
             }
             .frame(maxWidth: .infinity).frame(height: 165)
@@ -391,7 +391,7 @@ struct AttachmentInlinePreview: View {
                 } else {
                     Image(systemName: attachment.previewSymbolName)
                         .font(.system(size: 38, weight: .light))
-                        .foregroundStyle(.white.opacity(thumbnailUnavailable ? 0.72 : 0.42))
+                        .foregroundStyle(.primary.opacity(thumbnailUnavailable ? 0.72 : 0.42))
                 }
             }
             .frame(maxWidth: .infinity).frame(height: 165)

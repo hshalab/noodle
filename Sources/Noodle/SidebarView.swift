@@ -8,6 +8,7 @@ struct SidebarView: View {
     var focusComposer: () -> Void = {}
     var focusRequest: UUID? = nil
     @Environment(NoodleStore.self) private var store
+    @Environment(\.colorScheme) private var colorScheme
     @FocusState private var searchIsFocused: Bool
     @State private var kickRequest: AgentKickRequest?
 
@@ -28,7 +29,7 @@ struct SidebarView: View {
             focusComposer: focusComposer,
             focusRequest: focusRequest
         ))
-        .background(Color.black.opacity(0.24).ignoresSafeArea())
+        .background(Color.black.opacity(colorScheme == .dark ? 0.24 : 0.04).ignoresSafeArea())
         .searchable(text: $store.searchText, placement: .sidebar, prompt: "Search")
         .controlSize(.large)
         .searchFocused($searchIsFocused)

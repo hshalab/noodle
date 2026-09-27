@@ -45,7 +45,6 @@ struct NoodleBrowserApp: App {
         Window(BrowserBuildIdentity.current.appName, id: "library") {
             BrowserLibraryView(presentation: delegate.presentation)
                 .frame(minWidth: 850, minHeight: 580)
-                .preferredColorScheme(.dark)
                 .background(BrowserLibraryWindowHost(library: delegate.libraryWindow))
                 .handlesExternalEvents(preferring: [], allowing: [])
         }
@@ -69,7 +68,7 @@ struct NoodleBrowserApp: App {
             }
             BrowserCommands(delegate: delegate, presentation: delegate.presentation)
         }
-        Settings { BrowserSettingsView().preferredColorScheme(.dark) }
+        Settings { BrowserSettingsView() }
             .windowResizability(.contentSize)
             .handlesExternalEvents(matching: [])
         MenuBarExtra(isInserted: $visibility.showMenuBar) {

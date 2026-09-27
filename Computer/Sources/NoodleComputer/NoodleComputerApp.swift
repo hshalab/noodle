@@ -45,7 +45,6 @@ struct NoodleComputerApp: App {
     }
     Settings {
       ComputerSettingsView()
-        .preferredColorScheme(.dark)
     }
     .windowResizability(.contentSize)
     MenuBarExtra(isInserted: $visibility.showMenuBar) {
@@ -400,6 +399,7 @@ struct ComputerLibraryView: View {
   @State private var searchText = ""
   @State private var columnVisibility = NavigationSplitViewVisibility.all
   @AppStorage("ComputerSidebarVisible") private var sidebarVisible = true
+  @Environment(\.colorScheme) private var colorScheme
 
   private var filteredSessions: [ComputerSession] {
     let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -431,7 +431,7 @@ struct ComputerLibraryView: View {
       }
       .listStyle(.sidebar)
       .scrollContentBackground(.hidden)
-      .background(Color.black.opacity(0.24).ignoresSafeArea())
+      .background(Color.black.opacity(colorScheme == .dark ? 0.24 : 0.04).ignoresSafeArea())
       .searchable(text: $searchText, placement: .sidebar, prompt: "Search")
       .controlSize(.large)
       .navigationSplitViewColumnWidth(min: 280, ideal: 326, max: 380)

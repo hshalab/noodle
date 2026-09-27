@@ -60,7 +60,7 @@ struct BrowserProfileEditor: View {
                     }
                 if let failure { Text(failure).font(.caption).foregroundStyle(.red) }
             }.padding(24)
-        }.frame(width: 480).controlSize(.regular).preferredColorScheme(.dark).noodleSheetSizing()
+        }.frame(width: 480).controlSize(.regular).noodleSheetSizing()
     }
     private func save() {
         do {

@@ -77,7 +77,7 @@ extension NoodleStore {
         isTerminating: { NoodleStore.active?.conversationWindows.isTerminating == true }) { id, commands in
         guard let store = NoodleStore.active else { return NSView() }
         let view = NSHostingView(rootView: ConversationWindowView(conversationID: id, isFloatingPanel: true)
-            .environment(store).environment(\.floatingPanelCommands, commands).preferredColorScheme(.dark))
+            .environment(store).environment(\.floatingPanelCommands, commands))
         // The panel owns its size; the chat must not resize it to fit content.
         view.sizingOptions = []
         return view

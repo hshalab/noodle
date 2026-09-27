@@ -18,7 +18,7 @@ import SwiftUI
         let sheet = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 360),
                              styleMask: [.titled], backing: .buffered, defer: false)
         let host = NSHostingView(rootView: NewLocalMacView(store: store)
-            .background(Color(nsColor: .windowBackgroundColor)).preferredColorScheme(.dark))
+            .background(Color(nsColor: .windowBackgroundColor)))
         sheet.contentView = host
         parent.orderBack(nil); parent.beginSheet(sheet, completionHandler: nil)
         defer { parent.endSheet(sheet); sheet.orderOut(nil); parent.orderOut(nil) }

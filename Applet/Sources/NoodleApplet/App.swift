@@ -25,7 +25,6 @@ struct NoodleAppletApp: App {
         .companionSettingsAccess()
         .handlesExternalEvents(preferring: [], allowing: [])
         .frame(minWidth: 850, minHeight: 580)
-        .preferredColorScheme(.dark)
         .task {
           if LaunchChecks.current.contains(AppletLaunchCheck.updaterUI) {
             do {
@@ -57,7 +56,7 @@ struct NoodleAppletApp: App {
       AppletFileCommands(delegate: delegate, runtime: delegate.runtime)
     }
     Settings {
-      AppletSettingsView(background: delegate.background, library: delegate.library, runtime: delegate.runtime).preferredColorScheme(.dark)
+      AppletSettingsView(background: delegate.background, library: delegate.library, runtime: delegate.runtime)
     }
     .windowResizability(.contentSize)
     .handlesExternalEvents(matching: [])
@@ -277,6 +276,7 @@ private struct LibraryView: View {
   @State private var searching = false
   @State private var searchFocused = false
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @Environment(\.colorScheme) private var colorScheme
   @State private var selection: LibraryFilter? = .section(.all)
   @State private var columnVisibility = NavigationSplitViewVisibility.all
   @State private var trashing: LibraryEntry?
@@ -325,7 +325,7 @@ private struct LibraryView: View {
       }
       .listStyle(.sidebar)
       .scrollContentBackground(.hidden)
-      .background(Color.black.opacity(0.24).ignoresSafeArea())
+      .background(Color.black.opacity(colorScheme == .dark ? 0.24 : 0.04).ignoresSafeArea())
       .controlSize(.large)
       .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 340)
       .toolbar(removing: sidebarOwnsToolbar ? .sidebarToggle : nil)

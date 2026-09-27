@@ -27,7 +27,6 @@ struct NoodleHubApp: App {
         }
         Window(hubAppName, id: HubWelcomeView.windowID) {
             HubWelcomeView(hub: delegate.settings.hub)
-                .preferredColorScheme(.dark)
         }
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 620, height: 720)
@@ -36,7 +35,6 @@ struct NoodleHubApp: App {
         .defaultLaunchBehavior(delegate.showsWelcome ? .presented : .suppressed)
         Window("Pair a Device", id: HubPairWindow.windowID) {
             HubPairWindow(hub: delegate.settings.hub)
-                .preferredColorScheme(.dark)
         }
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 620, height: 720)
@@ -44,13 +42,11 @@ struct NoodleHubApp: App {
         .restorationBehavior(.disabled)
         Window("Usage", id: UsageView.windowID) {
             UsageView(history: delegate.settings.hub.usage, agents: delegate.settings.agents)
-                .preferredColorScheme(.dark)
         }
         .defaultSize(width: 860, height: 680)
         .windowResizability(.contentMinSize)
         Settings {
             HubSettingsView(host: delegate.settings)
-                .preferredColorScheme(.dark)
         }
         .windowResizability(.contentSize)
     }

@@ -258,7 +258,7 @@ struct MessageBubble: View {
             VStack(alignment: isUser ? .trailing : .leading, spacing: Self.contentSpacing) {
                 if showsTextBubble(attachments: attachments) {
                 MessageText(message: message)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(isUser ? .white : .primary)
                     .padding(.horizontal, 13)
                     .padding(.vertical, 8)
                     .background { messageBackground }
@@ -335,7 +335,7 @@ struct MessageBubble: View {
                     shape.fill(isUser ? Color.accentColor.opacity(0.28) : Color.black.opacity(0.22))
                 }
         } else {
-            shape.fill(isUser ? Color.accentColor : Color(white: 0.20))
+            shape.fill(isUser ? Color.accentColor : Color(nsColor: .incomingBubble))
         }
     }
 
@@ -487,4 +487,10 @@ struct MessageBubble: View {
         }
     }
 
+}
+
+private extension NSColor {
+    static let incomingBubble = NSColor(name: nil) {
+        NSColor(white: $0.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? 0.20 : 0.90, alpha: 1)
+    }
 }

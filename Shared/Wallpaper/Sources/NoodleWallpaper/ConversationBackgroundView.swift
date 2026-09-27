@@ -3,7 +3,8 @@ import SwiftUI
 @_exported import NoodleWallpaperCore
 
 /// One window-sized wallpaper. Load its replacement before fading so image-backed
-/// conversations never flash the default canvas during a switch.
+/// conversations never flash the default canvas during a switch. Wallpapers are dark
+/// scenes, so the window turns dark while one is shown, whatever the system says.
 public struct ConversationWallpaper: View {
     let background: ConversationBackground
     var imageURL: URL?
@@ -29,13 +30,14 @@ public struct ConversationWallpaper: View {
     public var body: some View {
         let request = Request(background: background, imageURL: imageURL, imageData: imageData)
         ZStack {
-            Color(nsColor: .textBackgroundColor)
+            systemCanvas
             ConversationBackgroundView(background: displayed.request.background,
                 imageURL: displayed.request.imageURL, previewImage: displayed.image)
                 .id(displayed.id)
                 .transition(.opacity)
                 .zIndex(1)
         }
+        .background(WallpaperWindowAppearance(isDark: !background.isDefault))
         .allowsHitTesting(false)
         .accessibilityHidden(true)
         .task(id: request) {
@@ -73,7 +75,7 @@ public struct ConversationBackgroundView: View {
     public var body: some View {
         GeometryReader { geometry in
             ZStack {
-                Color(nsColor: .textBackgroundColor)
+                systemCanvas
                 if let image = previewImage ?? loadedImage, background.imageFilename != nil {
                     Image(nsImage: image).resizable().scaledToFill()
                         .frame(width: geometry.size.width, height: geometry.size.height).clipped()
@@ -112,3 +114,44 @@ public struct ConversationBackgroundView: View {
         }
     }
 }
+
+/// The default canvas in the system's appearance rather than the window's. A window that
+/// turns dark for a wallpaper keeps this colour beneath the wallpaper fading in, not black.
+@MainActor private var systemCanvas: Color {
+    var color = NSColor.textBackgroundColor
+    NSApplication.shared.effectiveAppearance.performAsCurrentDrawingAppearance {
+        color = NSColor.textBackgroundColor.usingColorSpace(.sRGB) ?? color
+    }
+    return Color(nsColor: color)
+}
+
+/// Crossfades the whole window, chrome included, when its appearance changes.
+private struct WallpaperWindowAppearance: NSViewRepresentable {
+    let isDark: Bool
+
+    final class Probe: NSView {
+        var isDark = false { didSet { apply() } }
+        override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); apply() }
+
+        private func apply() {
+            guard let window else { return }
+            let appearance = isDark ? NSAppearance(named: .darkAqua) : nil
+            guard window.appearance?.name != appearance?.name else { return }
+            if window.isVisible, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+               let frame = window.contentView?.superview?.layer {
+                let fade = CATransition()
+                fade.type = .fade
+                fade.duration = 0.35
+                fade.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                frame.add(fade, forKey: Self.fadeKey)
+            }
+            window.appearance = appearance
+        }
+
+        static let fadeKey = "noodle.wallpaper-appearance"
+    }
+
+    func makeNSView(context: Context) -> Probe { Probe() }
+    func updateNSView(_ nsView: Probe, context: Context) { nsView.isDark = isDark }
+}
+

@@ -83,6 +83,32 @@ import NoodleCore
         XCTAssertFalse(store.conversations.contains { $0.id == group.id })
     }
 
+    func testConversationWindowFollowsTheSystemAppearanceUnlessAWallpaperIsShown() async throws {
+        let (store, _, group) = try fixture()
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 700),
+            styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = NSHostingView(rootView: ConversationWindowView(conversationID: group.id).environment(store))
+        window.contentView?.layoutSubtreeIfNeeded()
+        window.orderFront(nil)
+        defer { window.close(); window.contentView = nil }
+        func conversation() throws -> BotConversation { try XCTUnwrap(store.conversations.first { $0.id == group.id }) }
+
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertNil(window.appearance, "The default canvas must follow the system appearance")
+        try await store.setBackground(ConversationBackground(preset: .ocean), imageData: nil, for: conversation())
+        for _ in 0..<200 where window.appearance?.name != .darkAqua { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(window.appearance?.name, .darkAqua, "A wallpaper keeps the window dark")
+        // The whole window crossfades rather than snapping to black under the wallpaper fading in.
+        let frameLayer = try XCTUnwrap(window.contentView?.superview?.layer)
+        if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            XCTAssertFalse((frameLayer.animationKeys() ?? []).isEmpty, "The appearance change must crossfade")
+        }
+        try await store.setBackground(ConversationBackground(), imageData: nil, for: conversation())
+        for _ in 0..<200 where window.appearance != nil { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertNil(window.appearance)
+    }
+
     func testOpeningOrPresentingAConversationWindowFocusesItsComposer() async throws {
         let (store, _, group) = try fixture()
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 700),

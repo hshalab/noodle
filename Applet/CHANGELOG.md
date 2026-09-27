@@ -4,6 +4,7 @@
 
 ### Changed
 
+- Applet follows the system's light or dark appearance instead of always being dark.
 - Move to Trash and Remove no longer end in an ellipsis, since they only ask to confirm.
 - Check for Updates, in the app menu and Settings > Update, no longer ends in an ellipsis.
 - Only you bring a noodlet to the front, by opening it. Agents working on noodlets can no longer show a window, from Noodle or the `noodlet` command.

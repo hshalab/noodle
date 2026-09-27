@@ -23,6 +23,7 @@
 - Quitting the Hub, from its menu or with Command-Q, asks first and says how many people and devices are connected and how many bots are working. Logging out and shutting down are not held up.
 - Restarting to install an update asks first in the same way.
 - The menu bar menu groups Pair… and Usage apart from Settings…, and Usage no longer ends in “…”.
+- The Hub follows the system's light or dark appearance instead of always being dark.
 
 ### Fixed
 

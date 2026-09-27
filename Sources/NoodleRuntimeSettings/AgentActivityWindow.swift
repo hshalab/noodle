@@ -67,7 +67,6 @@ public final class AgentActivityWindowController: NSWindowController, NSWindowDe
         panel.standardWindowButton(.miniaturizeButton)?.isEnabled = false
         panel.standardWindowButton(.zoomButton)?.isEnabled = false
         panel.minSize = NSSize(width: 440, height: 260)
-        panel.appearance = NSAppearance(named: .darkAqua)
         panel.center()
         super.init(window: panel)
         panel.delegate = self

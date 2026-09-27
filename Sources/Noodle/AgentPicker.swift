@@ -207,7 +207,7 @@ enum AgentPickerLayout {
         self.panel = panel
         // A fresh view is laid out for these items before it is shown, so no frame of the previous grid appears.
         let content = NSHostingView(rootView: AgentPickerView(model: model, pick: { [weak self] in self?.pick($0) })
-            .environment(store).preferredColorScheme(.dark))
+            .environment(store))
         content.sizingOptions = []
         panel.contentView = content
         let point = NSEvent.mouseLocation
@@ -368,7 +368,7 @@ private struct AgentPickerView: View {
         .padding(.horizontal, 6)
         .frame(maxWidth: .infinity)
         .frame(height: AgentPickerLayout.tileHeight)
-        .background(selected ? Color.accentColor.opacity(0.28) : Color.white.opacity(0.04),
+        .background(selected ? Color.accentColor.opacity(0.28) : Color.primary.opacity(0.04),
             in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .accessibilityElement(children: .combine)
