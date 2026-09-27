@@ -133,7 +133,7 @@ can add an address of your own.
 | Computers | Remote VM run by xAI | Remote VM run by Meta | Local desktop-grade secure computers, including first-class support for macOS local accounts |
 | Look and feel | Light or dark | Stock | Customise the look and feel to match your preferences: backgrounds, custom icons and more |
 | Voice | Sent to xAI's servers | Sent to Meta's servers | On-device dictation and transcription that value your privacy |
-| OS integration | Cloud connectors only | A few Mac apps | First-class OS integration: calendars, shortcuts, reminders, accessibility and much more |
+| OS integration | Cloud connectors only | Cloud connectors only | First-class OS integration: calendars, shortcuts, reminders, accessibility and much more |
 | Tools | Cloud connectors, no local MCP | Cloud connectors, no local MCP | Extensible tool support: any MCP you can think of, plus tool apps installed on your Mac |
 | On-device tools | Shell commands only | None | Built-in OS capabilities such as OCR, image generation, background removal and much more |
 | Data | Cloud only, no privacy mode | Trains on your chats | Your data stays local |
