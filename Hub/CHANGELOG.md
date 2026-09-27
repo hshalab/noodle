@@ -8,6 +8,7 @@
 - A plan can limit which models each harness it lends may use. Bots on a harness with limited models must use one of them.
 - The first launch opens on a welcome, as Noodle's does, that ends in pairing your first device.
 - Pair… in the menu bar menu opens a window to pair a new device, with its QR code and link.
+- When the Hub's Mac is on Tailscale, the Hub lists its Tailscale name among its addresses, so devices can reach it wherever they are on your tailnet.
 
 ### Changed
 

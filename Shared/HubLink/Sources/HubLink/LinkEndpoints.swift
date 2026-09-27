@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import Synchronization
 #if os(macOS)
 import SystemConfiguration
 #endif
@@ -8,8 +9,8 @@ extension LinkEndpoint {
     public static let defaultPort: UInt16 = 38_415
 
     #if os(macOS)
-    /// This Mac's own addresses: its Bonjour name, then every IPv4 and routable IPv6 address
-    /// on an active interface. Loopback and link-local addresses are left out: a device on
+    /// This Mac's own addresses: its Bonjour name, its Tailscale MagicDNS name, then every IPv4
+    /// and routable IPv6 address on an active interface. Loopback and link-local addresses are left out: a device on
     /// the same Mac reaches the Hub the same way a device across the room does.
     public static func local(port: UInt16) -> [LinkEndpoint] {
         var hosts: [String] = []
@@ -31,7 +32,9 @@ extension LinkEndpoint {
                 var buffer = [CChar](repeating: 0, count: Int(INET_ADDRSTRLEN))
                 guard inet_ntop(AF_INET, &value, &buffer, socklen_t(buffer.count)) != nil else { continue }
                 let text = String(cString: buffer)
-                if !text.hasPrefix("169.254.") { ipv4.append(text) }
+                guard !text.hasPrefix("169.254.") else { continue }
+                ipv4.append(text)
+                if let name = tailnetName(of: text, resolve: cachedReverseLookup) { hosts.append(name) }
             case AF_INET6:
                 var value = address.withMemoryRebound(to: sockaddr_in6.self, capacity: 1) { $0.pointee.sin6_addr }
                 // Link-local addresses need an interface to be usable, and temporary ones rotate.
@@ -47,6 +50,36 @@ extension LinkEndpoint {
         return (hosts + ipv4 + ipv6).filter { seen.insert($0).inserted }.map { LinkEndpoint(host: $0, port: port) }
     }
     #endif
+
+    /// The name Tailscale gives an address in its 100.64.0.0/10 range, which stays reachable
+    /// wherever the device is on the tailnet. Nil for any other address.
+    static func tailnetName(of address: String, resolve: (String) -> String?) -> String? {
+        let octets = address.split(separator: ".").compactMap { UInt8($0) }
+        guard octets.count == 4, octets[0] == 100, octets[1] & 0xC0 == 64,
+              let name = resolve(address).map({ $0.hasSuffix(".") ? String($0.dropLast()) : $0 }),
+              !name.isEmpty, name != address else { return nil }
+        return name
+    }
+
+    /// Settings reads the endpoints on every redraw, so each address is looked up once.
+    private static let reverseLookups = Mutex<[String: String?]>([:])
+
+    private static func cachedReverseLookup(_ address: String) -> String? {
+        if let known = reverseLookups.withLock({ $0[address] }) { return known }
+        var socket = sockaddr_in()
+        socket.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        socket.sin_family = sa_family_t(AF_INET)
+        guard inet_pton(AF_INET, address, &socket.sin_addr) == 1 else { return nil }
+        var buffer = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+        let status = withUnsafePointer(to: &socket) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                getnameinfo($0, socklen_t(MemoryLayout<sockaddr_in>.size), &buffer, socklen_t(buffer.count), nil, 0, NI_NAMEREQD)
+            }
+        }
+        let name = status == 0 ? String(cString: buffer) : nil
+        reverseLookups.withLock { $0[address] = name }
+        return name
+    }
 
     /// Reads "host", "host:port", "[v6]:port" or a bare IPv6 address.
     public init?(text: String, defaultPort: UInt16) {

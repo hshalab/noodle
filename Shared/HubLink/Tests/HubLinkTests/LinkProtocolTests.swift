@@ -86,6 +86,14 @@ final class LinkProtocolTests: XCTestCase {
         XCTAssertTrue(LinkEndpoint.local(port: 5).allSatisfy { $0.port == 5 })
     }
 
+    func testTailscaleAddressesAreNamedByTheirMagicDNSName() {
+        XCTAssertEqual(LinkEndpoint.tailnetName(of: "100.101.102.103") { _ in "mac.tail1234.ts.net." }, "mac.tail1234.ts.net")
+        XCTAssertNil(LinkEndpoint.tailnetName(of: "100.101.102.103") { _ in nil })
+        for outside in ["192.168.1.5", "100.63.255.255", "100.128.0.1", "10.0.0.1"] {
+            XCTAssertNil(LinkEndpoint.tailnetName(of: outside) { _ in XCTFail(outside); return "x" }, outside)
+        }
+    }
+
     func testTheKeySurvivesARelaunch() throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("hub-link-\(UUID())/device.key")
         addTeardownBlock { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
