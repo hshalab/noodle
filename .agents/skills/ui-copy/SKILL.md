@@ -1,6 +1,6 @@
 ---
 name: ui-copy
-description: Rules for user-visible text in the Noodle apps. Use whenever adding or changing a label, title, status or error message, hint, placeholder, footer, shortcut legend, tooltip or any other visible string in a SwiftUI, AppKit or web view.
+description: Rules for user-visible text and controls in the Noodle apps. Use whenever adding or changing a label, title, button, menu item, link, toggle, status or error message, hint, placeholder, footer, shortcut legend, tooltip or any other visible string in a SwiftUI, AppKit or web view, especially when deciding on a trailing ellipsis or where a row's actions go.
 ---
 
 # UI copy
@@ -12,3 +12,22 @@ Do not add persistent instructional hints, shortcut legends, or explanatory
 footer text unless explicitly requested.
 
 Put optional guidance in tooltips or documentation.
+
+## Ellipsis
+
+End a label with `…` (the single character, never three dots) only when the
+command needs more input before it can run: a name, a choice, a picker, a sheet
+or window that has to be filled in.
+
+- `Rename…`, `Invite…`, `Pair…`, `Edit…`, `Settings…`: yes, they ask for more.
+- `Remove`, `Delete Plan`, `Quit`: no, even though they show an "Are you sure?"
+  alert. A confirmation is not more input.
+- Links and buttons that open System Settings or a web page: no.
+- A toggle in a menu is a checkmark item, never an ellipsis.
+
+## Row actions
+
+- Keep a row to its main controls; move secondary actions and per-item
+  switches into its `…` actions menu, with switches as checkmark items above a
+  divider and the destructive action last.
+- Buttons inside list rows use `.buttonStyle(.link)`, as in System Settings.
