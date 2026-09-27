@@ -195,6 +195,13 @@ final class SurfaceTests: XCTestCase {
 
     /// A viewer on a slow link asks for less, and the video it gets shrinks to fit.
     @MainActor func testTheStreamerKeepsToTheRateAViewerAsksFor() async throws {
+        // Rate control is the hardware encoder's; the software one in a virtual machine keeps its own pace.
+        var encoders: CFArray?
+        VTCopyVideoEncoderList(nil, &encoders)
+        try XCTSkipUnless((encoders as? [[String: Any]] ?? []).contains {
+            $0[kVTVideoEncoderList_CodecType as String] as? CMVideoCodecType == kCMVideoCodecType_H264
+                && $0[kVTVideoEncoderList_IsHardwareAccelerated as String] as? Bool == true
+        }, "this Mac has no hardware H.264 encoder")
         let pictures = (0..<8).map { noise(width: 800, height: 500, seed: CGFloat($0) / 8) }
         var next = 0
         let streamer = SurfaceStreamer(fps: 30, maxPixelSize: 800, capture: {
@@ -204,14 +211,16 @@ final class SurfaceTests: XCTestCase {
         defer { streamer.stop() }
         let (companion, hub) = try pair()
         streamer.attach(companion)
-        func averageSize() async throws -> Double {
-            let frames = try await packets(from: hub) { $0.count >= 20 }.filter { !$0.keyFrame }.suffix(10)
-            return Double(frames.reduce(0) { $0 + $1.sample.count }) / Double(max(1, frames.count))
+        // The encoder keeps to a rate by dropping frames as well as by shrinking them, so count bytes a second.
+        func bytesPerSecond() async throws -> Double {
+            let start = ContinuousClock.now
+            let frames = try await packets(from: hub) { _ in ContinuousClock.now - start > .seconds(2) }.filter { !$0.keyFrame }
+            return Double(frames.reduce(0) { $0 + $1.sample.count }) / ((ContinuousClock.now - start) / .seconds(1))
         }
-        let full = try await averageSize()
+        let full = try await bytesPerSecond()
         hub.send(SurfaceControl.rate(bitsPerSecond: 100_000).encoded)
-        let slowed = try await averageSize()
-        XCTAssertLessThan(slowed, full / 2, "video stayed at \(Int(slowed)) bytes a frame after the viewer asked for less")
+        let slowed = try await bytesPerSecond()
+        XCTAssertLessThan(slowed, full / 2, "video stayed at \(Int(slowed)) bytes a second, from \(Int(full)), after the viewer asked for less")
     }
 
     /// The Hub passes video to a viewer only as fast as the viewer's link takes it: when the link
@@ -256,12 +265,13 @@ final class SurfaceTests: XCTestCase {
 
     /// Frames are captured on a steady beat: time spent capturing one does not push the next back.
     @MainActor func testTheStreamerKeepsItsBeatWhileCapturingTakesTime() async throws {
-        let picture = image(width: 800, height: 500, gray: 0.5)
+        // A small picture, so a slow encoder does not skip beats of its own.
+        let picture = image(width: 160, height: 100, gray: 0.5)
         var starts: [ContinuousClock.Instant] = []
-        let streamer = SurfaceStreamer(fps: 20, maxPixelSize: 800, capture: {
+        let streamer = SurfaceStreamer(fps: 20, maxPixelSize: 160, capture: {
             starts.append(.now)
             try await Task.sleep(for: .milliseconds(30))
-            return (picture, CGSize(width: 800, height: 500))
+            return (picture, CGSize(width: 160, height: 100))
         }, apply: { _ in })
         defer { streamer.stop() }
         let (companion, _) = try pair()
