@@ -572,7 +572,7 @@ private struct LibraryView: View {
       Button(library.pinned.contains(entry.id) ? "Unpin" : "Pin") { library.pin(entry.id) }
       Button(library.hidden.contains(entry.id) ? "Unhide" : "Hide") { library.hide(entry.id) }
       Divider()
-      Button("Move to Trash…") { trashing = entry }.disabled(running)
+      Button("Move to Trash") { trashing = entry }.disabled(running)
     }
   }
 }

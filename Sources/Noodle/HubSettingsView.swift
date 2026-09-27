@@ -115,7 +115,7 @@ private struct ThisMacRows: View {
                 .font(.caption).foregroundStyle(.secondary)
             }
             Spacer(minLength: 8)
-            Button("Remove…") { removing = device }
+            Button("Remove") { removing = device }
         }
     }
 }

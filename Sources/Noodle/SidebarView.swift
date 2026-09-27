@@ -81,7 +81,7 @@ struct SidebarView: View {
             Button("Change Background…") { store.backgroundBeingEdited = conversation }
         case .direct:
             if let agent = store.participants(for: conversation).first {
-                Button("Edit Bot") {
+                Button("Edit Bot…") {
                     store.agentBeingEdited = agent
                 }
             }

@@ -363,7 +363,7 @@ private struct AppleModelUsagePopover: View {
                                 BotAvatar(agent: agent, size: 28)
                                 Text(agent.displayName).lineLimit(2)
                                 Spacer(minLength: 8)
-                                Button("Edit") { edit(agent) }
+                                Button("Edit…") { edit(agent) }
                                     .accessibilityLabel("Edit \(agent.displayName)")
                                     .help("Edit \(agent.displayName)’s model settings")
                             }

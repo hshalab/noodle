@@ -41,7 +41,7 @@ struct HubUsersSettingsView: View {
             AccessError(error: error)
         }
         .formStyle(.grouped)
-        .accessFooter("Add User") { naming = NamingRequest(.create, name: "") }
+        .accessFooter("Add User…") { naming = NamingRequest(.create, name: "") }
         .namingAlert($naming, create: "New User", rename: "Rename User", field: "Name") { request in
             switch request.kind {
             case .create: try access.addUser(named: request.name)
@@ -164,7 +164,7 @@ struct HubPlansSettingsView: View {
             AccessError(error: error)
         }
         .formStyle(.grouped)
-        .accessFooter("Add Plan") { naming = NamingRequest(.create, name: "") }
+        .accessFooter("Add Plan…") { naming = NamingRequest(.create, name: "") }
         .namingAlert($naming, create: "New Plan", rename: "Rename Plan", field: "Plan name") { request in
             if case .create = request.kind { editing = Editing(id: try access.addPlan(named: request.name).id) }
         } failed: { error = $0 }

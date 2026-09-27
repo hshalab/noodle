@@ -103,7 +103,7 @@ public struct HarnessProfilesView: View {
                         Button("Sign In Again…") { controller.signIn(profile, installation: installation) }
                     }
                     Button("Rename…") { name = profile.displayName; naming = .rename(profile) }
-                    Button("Delete…", role: .destructive) { deleting = profile }
+                    Button("Delete", role: .destructive) { deleting = profile }
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }

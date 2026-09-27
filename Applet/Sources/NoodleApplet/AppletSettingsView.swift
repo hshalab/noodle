@@ -159,7 +159,7 @@ private struct AppletSecretsSettingsView: View {
         SettingsListPanel(empty: "No noodlets have secrets.", isEmpty: secrets.isEmpty) {
             ForEach(secrets) { secret in
                 SettingsListRow(title: secret.name, detail: title(secret.account), divider: secret != secrets.last) {
-                    Button("Remove…") { removing = secret }
+                    Button("Remove") { removing = secret }
                 }
             }
         }
@@ -198,7 +198,7 @@ private struct AppletStorageSettingsView: View {
                     detail: ByteCountFormatter.string(fromByteCount: Int64(sizes[key] ?? 0), countStyle: .file),
                     divider: key != keys.last
                 ) {
-                    Button("Remove…") { removing = key }
+                    Button("Remove") { removing = key }
                         .disabled(running(key))
                         .help(running(key) ? "Close this noodlet before removing its data." : "")
                 }

@@ -53,7 +53,7 @@ struct StorageView: View {
                             .foregroundStyle(.secondary)
                     }
                     HStack {
-                        Button("Clean Caches and Restart…") { preview = report; confirming = true }
+                        Button("Clean Caches and Restart") { preview = report; confirming = true }
                             .disabled(unavailable || !report.canClean)
                         Spacer()
                         if model.storageBusy {

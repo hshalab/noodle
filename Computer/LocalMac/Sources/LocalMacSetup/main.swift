@@ -42,7 +42,7 @@ private func registrationStatus() -> LocalMacRegistrationStatus {
         let title = NSTextField(labelWithString: "Local Mac")
         title.font = .boldSystemFont(ofSize: 22)
         let detail = NSTextField(wrappingLabelWithString: "The helper creates and starts Noodle’s separate accounts. Stopping a computer retains its account, files and permissions.")
-        enable = NSButton(title: "Enable Account Helper…", target: self, action: #selector(register))
+        enable = NSButton(title: "Enable Account Helper", target: self, action: #selector(register))
         let done = NSButton(title: "Done", target: self, action: #selector(finish))
         let buttons = NSStackView(views: [enable, done]); buttons.orientation = .horizontal
         let stack = NSStackView(views: [title, detail, status, buttons])

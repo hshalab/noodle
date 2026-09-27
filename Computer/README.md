@@ -99,7 +99,7 @@ computers are stopped and are not automatically restarted after the app relaunch
 
 ## Custom images
 
-Choose **New from Container Image…** and enter the name of a public container
+Choose **New from Container Image** and enter the name of a public container
 image built for ARM64. The image must include a shell at `/bin/sh`. Without a web
 port, it opens as a shell. With a web port, Computer starts the image's app and
 shows its web page; the app must accept connections from outside the computer,

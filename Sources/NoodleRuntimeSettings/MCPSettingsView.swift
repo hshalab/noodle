@@ -37,7 +37,7 @@ public struct MCPSettingsView: View {
                                     Button(store.mcp.connected.contains(connection.id) ? "Reconnect" : "Connect") { store.mcp.connect(connection) }
                                         .buttonStyle(.link)
                                         .disabled(store.mcp.signingIn != nil)
-                                    Button("Edit") { editing = connection }
+                                    Button("Edit…") { editing = connection }
                                         .buttonStyle(.link)
                                     Button("Remove") { removing = connection }
                                         .buttonStyle(.link)

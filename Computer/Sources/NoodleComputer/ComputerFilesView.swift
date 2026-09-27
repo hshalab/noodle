@@ -67,7 +67,7 @@ struct ComputerFilesView: View {
                             Divider()
                             Button("Rename…") { name = model.selected?.name ?? ""; naming = "Rename" }.disabled(model.selected == nil || model.busy)
                             Button("Duplicate") { model.duplicateSelected() }.disabled(model.selected?.regular != true || model.busy)
-                            Button("Delete…", role: .destructive) { deleting = true }.disabled(model.selected == nil || model.busy)
+                            Button("Delete", role: .destructive) { deleting = true }.disabled(model.selected == nil || model.busy)
                         }
                 }.frame(minWidth: 260).frame(height: model.previewEnabled ? 150 : nil)
 
@@ -155,7 +155,7 @@ struct ComputerFilesView: View {
                     Divider()
                     Button("Rename…") { name = model.selected?.name ?? ""; naming = "Rename" }.disabled(model.selected == nil || model.busy)
                     Button("Duplicate") { model.duplicateSelected() }.disabled(model.selected?.regular != true || model.busy)
-                    Button("Delete…", role: .destructive) { deleting = true }.disabled(model.selected == nil || model.busy)
+                    Button("Delete", role: .destructive) { deleting = true }.disabled(model.selected == nil || model.busy)
                     Divider()
                     Button("Go to Folder…") { path = model.folder; enteringPath = true }
                     Button("Enclosing Folder") { model.navigate(model.parent) }.disabled(model.folder == "/")

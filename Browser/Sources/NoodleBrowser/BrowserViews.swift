@@ -49,7 +49,7 @@ struct BrowserLibraryView: View {
                                     do { try runtime.setPaused(!profile.paused, browserID: profile.id) } catch { runtime.failure = error.localizedDescription }
                                 }
                                 Divider()
-                                Button("Delete Browser…", systemImage: "trash", role: .destructive) { deleting = profile }
+                                Button("Delete Browser", systemImage: "trash", role: .destructive) { deleting = profile }
                             }
                     }
                 }

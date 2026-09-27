@@ -63,10 +63,10 @@ struct NoodleComputerApp: App {
     let action = openWindow
     let _ = delegate.openLibrary = { action(id: "library") }
     CommandGroup(replacing: .newItem) {
-      Button("New Container…") { NotificationCenter.default.post(name: .newComputer, object: nil) }
+      Button("New Container") { NotificationCenter.default.post(name: .newComputer, object: nil) }
         .keyboardShortcut("n")
-      Button("New from Container Image…") { NotificationCenter.default.post(name: .newCustomComputer, object: nil) }
-      Button("New Local Mac…") { NotificationCenter.default.post(name: .newLocalMac, object: nil) }
+      Button("New from Container Image") { NotificationCenter.default.post(name: .newCustomComputer, object: nil) }
+      Button("New Local Mac") { NotificationCenter.default.post(name: .newLocalMac, object: nil) }
     }
   }
 }
@@ -413,8 +413,8 @@ struct ComputerLibraryView: View {
     Menu {
       Button("New Container", systemImage: "desktopcomputer") { showingNew = true }
         .keyboardShortcut("n", modifiers: .command)
-      Button("New from Container Image…", systemImage: "shippingbox") { showingCustom = true }
-      Button("New Local Mac…", systemImage: "person.crop.rectangle") { showingLocalMac = true }
+      Button("New from Container Image", systemImage: "shippingbox") { showingCustom = true }
+      Button("New Local Mac", systemImage: "person.crop.rectangle") { showingLocalMac = true }
     } label: {
       Label("Create", systemImage: "plus")
     }.help("Create Computer")
@@ -556,7 +556,7 @@ struct ComputerRow: View {
         else { Task { await store.start(session) } }
       }.disabled(session.phase.busy)
       Divider()
-      Button("Delete Computer…", systemImage: "trash", role: .destructive) { deleting = true }
+      Button("Delete Computer", systemImage: "trash", role: .destructive) { deleting = true }
         .disabled(!session.canDelete)
     }
     .computerImageUpdateConfirmation(store: store, session: session, isPresented: $updating)

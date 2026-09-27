@@ -46,7 +46,7 @@ struct BrowserRecordsView: View {
                 switch kind {
                 case .bookmarks:
                     // Prefilled from the current page when it can be bookmarked; a blank tab starts an empty draft.
-                    Button("Add") {
+                    Button("Add…") {
                         let page = (try? BrowserRequest.navigationURL(currentURL)) != nil
                         draft = .init(bookmark: nil, title: page ? currentTitle : "", url: page ? currentURL : "")
                     }.help("Add Bookmark")
@@ -70,7 +70,7 @@ struct BrowserRecordsView: View {
                             row(title: entry.title, subtitle: entry.url, detail: visitDate(entry.visitedAt)) { open(entry.url, true) }
                                 .contextMenu {
                                     Button("Open in New Tab") { open(entry.url, true) }
-                                    Button("Delete…", role: .destructive) {
+                                    Button("Delete", role: .destructive) {
                                         deleting = .init(title: "Delete this history entry?", message: entry.url) { try library.removeHistory(browserID, visit: entry.id) }
                                     }
                                 }
@@ -81,7 +81,7 @@ struct BrowserRecordsView: View {
                                 .contextMenu {
                                     Button("Open in New Tab") { open(bookmark.url, true) }
                                     Button("Edit…") { draft = .init(bookmark: bookmark, title: bookmark.title, url: bookmark.url) }
-                                    Button("Delete…", role: .destructive) {
+                                    Button("Delete", role: .destructive) {
                                         deleting = .init(title: "Delete “\(bookmark.title)”?", message: bookmark.url) { try library.removeBookmark(browserID, bookmark: bookmark.id) }
                                     }
                                 }
@@ -92,7 +92,7 @@ struct BrowserRecordsView: View {
                                 action: download.state == "complete" ? { save(download) } : nil)
                                 .contextMenu {
                                     if download.state == "complete" { Button("Save…") { save(download) } }
-                                    Button("Delete…", role: .destructive) {
+                                    Button("Delete", role: .destructive) {
                                         deleting = .init(title: "Delete “\(download.filename)”?", message: "This also deletes the file stored in this browser.") {
                                             try runtime?.removeDownload(browserID: browserID, downloadID: download.id)
                                         }

@@ -56,7 +56,7 @@ struct CompanionAssignmentPicker<Prompt: View, LibraryButton: View, Notice: View
                         search: $search, createPrompt: createPrompt, openLibraryButton: openLibraryButton,
                         newTitle: onNew == nil ? nil : "New \(noun.capitalized)…",
                         onNew: { wantsNew = true; showingAdd = false },
-                        deleteTitle: onDelete == nil ? nil : "Delete \(noun.capitalized)…",
+                        deleteTitle: onDelete == nil ? nil : "Delete \(noun.capitalized)",
                         onDelete: { deleting = $0; showingAdd = false }, onDone: { showingAdd = false })
                         .onDisappear {
                             // Wait for the popover to close before presenting a sheet on the bot editor.
@@ -96,7 +96,7 @@ struct CompanionAssignmentPicker<Prompt: View, LibraryButton: View, Notice: View
                             }.frame(maxWidth: .infinity, alignment: .top)
                                 .help(item.tooltip)
                                 .contextMenu {
-                                    if onDelete != nil { Button("Delete \(noun.capitalized)…", role: .destructive) { deleting = item } }
+                                    if onDelete != nil { Button("Delete \(noun.capitalized)", role: .destructive) { deleting = item } }
                                 }
                         }
                     }.padding(12)
