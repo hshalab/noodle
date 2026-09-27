@@ -21,6 +21,8 @@ or window that has to be filled in.
 
 - `Rename…`, `Pair…`, `Edit…`, `Settings…`: yes, they ask for more.
 - `Check for Updates`: no, it just checks; any choices come after.
+- `New Bot`, `New Container`: no, as in New Window or New Message, even when
+  the new item opens a form.
 - `Remove`, `Delete Plan`, `Quit`: no, even though they show an "Are you sure?"
   alert. A confirmation is not more input.
 - `Invite`: no, its sheet only shows a code and link to share.
