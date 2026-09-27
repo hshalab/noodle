@@ -112,6 +112,7 @@ struct HubUsersSettingsView: View {
                     ForEach(access.plans) { Text($0.name).tag($0.id) }
                 }
                 .pickerStyle(.menu)
+                Divider()
                 Toggle("Can Pair Devices", isOn: Binding(
                     get: { user.canPairDevices },
                     set: { access.setCanPairDevices($0, for: user) }
