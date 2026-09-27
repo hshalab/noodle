@@ -5,6 +5,7 @@ import HubLink
 import NoodleComputerTools
 import NoodleCore
 import NoodleHubClient
+import NoodleRuntimeSettings
 import Observation
 import SwiftUI
 
@@ -165,20 +166,6 @@ import SwiftUI
         }
         try await linkOpener(link, application)
     }
-    func openDownload() async throws {
-        guard ComputerBuildIdentity.current != .development else {
-            throw ComputerBridgeError("Build Noodle Computer Dev with scripts/build-and-launch.sh Computer to use computers in Noodle Dev.")
-        }
-        // Do not send users to a broken download before the first public release.
-        var request = URLRequest(url: ComputerDistribution.releaseAPI)
-        request.timeoutInterval = 15
-        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        let (_, response) = try await URLSession.shared.data(for: request)
-        guard let response = response as? HTTPURLResponse else { throw ComputerBridgeError("Could not check Computer downloads. Try again later.") }
-        try ComputerDistribution.validateDownloadStatus(response.statusCode)
-        try Task.checkCancellation()
-        guard NSWorkspace.shared.open(ComputerDistribution.downloadPage) else { throw ComputerBridgeError("Could not open the Computer download page.") }
-    }
     func refresh(launchIfNeeded: Bool = false) async {
         let id = UUID(); refreshID = id
         do {
@@ -305,14 +292,7 @@ struct ComputerAssignmentPicker: View {
                 .font(.caption).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
             if controller.installed { openLibraryButton }
             else {
-                Button(openingLibrary ? "Checking…" : "Get Noodle Computer") {
-                    openingLibrary = true
-                    Task {
-                        defer { openingLibrary = false }
-                        do { try await controller.openDownload() }
-                        catch { openError = error.localizedDescription }
-                    }
-                }.disabled(openingLibrary)
+                Button("Get Noodle Computer") { NSWorkspace.shared.open(CompanionApp.computer.installURL) }
                 Text("Apple silicon · macOS 26 or later").font(.caption2)
             }
         }

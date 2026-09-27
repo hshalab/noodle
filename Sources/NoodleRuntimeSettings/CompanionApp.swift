@@ -59,6 +59,25 @@ public enum CompanionApp: String, CaseIterable, Identifiable {
         }
     }
 
+    /// The latest release's installer, the same one README.md links.
+    var downloadURL: URL {
+        switch self {
+        case .browser: URL(string: "https://github.com/pdparchitect/noodle/releases/download/browser-latest/Noodle-Browser-arm64.dmg")!
+        case .computer: URL(string: "https://github.com/pdparchitect/noodle/releases/download/computer-latest/Noodle-Computer-arm64.dmg")!
+        case .applet: URL(string: "https://github.com/pdparchitect/noodle/releases/download/applet-latest/Noodle-Applet-arm64.dmg")!
+        }
+    }
+
+    /// Development builds pair with development companions, which are built rather than downloaded.
+    public var installURL: URL {
+        let released = switch self {
+        case .browser: BrowserBuildIdentity.current == .production
+        case .computer: ComputerBuildIdentity.current == .production
+        case .applet: AppletBuildIdentity.current == .production
+        }
+        return released ? downloadURL : documentationURL
+    }
+
     /// The URL that opens a companion which is behind and has it check for updates.
     func updateCheckURL(for installation: CompanionAppInstallation?, update: CompanionRelease?) -> URL? {
         guard update != nil, installation?.acceptsUpdateCheck == true else { return nil }

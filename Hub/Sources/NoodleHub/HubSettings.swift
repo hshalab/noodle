@@ -53,8 +53,6 @@ enum HubSettingsTab: Hashable {
         configuration.activates = true
         _ = try await NSWorkspace.shared.openApplication(at: installation.applicationURL, configuration: configuration)
     }
-
-    func openComputerDownload() async throws { NSWorkspace.shared.open(CompanionApp.computer.documentationURL) }
 }
 
 struct HubSettingsView: View {

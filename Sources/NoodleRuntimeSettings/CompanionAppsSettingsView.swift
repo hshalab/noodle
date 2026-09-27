@@ -100,7 +100,7 @@ public struct CompanionAppsSettingsView: View {
                     .buttonStyle(.link)
                     .disabled(opening != nil)
                     .accessibilityLabel(installation == nil ? "Install \(app.name)" : updates ? "Update \(app.name)" : "Open \(app.name)")
-                    .help(installation == nil ? "Open the \(app.name) download page"
+                    .help(installation == nil ? "Download \(app.name)"
                           : updates ? "Open \(app.name) and check for updates" : "Open \(app.name)")
                 }
             }
@@ -130,17 +130,8 @@ public struct CompanionAppsSettingsView: View {
                                                           configuration: configuration)
                     return
                 }
-                switch app {
-                case .browser:
-                    if installed { try await store.openCompanionLibrary(.browser) }
-                    else { NSWorkspace.shared.open(app.documentationURL) }
-                case .computer:
-                    if installed { try await store.openCompanionLibrary(.computer) }
-                    else { try await store.openComputerDownload() }
-                case .applet:
-                    if installed { try await store.openCompanionLibrary(.applet) }
-                    else { NSWorkspace.shared.open(app.documentationURL) }
-                }
+                if installed { try await store.openCompanionLibrary(app) }
+                else { NSWorkspace.shared.open(app.installURL) }
             } catch {
                 failedApp = app
                 actionError = error.localizedDescription

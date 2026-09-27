@@ -243,6 +243,4 @@ extension NoodleStore: BotSettingsHost {
         case .applet: try await applets.openLibrary()
         }
     }
-
-    func openComputerDownload() async throws { try await computers.openDownload() }
 }

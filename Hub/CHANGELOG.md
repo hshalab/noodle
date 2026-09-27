@@ -4,7 +4,7 @@
 
 ### Added
 
-- Settings has a Companions tab to install, open and update Noodle Computer, Browser and Applet on the Hub's Mac. Its badge shows how many have an update.
+- Settings has a Companions tab to open and update Noodle Computer, Browser and Applet on the Hub's Mac, or download their latest installers. Its badge shows how many have an update.
 - A plan can limit which models each harness it lends may use: the link under the harness opens a list to choose them, or All models. Bots on a harness with limited models must use one of them.
 - The first launch opens on a welcome, as Noodle's does, that ends in pairing your first device.
 - Pair… in the menu bar menu opens a window to pair a new device, under the Noodle wordmark as on the welcome: choose one of the Hub's users or name a new one, then scan its QR code or share its link.

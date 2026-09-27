@@ -21,6 +21,7 @@ All notable changes to Noodle are documented here, following
 - Bots can no longer pop a noodlet window up on your screen. Their noodlets run out of sight until you open one yourself.
 - The Usage window keeps its bot, group, measure and period choices in the toolbar, with the period's dates under the title, totals in one strip above the chart and the breakdown in a table below it.
 - Buttons that only open System Settings or a web page no longer end in “…”; “…” is kept for commands that ask for something before they act.
+- Install in Settings > Companions, and Get Noodle Computer, download the companion's latest installer instead of opening its project page.
 
 ### Fixed
 

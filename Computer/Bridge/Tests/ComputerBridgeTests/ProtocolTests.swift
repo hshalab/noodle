@@ -128,17 +128,8 @@ final class ProtocolTests: XCTestCase {
         XCTAssertNil(decoded.view)
         XCTAssertEqual(decoded.computer, computer)
     }
-    func testComputerDownloadsHaveIndependentChannelAndFailClosed() throws {
+    func testComputerUpdatesHaveIndependentChannel() {
         XCTAssertEqual(ComputerDistribution.feed.path, "/pdparchitect/noodle/releases/download/computer-latest/appcast.xml")
-        XCTAssertEqual(ComputerDistribution.downloadPage.path, "/pdparchitect/noodle/releases/tag/computer-latest")
-        XCTAssertEqual(ComputerDistribution.releaseAPI.host, "api.github.com")
-        XCTAssertNoThrow(try ComputerDistribution.validateDownloadStatus(200))
-        XCTAssertThrowsError(try ComputerDistribution.validateDownloadStatus(404)) { error in
-            XCTAssertTrue(error.localizedDescription.contains("does not have a public download yet"))
-        }
-        for status in [301, 401, 403, 429, 500, 503] {
-            XCTAssertThrowsError(try ComputerDistribution.validateDownloadStatus(status))
-        }
     }
     func testGuestDisplayOriginCannotEscape() throws {
         let display = ComputerWebConnection(url: URL(string: "http://192.168.64.2:8080/")!, customWeb: true)

@@ -21,6 +21,4 @@ import SwiftUI
     func refreshCompanionSkills()
     /// Opens an installed companion's library.
     func openCompanionLibrary(_ app: CompanionApp) async throws
-    /// Opens Noodle Computer's download.
-    func openComputerDownload() async throws
 }

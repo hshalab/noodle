@@ -76,6 +76,15 @@ import XCTest
         }
     }
 
+    func testEveryCompanionDownloadsTheLatestDMGTheREADMELinks() throws {
+        let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let readme = try String(contentsOf: repository.appendingPathComponent("README.md"), encoding: .utf8)
+        for app in CompanionApp.allCases {
+            XCTAssertEqual(app.downloadURL.pathExtension, "dmg", app.rawValue)
+            XCTAssertTrue(readme.contains("(\(app.downloadURL.absoluteString))"), app.rawValue)
+        }
+    }
+
     func testNewerFeedReleaseIsReportedAndCurrentOrOlderIsNot() async throws {
         let data = appcast(item("1.9.0"), item("1.10.0", display: "1.10"))
         let checker = CompanionUpdateChecker(fetch: { _ in data }, now: { self.now })
