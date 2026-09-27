@@ -58,6 +58,9 @@ conversations, skills and settings for that harness are not copied.
 
 - The copies are the same account. Identity, quotas, billing, and revocation are
   shared, and the provider may ask you to sign in again.
+- A bot can read its copy, and anything it can read it can send elsewhere. A bot
+  that follows misleading instructions can hand your sign-in to someone else,
+  who can then use your account until you sign out of it at the provider.
 - A backup or copy of a bot's folder includes its sign-in. Treat it like a
   password.
 - A Codex, Grok Build, Muse Code, or Antigravity bot can use a
@@ -152,6 +155,28 @@ that bot's access. A noodlet can read only its own files and saved data. It
 cannot read your files, another noodlet, or the Keychain; a file reaches it only
 when you pick it in a dialog. Removing a bot from a conversation stops its
 requests to shared noodlets, though one already running may still finish.
+
+## Noodle Hub
+
+A [Noodle Hub](../Hub/README.md) runs bots for other people with the sign-ins its
+plans lend. Its bots are restricted bots, with the same limits and the same gaps.
+
+- **Lending a sign-in shares the account.** Every bot on a harness gets its own
+  copy of the sign-in, and its owner can have the bot read that copy and send it
+  to them. Anyone you give a plan with your own sign-in can end up using your
+  account directly, outside the Hub, until you sign out of it at the provider.
+  Lend only to people you would trust with that account, or lend a profile
+  signed in to a separate account.
+- **Hub bots can reach your network.** Like any bot, a Hub bot can connect to
+  the internet, to other devices on your network, and to services on the Hub's
+  Mac that accept network connections.
+- **An invitation is a key.** Whoever opens an invitation link or scans its QR
+  code first joins as the person it was made for, from anywhere the Hub can be
+  reached. Send it only to that person, and remove a device you do not
+  recognise in Users.
+- **Pairing with your own Mac is like sitting at it.** When this Mac is your
+  Hub, a device paired with it can use every bot, browser, computer and noodlet
+  on it. Remove a lost device in **Settings → Hub**.
 
 ## Files, recording, and computers
 
