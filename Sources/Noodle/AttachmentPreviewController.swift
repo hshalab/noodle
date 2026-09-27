@@ -81,8 +81,10 @@ private struct AttachmentPreviewMount: NSViewControllerRepresentable {
     private weak var hostWindow: NSWindow?
     private weak var previewResponder: NSResponder?
     private weak var hostResponder: NSResponder?
-    private var item: Item?
-    private var source: ConversationAttachment?
+    /// The files of one message, paged through in Quick Look, and the one opened.
+    private var items: [Item] = []
+    private var sources: [ConversationAttachment] = []
+    private var startIndex = 0
     private var save: ((AttachmentAnnotation, Data, ConversationAttachment) throws -> Void)?
     private(set) var operation: Task<Void, Never>?
     var reportError: ((Error) -> Void)?
@@ -114,7 +116,14 @@ private struct AttachmentPreviewMount: NSViewControllerRepresentable {
     private var lastPointerInPreview: NSPoint?
     var busy = false { didSet { updateCommands() } }
 
-    var currentURL: URL? { item?.previewItemURL }
+    /// Follows Quick Look's own paging once it shows our items.
+    private var index: Int {
+        if let panel, ownsPanel, items.indices.contains(panel.currentPreviewItemIndex) { return panel.currentPreviewItemIndex }
+        return startIndex
+    }
+    private var source: ConversationAttachment? { attachment(at: index) }
+    var currentURL: URL? { items.indices.contains(index) ? items[index].previewItemURL : nil }
+    func attachment(at index: Int) -> ConversationAttachment? { sources.indices.contains(index) ? sources[index] : nil }
     var canAnnotate: Bool {
         source != nil && panel?.isVisible == true && NSApp.keyWindow === panel && ownsPanel &&
             !busy && commentPanel == nil && closingPopover == nil && overlay == nil && NSApp.modalWindow == nil && panel?.attachedSheet == nil
@@ -144,7 +153,9 @@ private struct AttachmentPreviewMount: NSViewControllerRepresentable {
         if isViewLoaded, let window = view.window { attach(to: window) }
         return hostWindow
     }
+    /// `gallery` holds the other files of the same message, including this one, to page through.
     func show(_ attachment: ConversationAttachment, url: URL,
+              gallery: [(ConversationAttachment, URL)] = [],
               edit: ((ConversationAttachment, String) throws -> ConversationAttachment)? = nil,
               canEdit: @escaping (ConversationAttachment) -> Bool = { _ in false },
               save: @escaping (AttachmentAnnotation, Data, ConversationAttachment) throws -> Void) {
@@ -171,12 +182,10 @@ private struct AttachmentPreviewMount: NSViewControllerRepresentable {
         // QL searches the responder chain during key/main-window changes. Its
         // requested item must already exist before that search starts.
         Self.active = self
-        source = attachment; self.save = save
-        // Attachment files are immutable. Keep the same item on repeated clicks
-        // so an in-flight extension preview is not discarded and loaded again.
-        if item?.previewItemURL != url || item?.previewItemTitle != attachment.originalFilename {
-            item = Item(url: url, title: attachment.originalFilename)
-        }
+        self.save = save
+        let entries = gallery.filter { $0.0.id == attachment.id || FileManager.default.isReadableFile(atPath: $0.1.path) }
+        if let start = entries.firstIndex(where: { $0.0.id == attachment.id }) { stage(entries, at: start) }
+        else { stage([(attachment, url)], at: 0) }
         panel = preview
         if !reusingPreview {
             if hostWindow.firstResponder !== view { hostResponder = hostWindow.firstResponder }
@@ -208,6 +217,7 @@ private struct AttachmentPreviewMount: NSViewControllerRepresentable {
         // starts another extension request while Quick Look is still activating
         // the first display bundle, which can abort during its teardown.
         preview.reloadData()
+        preview.currentPreviewItemIndex = startIndex
         preview.title = attachment.originalFilename
         openedAt = Date()
         preview.makeKeyAndOrderFront(nil)
@@ -216,6 +226,16 @@ private struct AttachmentPreviewMount: NSViewControllerRepresentable {
                 handler: eventMonitorHandler())
         }
         updateCommands()
+    }
+    func stage(_ entries: [(ConversationAttachment, URL)], at index: Int) {
+        // Attachment files are immutable. Keep the same items on repeated clicks
+        // so an in-flight extension preview is not discarded and loaded again.
+        let loaded = items
+        items = entries.map { source, url in
+            loaded.first { $0.previewItemURL == url && $0.previewItemTitle == source.originalFilename }
+                ?? Item(url: url, title: source.originalFilename)
+        }
+        sources = entries.map(\.0); startIndex = index
     }
     /// Use the shared editor with an in-memory conversation source. Nothing is
     /// persisted until Save, and this session never acquires Quick Look control.
@@ -254,7 +274,7 @@ private struct AttachmentPreviewMount: NSViewControllerRepresentable {
         // This also runs inside the native close notification. Do not order
         // out, show, or reconfigure QL here: its own close is already underway.
         // Native endPreviewPanelControl is responsible for releasing bindings.
-        item = nil; source = nil; save = nil; conversationWindow = nil
+        items = []; sources = []; startIndex = 0; save = nil; conversationWindow = nil
         Self.conversationEditors.remove(self)
         lastPointerInPreview = nil
         if hostWindow?.firstResponder === view { hostWindow?.makeFirstResponder(hostResponder) }
@@ -264,7 +284,7 @@ private struct AttachmentPreviewMount: NSViewControllerRepresentable {
         if Self.active === self { Self.active = nil }
         updateCommands()
     }
-    override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool { item != nil }
+    override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool { !items.isEmpty }
     override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) {
         trace("native control acquired")
         configurePreviewPanel(panel)
@@ -289,8 +309,8 @@ private struct AttachmentPreviewMount: NSViewControllerRepresentable {
         }
         updateCommands()
     }
-    func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int { item == nil ? 0 : 1 }
-    func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> QLPreviewItem { item! }
+    func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int { items.count }
+    func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> QLPreviewItem { items[index] }
     func previewPanel(_ panel: QLPreviewPanel!, handle event: NSEvent!) -> Bool { false }
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         if sender === panel { previewWillStartClosing() }
@@ -352,7 +372,7 @@ private struct AttachmentPreviewMount: NSViewControllerRepresentable {
         if event.type == .keyUp, event.keyCode == 53 {
             let consumed = annotationEscapeDown
             annotationEscapeDown = false
-            if consumed, conversationWindow == nil, item == nil, !hasPendingAnnotation, let monitor {
+            if consumed, conversationWindow == nil, items.isEmpty, !hasPendingAnnotation, let monitor {
                 NSEvent.removeMonitor(monitor); self.monitor = nil
             }
             return consumed ? nil : event
@@ -463,8 +483,9 @@ private struct AttachmentPreviewMount: NSViewControllerRepresentable {
             return
         }
         let sent = NSApp.sendAction(NSSelectorFromString("copy:"), to: nil, from: self)
+        let expected = currentURL
         prepareAnnotationContent(source: source, isCurrent: { [weak self] in
-            self?.ownsPanel == true && panel.isVisible && NSApp.keyWindow === panel
+            self?.ownsPanel == true && panel.isVisible && NSApp.keyWindow === panel && self?.currentURL == expected
         }, load: { current in
             var copied: String?
             if sent {
@@ -501,11 +522,11 @@ private struct AttachmentPreviewMount: NSViewControllerRepresentable {
     @objc func startRegion() {
         guard canAnnotate, let panel, let source else { return }
         prepareAnnotation()
-        let openedAt = openedAt
+        let openedAt = openedAt, expected = currentURL
         prepareAnnotationContent(source: source, isCurrent: { [weak self] in
             guard let self else { return false }
             return panel.isVisible && NSApp.keyWindow === panel && self.ownsPanel &&
-                panel.currentPreviewItem?.previewItemURL == self.currentURL
+                panel.currentPreviewItem?.previewItemURL == expected && self.currentURL == expected
         }, load: { current in
             // Capture only our process. QL has no public ready notification, so
             // wait through its crossfade and retry if its frame changes in flight.
@@ -658,7 +679,7 @@ private struct AttachmentPreviewMount: NSViewControllerRepresentable {
 
     private func trace(_ event: String) {
         // Deliberately omit filenames, selected text and comments.
-        lifecycleLog.info("\(event, privacy: .public); visible=\(self.panel?.isVisible == true) key=\(self.panel?.isKeyWindow == true) item=\(self.item != nil) annotation=\(self.pending != nil || self.closingPopover != nil)")
+        lifecycleLog.info("\(event, privacy: .public); visible=\(self.panel?.isVisible == true) key=\(self.panel?.isKeyWindow == true) item=\(!self.items.isEmpty) annotation=\(self.pending != nil || self.closingPopover != nil)")
     }
 }
 

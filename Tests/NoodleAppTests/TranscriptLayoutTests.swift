@@ -473,7 +473,7 @@ private struct ReactionLayoutFixture: View {
     var body: some View {
         if let message = store.messages(for: conversation).first(where: { $0.id == messageID }) {
             MessageBubble(message: message, hasConversationBackground: false,
-                selectedAttachmentID: $selectedAttachmentID, previewAttachment: { _ in }, showAgentProfile: nil)
+                selectedAttachmentID: $selectedAttachmentID, previewAttachment: { _, _ in }, showAgentProfile: nil)
                 .environment(store)
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { model.height = $0 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

@@ -181,7 +181,8 @@ struct MessageBubble: View {
     let message: ChatMessage
     let hasConversationBackground: Bool
     @Binding var selectedAttachmentID: UUID?
-    let previewAttachment: (ConversationAttachment) -> Void
+    /// Opens an attachment together with the others in its message.
+    let previewAttachment: (ConversationAttachment, [ConversationAttachment]) -> Void
     let showAgentProfile: ((AgentRecord) -> Void)?
 
     private var isUser: Bool {
@@ -318,7 +319,7 @@ struct MessageBubble: View {
             shouldLoad: isVisible,
             isSelected: selectedAttachmentID == attachment.id,
             select: { selectedAttachmentID = attachment.id },
-            preview: { previewAttachment(attachment) }
+            preview: { previewAttachment(attachment, store.attachments(for: message)) }
         )
         .onDrag { store.attachmentDragProvider(attachment) }
         .overlay { reactionContextMenu(attachment: attachment) }
@@ -373,7 +374,7 @@ struct MessageBubble: View {
                     NSPasteboard.general.setString(message.body, forType: .string)
                 }
             },
-            preview: attachment.map { item in { previewAttachment(item) } },
+            preview: attachment.map { item in { previewAttachment(item, store.attachments(for: message)) } },
             reveal: attachment.map { item in { store.revealAttachment(item) } },
             backgroundImageURL: attachment.map { store.attachmentFileURL($0) },
             useAsBackground: attachment.map { item in

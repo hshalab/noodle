@@ -203,7 +203,7 @@ struct ChatView: View {
     private var composer: some View {
         VStack(alignment: .leading, spacing: 7) {
             PendingAttachmentStrip(conversationID: conversation.id,
-                leadingInset: composerControlHeight + composerControlSpacing, preview: showPreview)
+                leadingInset: composerControlHeight + composerControlSpacing, preview: { showPreview($0) })
 
             composerControls
         }
@@ -285,7 +285,7 @@ struct ChatView: View {
             controlHeight: composerControlHeight, sendControlWidth: composerSendControlWidth)
     }
 
-    private func showPreview(_ attachment: ConversationAttachment) {
+    private func showPreview(_ attachment: ConversationAttachment, among group: [ConversationAttachment] = []) {
         attachmentOpenTask?.cancel()
         selectedAttachmentID = attachment.id
         if attachment.opensInCompanion {
@@ -301,7 +301,9 @@ struct ChatView: View {
             guard let store else { throw WorkspaceError.missingConversation(attachment.conversationID) }
             return try store.reviseAnnotationComment(attachment, comment: comment)
         } : nil
-        attachmentPreview.show(attachment, url: store.attachmentFileURL(attachment), edit: edit,
+        let gallery = ConversationAttachment.previewGallery(opening: attachment, among: group).items
+        attachmentPreview.show(attachment, url: store.attachmentFileURL(attachment),
+            gallery: gallery.map { ($0, store.attachmentFileURL($0)) }, edit: edit,
             canEdit: { [weak store] in store?.canEditAnnotation($0) == true }) { [weak store] note, content, source in
             guard let store else { throw WorkspaceError.missingConversation(source.conversationID) }
             try store.saveAnnotation(note, content: content, source: source)
@@ -448,7 +450,7 @@ private struct ConversationTranscript: View {
     let conversation: BotConversation
     let initialViewport: TranscriptViewport
     @Binding var selectedAttachmentID: UUID?
-    let previewAttachment: (ConversationAttachment) -> Void
+    let previewAttachment: (ConversationAttachment, [ConversationAttachment]) -> Void
     let bottomOverlayHeight: CGFloat
     let showAgentProfile: (AgentRecord) -> Void
     let saveViewport: (TranscriptViewport) -> Void

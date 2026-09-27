@@ -187,7 +187,7 @@ final class AttachmentLayoutTests: XCTestCase {
             for mode in ChatAttachmentLayout.allCases {
                 f.runtime.defaults.set(mode.rawValue, forKey: ChatAttachmentLayout.defaultsKey)
                 let bubble = MessageBubble(message: message, hasConversationBackground: false,
-                    selectedAttachmentID: .constant(nil), previewAttachment: { _ in }, showAgentProfile: nil)
+                    selectedAttachmentID: .constant(nil), previewAttachment: { _, _ in }, showAgentProfile: nil)
                     .environment(f.store).defaultAppStorage(f.runtime.defaults)
                 let renderer = ImageRenderer(content: bubble)
                 renderer.proposedSize = ProposedViewSize(width: 1050, height: nil)

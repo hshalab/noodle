@@ -423,4 +423,10 @@ extension LinkAttachment {
     }
 
     var isLive: Bool { liveKind != nil }
+
+    /// The files of a message you swipe through once one of them opens. Links and voice messages open on their own.
+    static func previewGallery(opening attachment: LinkAttachment, among group: [LinkAttachment]) -> [LinkAttachment] {
+        let joins = { (file: LinkAttachment) in file.url == nil && file.voice == nil }
+        return joins(attachment) ? group.filter(joins) : [attachment]
+    }
 }

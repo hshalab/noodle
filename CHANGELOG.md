@@ -6,6 +6,10 @@ All notable changes to Noodle are documented here, following
 
 ## [Unreleased]
 
+### Changed
+
+- Opening a picture or file from a message lets you page through the message's other files in the same preview, with its arrows or the arrow keys.
+
 ## [0.28.2] - 2026-09-27
 
 ### Changed

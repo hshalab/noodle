@@ -99,7 +99,7 @@ import NoodleCore
         for author in [MessageAuthor.user, .agent(f.a.id)] {
             let message = ChatMessage(conversationID: f.directA.id, author: author, body: text, delivery: .delivered)
             let bubble = host(MessageBubble(message: message, hasConversationBackground: false,
-                selectedAttachmentID: .constant(nil), previewAttachment: { _ in }, showAgentProfile: nil)
+                selectedAttachmentID: .constant(nil), previewAttachment: { _, _ in }, showAgentProfile: nil)
                 .padding().environment(f.store))
             let window = try XCTUnwrap(bubble.window)
             window.appearance = NSAppearance(named: author == .user ? .aqua : .darkAqua)

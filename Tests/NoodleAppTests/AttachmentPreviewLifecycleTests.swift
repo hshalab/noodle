@@ -161,6 +161,36 @@ import XCTest
         XCTAssertNil(panel.dataSource); XCTAssertNil(panel.delegate)
     }
 
+    func testMessageFilesPreviewTogetherStartingAtTheOneOpened() {
+        let first = source("One.png"), voice = ConversationAttachment(conversationID: UUID(), originalFilename: "Voice.m4a",
+            storedFilename: "Voice.m4a", mediaType: "audio/mp4", byteCount: 7,
+            voice: VoiceMessage(transcript: nil, duration: 1, waveform: [], localeIdentifier: nil))
+        let link = ConversationAttachment(conversationID: UUID(), originalFilename: "Site.webloc", storedFilename: "Site.webloc",
+            mediaType: "application/x-webloc", byteCount: 7, url: URL(string: "https://example.com"))
+        let second = source("Two.pdf")
+        let gallery = ConversationAttachment.previewGallery(opening: second, among: [first, voice, link, second])
+        XCTAssertEqual(gallery.items.map(\.id), [first.id, second.id])
+        XCTAssertEqual(gallery.index, 1)
+        let alone = ConversationAttachment.previewGallery(opening: link, among: [first, link, second])
+        XCTAssertEqual(alone.items.map(\.id), [link.id]); XCTAssertEqual(alone.index, 0)
+    }
+
+    func testStagedFilesAreEachPreviewItemAndKeepTheirSource() {
+        let c = controller(), first = source("One.txt"), second = source("Two.txt")
+        let url = { (name: String) in URL(fileURLWithPath: "/tmp/\(name)") }
+        c.stage([(first, url("One.txt")), (second, url("Two.txt"))], at: 1)
+        XCTAssertEqual(c.numberOfPreviewItems(in: nil), 2)
+        XCTAssertEqual(c.previewPanel(nil, previewItemAt: 0).previewItemTitle, "One.txt")
+        XCTAssertEqual(c.previewPanel(nil, previewItemAt: 1).previewItemURL, url("Two.txt"))
+        XCTAssertEqual(c.currentURL, url("Two.txt"))
+        XCTAssertEqual(c.attachment(at: 0)?.id, first.id)
+        // Reopening from the same message keeps the loaded items.
+        let kept = c.previewPanel(nil, previewItemAt: 0)
+        c.stage([(first, url("One.txt")), (second, url("Two.txt"))], at: 0)
+        XCTAssertTrue(c.previewPanel(nil, previewItemAt: 0) === kept)
+        XCTAssertEqual(c.currentURL, url("One.txt"))
+    }
+
     func testNativeCloseAndRepeatedCleanupEndTheSessionOnce() {
         let host = window(); var ended = 0
         let session = PreviewWindowSession(window: host) { ended += 1 }

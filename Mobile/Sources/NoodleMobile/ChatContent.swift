@@ -12,16 +12,20 @@ extension EnvironmentValues {
     @Entry var watchLive: @MainActor (LinkAttachment) -> Void = { _ in }
 }
 
-/// One file in a message: a picture shown inline, anything else as a card. Tapping opens Quick Look.
+/// One file in a message: a picture shown inline, anything else as a card. Tapping opens Quick Look,
+/// which swipes through the other files of the same message.
 struct AttachmentView: View {
     let chats: HubChats
     let agent: LinkBot
     let attachment: LinkAttachment
+    /// Every attachment of the message this one belongs to.
+    var group: [LinkAttachment] = []
     @Environment(\.displayScale) private var displayScale
     @State private var url: URL?
     @State private var image: UIImage?
     @State private var failed = false
     @State private var previewing: URL?
+    @State private var gallery: [URL] = []
     @State private var livePicture: Data?
     @Environment(\.watchLive) private var watchLive
 
@@ -39,12 +43,12 @@ struct AttachmentView: View {
     }
 
     private var file: some View {
-        Button { previewing = url } label: {
+        Button(action: open) {
             if isImage { picture } else { card }
         }
         .buttonStyle(.plain)
         .disabled(url == nil)
-        .quickLookPreview($previewing)
+        .quickLookPreview($previewing, in: gallery)
         .contextMenu {
             if let url { ShareLink(item: url) }
             // As on the Mac: a picture in the conversation can become its backdrop.
@@ -159,6 +163,15 @@ struct AttachmentView: View {
         } else {
             ProgressView()
         }
+    }
+
+    /// Files still downloading are left out rather than holding the preview back.
+    private func open() {
+        guard let url else { return }
+        gallery = LinkAttachment.previewGallery(opening: attachment, among: group).compactMap {
+            $0.id == attachment.id ? url : chats.downloadedFile(for: $0)
+        }
+        previewing = url
     }
 
     private func load() async {

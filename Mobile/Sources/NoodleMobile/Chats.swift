@@ -332,6 +332,12 @@ import SwiftUI
         return url
     }
 
+    /// The file on this phone if it is already downloaded.
+    func downloadedFile(for attachment: LinkAttachment) -> URL? {
+        let url = fileURL(for: attachment)
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
     /// Files live under their ID, keeping their name so Quick Look and sharing show it.
     private func fileURL(for attachment: LinkAttachment) -> URL {
         let name = URL(fileURLWithPath: attachment.filename).lastPathComponent
@@ -1017,7 +1023,7 @@ private struct Bubble: View {
 
     @ViewBuilder private func content(foreground: Color, background: Color) -> some View {
         ForEach(message.attachments) { attachment in
-            AttachmentView(chats: chats, agent: agent, attachment: attachment)
+            AttachmentView(chats: chats, agent: agent, attachment: attachment, group: message.attachments)
         }
         if showsText {
             text.foregroundStyle(foreground)

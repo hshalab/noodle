@@ -6,6 +6,11 @@
 
 - Record a voice message and tap the cross to discard it, including just beside it.
 - Open a shared browser, computer or noodlet and rotate the phone both ways: it stays open.
+- Open a picture in a message with several files and swipe to the others.
+
+### Changed
+
+- Opening a picture or file from a message lets you swipe through the message's other files.
 
 ### Fixed
 
