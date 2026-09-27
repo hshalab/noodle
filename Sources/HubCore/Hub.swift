@@ -51,7 +51,7 @@ import NoodleRuntime
                                call: browser ?? BrowserToolProvider.liveTransport(), surface: surfaces.browser)
         bots = HubBots(repository: repository, runtime: runtime, access: access, connections: connections, computers: computers, browsers: browsers,
                        applets: AppletController(repository: repository, connection: applet, surface: surfaces.applet),
-                       uploads: root.appendingPathComponent("Uploads", isDirectory: true))
+                       uploads: root.appendingPathComponent("Uploads", isDirectory: true), readMarks: root.appendingPathComponent("read.json"))
         link = HubLinkService(hubName: Host.current().localizedName ?? "Noodle Hub",
                               directory: root.appendingPathComponent("Link", isDirectory: true),
                               access: access, profiles: harnessProfiles, bots: bots, connections: connections,

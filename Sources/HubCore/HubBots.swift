@@ -10,6 +10,8 @@ import NoodleRuntime
 @MainActor public final class HubBots {
     /// Where an owner's devices are told that something changed.
     public var onChange: ((_ user: UUID, LinkEvent) -> Void)?
+    /// Runs when a conversation's owner read further, for whatever else shows it: on the owner's own Mac, Noodle.
+    public var onRead: ((_ conversationID: UUID, _ upTo: Date) -> Void)?
 
     private let repository: WorkspaceRepository
     private let runtime: AgentRuntimeCoordinator
@@ -36,11 +38,15 @@ import NoodleRuntime
     private var transcripts: [UUID: (size: Int, modified: Date, count: Int, reactions: Int)] = [:]
     /// What each bot was last reported doing.
     private var phases: [UUID: AgentRuntimePhase] = [:]
+    /// How far each conversation's owner has read it, so all their devices agree.
+    private let readMarksURL: URL
+    private lazy var readMarks: [UUID: Date] = (try? JSONDecoder().decode([UUID: Date].self, from: Data(contentsOf: readMarksURL))) ?? [:]
 
     public init(repository: WorkspaceRepository, runtime: AgentRuntimeCoordinator, access: HubAccess,
                 connections: HubConnections, computers: HubComputers, browsers: HubBrowsers,
-                applets: AppletController, uploads: URL) {
+                applets: AppletController, uploads: URL, readMarks: URL) {
         self.uploads = uploads
+        readMarksURL = readMarks
         self.repository = repository
         self.runtime = runtime
         self.access = access
@@ -373,7 +379,27 @@ import NoodleRuntime
         return linkMessage(message, files: try attachments(in: change.conversationID))
     }
 
+    /// Moves how far the owner has read a conversation on, never back, and tells their devices.
+    public func markRead(_ mark: LinkReadMark, for user: HubUser) throws {
+        _ = try ownedConversation(mark.conversationID, by: user)
+        guard let upTo = try repository.loadMessages(conversationID: mark.conversationID)
+            .first(where: { $0.id == mark.messageID })?.createdAt else {
+            throw LinkError("There is no such message.")
+        }
+        guard readMarks[mark.conversationID].map({ $0 < upTo }) ?? true else { return }
+        readMarks[mark.conversationID] = upTo
+        try saveReadMarks()
+        onChange?(user.id, .readChanged(conversationID: mark.conversationID, upTo: upTo))
+        onRead?(mark.conversationID, upTo)
+    }
+
+    private func saveReadMarks() throws {
+        try FileManager.default.createDirectory(at: readMarksURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try JSONEncoder().encode(readMarks).write(to: readMarksURL, options: .atomic)
+    }
+
     private func remove(_ agent: AgentRecord) throws {
+        let conversations = (try? repository.loadConversations().filter { $0.participantIDs.first == agent.id }.map(\.id)) ?? []
         if running { runtime.stop(agentID: agent.id, revokeAccess: false) }
         try repository.deleteAgent(agent)
         if running {
@@ -386,6 +412,10 @@ import NoodleRuntime
         browsers.forget(bot: agent.id)
         if running { applets.start(agents: (try? repository.loadAgents()) ?? []) }
         access.setOwner(nil, ofBot: agent.id)
+        if conversations.contains(where: { readMarks[$0] != nil }) {
+            conversations.forEach { readMarks[$0] = nil }
+            try? saveReadMarks()
+        }
     }
 
     /// Reads the user's current plan, not the one they were on when `user` was read.
@@ -467,7 +497,7 @@ import NoodleRuntime
             avatarColorIndex: agent.avatarColorIndex ?? agent.accentSeed, avatarImageData: agent.avatarImageData)
         draft.avatarImageDigest = agent.avatarImageData.map(LinkPicture.digest)
         return LinkBot(id: agent.id, conversationID: conversation.id, draft: draft, createdAt: agent.createdAt,
-                       phase: LinkBotPhase(rawValue: runtime.snapshot(for: agent.id).phase.rawValue))
+                       phase: LinkBotPhase(rawValue: runtime.snapshot(for: agent.id).phase.rawValue), readUpTo: readMarks[conversation.id])
     }
 
     /// Pictures' sizes, read once each: a stored file never changes.

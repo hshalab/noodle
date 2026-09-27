@@ -24,6 +24,9 @@ import Observation
     /// Runs when bots here were added, removed or changed, so the app can reload them.
     /// New messages need no call: they land in the conversation files the app already watches.
     @ObservationIgnored public var onChange: (() -> Void)?
+    /// Runs with how far this Mac's user has read a conversation here, as the Hub keeps it: read on
+    /// another device, or as the Hub had it when this Mac connected.
+    @ObservationIgnored public var onRead: ((_ conversation: UUID, _ upTo: Date) -> Void)?
     /// This Mac's user's tool connections on the Hub, as last listed.
     public private(set) var connections: [LinkConnection] = []
     /// This Mac's user's computers on the Hub, as last listed.
@@ -309,6 +312,8 @@ import Observation
                     // Reactions made on the Hub are not shown on the Mac yet.
                     case .messageChanged:
                         break
+                    case .readChanged(let id, let upTo):
+                        if let entry = entries.first(where: { $0.remoteConversation == id }) { onRead?(entry.conversation, upTo) }
                     }
                 }
             } catch {
@@ -340,6 +345,21 @@ import Observation
         }
         for bot in bots { record(bot.phase, ofBot: bot.id) }
         if changed { onChange?() }
+        for bot in bots {
+            if let upTo = bot.readUpTo, let entry = entries.first(where: { $0.remote == bot.id }) { onRead?(entry.conversation, upTo) }
+        }
+    }
+
+    /// This Mac's user read a conversation here, up to its latest message the Hub has; their other devices show it read.
+    public func markRead(conversation id: UUID) async {
+        guard let entry = entries.first(where: { $0.conversation == id }),
+              let latest = try? repository.loadMessages(conversationID: id)
+                .last(where: { $0.author != .user || $0.delivery != .queued || acknowledged.contains($0.id) }) else { return }
+        do {
+            _ = try await pairing.request(.markRead(LinkReadMark(conversationID: entry.remoteConversation, messageID: latest.id)))
+        } catch {
+            // A Hub from before read state was shared says it does not know the request; the Mac keeps its own.
+        }
     }
 
     /// Copies what is new on the Hub a page at a time, so no answer grows with the conversation.

@@ -80,6 +80,10 @@ private actor FakeHub {
             }
             let end = min(page.before ?? messages.count, messages.count), start = max(0, end - page.limit)
             return .messages(LinkMessages(messages: Array(messages[start..<end]), count: messages.count, start: start))
+        case .success(.markRead(let mark)):
+            guard let message = messages.first(where: { $0.id == mark.messageID }) else { return .failure("No such message.") }
+            bot.readUpTo = max(bot.readUpTo ?? .distantPast, message.createdAt)
+            return .done
         case .success(.react(let change)):
             guard let index = messages.firstIndex(where: { $0.id == change.messageID }) else { return .failure("No such message.") }
             let reaction = LinkReaction(author: .you, emoji: change.emoji)
@@ -380,6 +384,46 @@ private actor FakeHub {
         try await chats.reload()
 
         #expect(chats.isUnread(scout))
+    }
+
+    /// Reading here tells the Hub, so the person's other devices show it read.
+    @Test func readingHereIsKeptOnTheHub() async throws {
+        let hub = FakeHub()
+        let (chats, server) = try await paired(to: hub)
+        defer { server.stop() }
+        try await chats.reload()
+        await hub.botSays("Done")
+        try await chats.reload()
+        let scout = try #require(chats.agents.first)
+
+        chats.markRead(scout)
+
+        let latest = try #require(await hub.messages.last?.createdAt)
+        for _ in 0..<50 where await hub.bot.readUpTo != latest { try await Task.sleep(for: .milliseconds(100)) }
+        #expect(await hub.bot.readUpTo == latest)
+    }
+
+    /// A conversation read on another device is read here too, whether heard at once or on the next sync.
+    @Test func aConversationReadElsewhereIsReadHere() async throws {
+        let hub = FakeHub()
+        let (chats, server) = try await paired(to: hub)
+        defer { server.stop() }
+        try await chats.reload()
+        let scout = try #require(chats.agents.first)
+
+        await hub.botSays("Done")
+        try await chats.reload()
+        #expect(chats.isUnread(scout))
+        try await chats.apply(.readChanged(conversationID: scout.conversationID, upTo: try #require(chats.messages(of: scout).last?.createdAt)))
+        #expect(!chats.isUnread(scout))
+
+        await hub.botSays("Anything else?")
+        try await chats.reload()
+        #expect(chats.isUnread(scout))
+        let latest = try #require(await hub.messages.last)
+        _ = await hub.reply(to: try LinkProtocol.encode(.markRead(LinkReadMark(conversationID: scout.conversationID, messageID: latest.id))))
+        try await chats.reload()
+        #expect(!chats.isUnread(scout))
     }
 
     @Test func unsentTextIsKeptPerConversation() async throws {

@@ -109,6 +109,9 @@ public enum LinkRequest: Codable, Equatable, Sendable {
     case download(conversationID: UUID, attachmentID: UUID, offset: Int)
     /// Adds or removes this user's reaction to a message. Answers with the message.
     case react(LinkReactionChange)
+    /// This user has read a conversation up to a message, on this device. The Hub keeps the
+    /// furthest and pushes `readChanged` to the user's devices.
+    case markRead(LinkReadMark)
     /// This user's tool connections on the Hub.
     case connections
     /// Adds a connection, or changes one of this user's. It reaches no bot until assigned.
@@ -272,6 +275,8 @@ public enum LinkEvent: Codable, Equatable, Sendable {
     case messageChanged(LinkMessage)
     /// What a bot is doing now.
     case botPhase(botID: UUID, phase: LinkBotPhase)
+    /// This user read a conversation further, on one of their devices: every message sent up to `upTo`.
+    case readChanged(conversationID: UUID, upTo: Date)
     /// This user's connections, their sign-in or their bots changed.
     case connectionsChanged
     /// Open this page in the browser to sign a connection in, then send `finishSignIn`.
@@ -566,16 +571,21 @@ public struct LinkBot: Codable, Equatable, Identifiable, Sendable {
     public var createdAt: Date
     /// What it was doing when listed. Nil from a Hub that does not say, or in a way this app does not know.
     public var phase: LinkBotPhase?
+    /// When the latest message its owner has read was sent. Nil when they have read none, or from
+    /// a Hub that does not keep it.
+    public var readUpTo: Date?
 
-    public init(id: UUID, conversationID: UUID, draft: LinkBotDraft, createdAt: Date, phase: LinkBotPhase? = nil) {
+    public init(id: UUID, conversationID: UUID, draft: LinkBotDraft, createdAt: Date, phase: LinkBotPhase? = nil,
+                readUpTo: Date? = nil) {
         self.id = id
         self.conversationID = conversationID
         self.draft = draft
         self.createdAt = createdAt
         self.phase = phase
+        self.readUpTo = readUpTo
     }
 
-    private enum CodingKeys: String, CodingKey { case id, conversationID, draft, createdAt, phase }
+    private enum CodingKeys: String, CodingKey { case id, conversationID, draft, createdAt, phase, readUpTo }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -584,6 +594,19 @@ public struct LinkBot: Codable, Equatable, Identifiable, Sendable {
         draft = try c.decode(LinkBotDraft.self, forKey: .draft)
         createdAt = try c.decode(Date.self, forKey: .createdAt)
         phase = try c.decodeIfPresent(String.self, forKey: .phase).flatMap(LinkBotPhase.init(rawValue:))
+        readUpTo = try c.decodeIfPresent(Date.self, forKey: .readUpTo)
+    }
+}
+
+/// How far a device has read a conversation: up to and including a message. It names the message
+/// rather than its date, since a date that crossed the link may no longer match the Hub's exactly.
+public struct LinkReadMark: Codable, Equatable, Sendable {
+    public var conversationID: UUID
+    public var messageID: UUID
+
+    public init(conversationID: UUID, messageID: UUID) {
+        self.conversationID = conversationID
+        self.messageID = messageID
     }
 }
 

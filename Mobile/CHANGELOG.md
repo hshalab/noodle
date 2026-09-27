@@ -7,10 +7,13 @@
 - Record a voice message and tap the cross to discard it, including just beside it.
 - Open a shared browser, computer or noodlet and rotate the phone both ways: it stays open.
 - Open a picture in a message with several files and swipe to the others.
+- Read a conversation on your Mac: its unread dot on the phone goes away. Read one on the phone: it clears on your Mac.
+- Pair a second phone or iPad: conversations you already read elsewhere are not unread there.
 
 ### Changed
 
 - Opening a picture or file from a message lets you swipe through the message's other files.
+- Conversations you read on another device are read here too, and reading here clears them on your other devices. This needs a Hub from this release on.
 
 ### Fixed
 

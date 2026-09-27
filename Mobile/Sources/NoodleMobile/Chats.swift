@@ -110,9 +110,23 @@ import SwiftUI
         return seen[agent.conversationID].map { reply.createdAt > $0 } ?? true
     }
 
+    /// Also tells the Hub, up to the latest message it has, so the person's other devices show it read.
     func markRead(_ agent: LinkBot) {
-        guard let latest = messages(of: agent).last?.createdAt, (seen?[agent.conversationID] ?? .distantPast) < latest else { return }
+        let messages = messages(of: agent)
+        guard let latest = messages.last?.createdAt, (seen?[agent.conversationID] ?? .distantPast) < latest else { return }
         seen = (seen ?? [:]).merging([agent.conversationID: latest]) { $1 }
+        saveSeen()
+        guard let kept = messages.last(where: { !sending.contains($0.id) && !undelivered.contains($0.id) }) else { return }
+        let mark = LinkReadMark(conversationID: agent.conversationID, messageID: kept.id)
+        // A Hub from before read state was shared does not know the request; this phone keeps its own.
+        Task { _ = try? await pairing.request(.markRead(mark)) }
+    }
+
+    /// Read as far as the Hub says, on this phone or another device. Never unreads what was read here.
+    private func noteRead(_ conversationID: UUID, upTo: Date) {
+        guard var seen, (seen[conversationID] ?? .distantPast) < upTo else { return }
+        seen[conversationID] = upTo
+        self.seen = seen
         saveSeen()
     }
 
@@ -230,6 +244,9 @@ import SwiftUI
         // Live views have their own channels.
         case .surfaceOpened, .surfaceFailed:
             return
+        case .readChanged(let id, let upTo):
+            noteRead(id, upTo: upTo)
+            return
         }
         saveCache()
     }
@@ -255,6 +272,7 @@ import SwiftUI
             seen = conversations.compactMapValues { $0.last?.createdAt }
             saveSeen()
         }
+        for bot in bots { if let upTo = bot.readUpTo { noteRead(bot.conversationID, upTo: upTo) } }
         // Chats work even when the Hub cannot list tools.
         try? await loadTools()
         isLoaded = true

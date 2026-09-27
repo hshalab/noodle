@@ -135,6 +135,39 @@ import XCTest
         XCTAssertTrue(try f.hub.repository.loadAgents().isEmpty)
     }
 
+    /// Reading here reads on the Hub, and reading on another device reaches this Mac, at once or when it next syncs.
+    func testReadingIsSharedWithTheHub() async throws {
+        let f = try await fixture()
+        let mirror = f.mirror()
+        let agent = try await mirror.createBot(LinkBotDraft(name: "Alfred", provider: "claude-code"))
+        let local = try conversation(of: agent.id, in: f.local)
+        let remoteBot = try XCTUnwrap(f.hub.repository.loadAgents().first)
+        let remote = try conversation(of: remoteBot.id, in: f.hub.repository)
+        _ = try f.hub.repository.sendAgentMessage(agentID: remoteBot.id, conversationID: remote.id, body: "Good evening.")
+        // As the Hub keeps it, which is to the second.
+        let reply = try XCTUnwrap(f.hub.repository.loadMessages(conversationID: remote.id).last)
+        await mirror.sync()
+
+        await mirror.markRead(conversation: local.id)
+        guard case .bots(let listed) = try await f.device.request(.bots) else { return XCTFail("no bots") }
+        XCTAssertEqual(listed.first?.readUpTo, reply.createdAt)
+
+        var heard: [Date] = []
+        mirror.onRead = { conversation, upTo in if conversation == local.id { heard.append(upTo) } }
+        let running = Task { await mirror.run() }
+        addTeardownBlock { running.cancel() }
+        for _ in 0..<50 where !mirror.isConnected || heard.isEmpty { try await Task.sleep(for: .milliseconds(100)) }
+        // What the Hub kept, heard on connecting.
+        XCTAssertEqual(heard.first, reply.createdAt)
+
+        let later = ChatMessage(id: UUID(), conversationID: remote.id, author: .agent(remoteBot.id), body: "Anything else?",
+                                createdAt: reply.createdAt.addingTimeInterval(60), delivery: .delivered)
+        try f.hub.repository.append(later)
+        try f.hub.bots.markRead(LinkReadMark(conversationID: remote.id, messageID: later.id), for: f.ada)
+        for _ in 0..<50 where heard.count < 2 { try await Task.sleep(for: .milliseconds(100)) }
+        XCTAssertEqual(heard.last, later.createdAt)
+    }
+
     func testRepliesArriveWithoutAskingWhileConnected() async throws {
         let f = try await fixture()
         let mirror = f.mirror()

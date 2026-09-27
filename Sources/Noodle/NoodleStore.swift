@@ -244,6 +244,7 @@ final class NoodleStore {
         reload()
         // A device made, changed or deleted one of this Mac's bots.
         thisMac.onBotsEdited = { [weak self] in self?.reload() }
+        thisMac.onRead = { [weak self] in self?.readElsewhere($0, upTo: $1) }
         Self.active = self
     }
 
@@ -406,6 +407,7 @@ final class NoodleStore {
             hubMirrors.first { $0.pairing === pairing } ?? {
                 let mirror = HubMirror(pairing: pairing, repository: repository, directory: pairing.directory)
                 mirror.onChange = { [weak self] in self?.hubBotsChanged() }
+                mirror.onRead = { [weak self] in self?.readElsewhere($0, upTo: $1) }
                 mirror.onSignInPage = { [weak self] connection, url in
                     guard let self else { throw ToolProviderError("Noodle is closing.") }
                     return try await self.mcp.authorizeInBrowser(url, callbackURL: MCPController.redirectURI(for: connection.draft.endpoint))
@@ -966,6 +968,25 @@ final class NoodleStore {
               unreadConversationIDs.contains(conversationID) else { return }
         unreadConversationIDs.remove(conversationID)
         persistUnreadConversationIDs()
+        shareRead(conversationID)
+    }
+
+    /// Tells the person's other devices, through the Hub that shows them the conversation.
+    private func shareRead(_ conversationID: UUID) {
+        if let mirror = hubMirror(forConversation: conversationID) {
+            Task { await mirror.markRead(conversation: conversationID) }
+        } else {
+            thisMac.hub?.markRead(conversation: conversationID)
+        }
+    }
+
+    /// Read on another device: the dot goes, unless a bot wrote here since.
+    private func readElsewhere(_ conversationID: UUID, upTo: Date) {
+        guard unreadConversationIDs.contains(conversationID),
+              let messages = try? repository.loadMessages(conversationID: conversationID),
+              !messages.contains(where: { if case .agent = $0.author { $0.createdAt > upTo } else { false } }) else { return }
+        unreadConversationIDs.remove(conversationID)
+        persistUnreadConversationIDs()
     }
 
     func markSelectedConversationReadIfVisible() {
@@ -1522,13 +1543,17 @@ final class NoodleStore {
         guard !messages.isEmpty else { return }
 
         var updated = unreadConversationIDs
+        var viewed: Set<UUID> = []
         for message in messages {
             if conversationWindows.isViewing(message.conversationID) {
                 updated.remove(message.conversationID)
+                viewed.insert(message.conversationID)
             } else {
                 updated.insert(message.conversationID)
             }
         }
+        // Read as it arrived, so the person's other devices show it read too.
+        viewed.forEach(shareRead)
 
         guard updated != unreadConversationIDs else { return }
         unreadConversationIDs = updated
