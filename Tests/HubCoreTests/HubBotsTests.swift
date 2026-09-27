@@ -117,6 +117,40 @@ import XCTest
         XCTAssertTrue(try f.hub.repository.loadAgents().isEmpty)
     }
 
+    func testBotsOnlyUseModelsTheirUsersPlanLends() async throws {
+        let f = try await fixture()
+        f.hub.access.setModels(["sonnet"], for: claude, in: f.hub.access.plans[1])
+        for model in [nil, "opus"] {
+            do {
+                _ = try await f.device.request(.createBot(LinkBotDraft(name: "Alfred", provider: "claude-code", model: model)))
+                XCTFail("Created a bot on a model the plan does not lend")
+            } catch {
+                XCTAssertEqual((error as? LinkError)?.message,
+                               model.map { "Your plan does not lend \($0) on Claude Code." } ?? "Your plan needs a model chosen for Claude Code.")
+            }
+        }
+        guard case .bot(let bot) = try await f.device.request(.createBot(LinkBotDraft(name: "Alfred", provider: "claude-code",
+                                                                                     model: "sonnet"))) else {
+            return XCTFail("unexpected answer")
+        }
+        f.hub.access.setModels(["haiku"], for: claude, in: f.hub.access.plans[1])
+        do {
+            _ = try await f.device.request(.send(LinkOutgoingMessage(conversationID: bot.conversationID, id: UUID(), body: "Hi", attachmentIDs: [])))
+            XCTFail("Sent through a model the plan no longer lends")
+        } catch {
+            XCTAssertEqual((error as? LinkError)?.message, "Your plan no longer lends sonnet on Claude Code.")
+        }
+    }
+
+    func testTheStatusSaysWhichModelsThePlanLends() async throws {
+        let f = try await fixture()
+        f.hub.access.setModels(["opus", "haiku"], for: claude, in: f.hub.access.plans[1])
+        await f.device.refresh()
+        let harness = try XCTUnwrap(f.device.status?.harnesses.first)
+        XCTAssertTrue(harness.restrictsModels)
+        XCTAssertEqual(harness.models.map(\.id), ["haiku", "opus"])
+    }
+
     func testSendingTwiceWithOneIDKeepsOneMessage() async throws {
         let f = try await fixture()
         let bot = try await createBot(f)

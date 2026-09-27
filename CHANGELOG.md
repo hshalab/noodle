@@ -6,6 +6,10 @@ All notable changes to Noodle are documented here, following
 
 ## [Unreleased]
 
+### Added
+
+- Creating or editing a bot on a Noodle Hub lets you choose its model from those your plan allows.
+
 ## [0.29.1] - 2026-09-27
 
 ### Changed

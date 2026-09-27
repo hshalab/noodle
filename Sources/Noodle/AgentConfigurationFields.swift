@@ -27,10 +27,18 @@ struct AgentConfigurationFields: View {
         }
     }
 
+    /// What the chosen Hub lends on the chosen harness, as its last status said.
+    private var lentHarness: LinkHarness? {
+        guard let hubChoice else { return nil }
+        return store.hubs.hubs.first { $0.hub?.key == hubChoice.hub }?.status?.harnesses.first {
+            $0.provider == hubChoice.provider && $0.profile == hubChoice.profile
+        }
+    }
+
     private var harnessName: String {
         guard let hubChoice else { return selectedProvider?.displayName ?? "Choose a harness" }
         let hub = store.hubs.hubs.first { $0.hub?.key == hubChoice.hub }
-        let lent = hub?.status?.harnesses.first { $0.provider == hubChoice.provider && $0.profile == hubChoice.profile }
+        let lent = lentHarness
         let name = lent.map { harness in harness.profileName.map { "\(harness.providerName) (\($0))" } ?? harness.providerName }
             ?? selectedProvider?.displayName ?? hubChoice.provider
         return "\(name) · \(hub?.hub?.name ?? "Noodle Hub")"
@@ -42,7 +50,10 @@ struct AgentConfigurationFields: View {
     }
 
     private var models: [HarnessModel] {
-        store.runtime.models(for: selectedHarnessIdentifier)
+        guard hubChoice != nil else { return store.runtime.models(for: selectedHarnessIdentifier) }
+        return (lentHarness?.models ?? []).map {
+            HarnessModel(id: $0.id, displayName: $0.name, description: "", supportedEfforts: [], defaultEffort: "", isDefault: false)
+        }
     }
 
     private var selectedModel: HarnessModel? {
@@ -62,6 +73,7 @@ struct AgentConfigurationFields: View {
 
     private var modelName: String {
         if let selectedModel { return selectedModel.displayName }
+        if hubChoice != nil, !selectedModelIdentifier.isEmpty { return selectedModelIdentifier }
         if let selectedProvider { return "\(selectedProvider.displayName) default" }
         return "Harness default"
     }
@@ -104,7 +116,8 @@ struct AgentConfigurationFields: View {
                     }
                 }
 
-                if hubChoice == nil {
+                // A Hub offers the models its plan allows, when it says which.
+                if hubChoice == nil || !models.isEmpty {
                 Divider().padding(.leading, 44)
 
                 Button { choosingModel = true } label: {
@@ -112,7 +125,7 @@ struct AgentConfigurationFields: View {
                         title: "Model",
                         value: modelName,
                         icon: AnyView(Image(systemName: "cube.transparent")),
-                        isLoading: store.runtime.isLoadingCapabilities
+                        isLoading: hubChoice == nil && store.runtime.isLoadingCapabilities
                     )
                 }
                 .buttonStyle(.plain)
@@ -120,13 +133,13 @@ struct AgentConfigurationFields: View {
                 .popover(isPresented: $choosingModel, arrowEdge: .leading) {
                     ModelChooser(
                         providerName: selectedProvider?.displayName ?? "Harness",
-                        usesCatalogueDefault: selectedProvider == .apple,
+                        usesCatalogueDefault: hubChoice == nil ? selectedProvider == .apple : lentHarness?.restrictsModels == true,
                         models: models,
                         selection: $selectedModelIdentifier
                     )
                 }
 
-                if selectedProvider != .apple || selectedModel?.supportedEfforts.isEmpty == false {
+                if hubChoice == nil, selectedProvider != .apple || selectedModel?.supportedEfforts.isEmpty == false {
                     Divider().padding(.leading, 44)
                     EffortControl(model: selectedModel, selection: $selectedEffort)
                 }
@@ -155,7 +168,7 @@ struct AgentConfigurationFields: View {
             }
         }
         .onChange(of: selectedHarnessIdentifier) { _, _ in
-            selectedModelIdentifier = ""
+            selectedModelIdentifier = lentHarness?.initialModel ?? ""
             selectedEffort = ""
             selectedProfileID = nil
         }

@@ -478,15 +478,22 @@ public struct LinkHarness: Codable, Hashable, Sendable {
     public var providerName: String
     public var profile: UUID?
     public var profileName: String?
+    /// The models a bot on it may use, as far as the Hub knows them; empty from a Hub that does not say.
+    public var models: [LinkModel]
+    /// Only `models` may be used, so a bot cannot be left on the harness default.
+    public var restrictsModels: Bool
 
-    public init(provider: String, providerName: String, profile: UUID? = nil, profileName: String?) {
+    public init(provider: String, providerName: String, profile: UUID? = nil, profileName: String?,
+                models: [LinkModel] = [], restrictsModels: Bool = false) {
         self.provider = provider
         self.providerName = providerName
         self.profile = profile
         self.profileName = profileName
+        self.models = models
+        self.restrictsModels = restrictsModels
     }
 
-    private enum CodingKeys: String, CodingKey { case provider, providerName, profile, profileName }
+    private enum CodingKeys: String, CodingKey { case provider, providerName, profile, profileName, models, restrictsModels }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -494,6 +501,22 @@ public struct LinkHarness: Codable, Hashable, Sendable {
         providerName = try c.decode(.providerName, or: provider)
         profile = try c.decodeIfPresent(UUID.self, forKey: .profile)
         profileName = try c.decodeIfPresent(String.self, forKey: .profileName)
+        models = try c.decode(.models, or: [])
+        restrictsModels = try c.decode(.restrictsModels, or: false)
+    }
+
+    /// What a new bot starts on: the first model when the plan leaves no harness default.
+    public var initialModel: String? { restrictsModels ? models.first?.id : nil }
+}
+
+/// A model a lent harness offers.
+public struct LinkModel: Codable, Hashable, Identifiable, Sendable {
+    public var id: String
+    public var name: String
+
+    public init(id: String, name: String) {
+        self.id = id
+        self.name = name
     }
 }
 

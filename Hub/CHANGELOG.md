@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- A plan can limit which models each harness it lends may use. Bots on a harness with limited models must use one of them.
+
+### Changed
+
+- Buttons in the rows of the Users, Plans and Bots settings look like links, as in System Settings.
+
 ## [0.4.1] - 2026-09-27
 
 ### Changed
