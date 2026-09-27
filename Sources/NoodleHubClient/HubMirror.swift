@@ -141,7 +141,7 @@ import Observation
 
     /// Asks the Hub to sign a connection in; its page opens through `onSignInPage`.
     public func signIn(_ id: UUID, redirect: URL) async throws {
-        _ = try await pairing.request(.signIn(connectionID: id, redirect: redirect))
+        try await pairing.signIn(connectionID: id, redirect: redirect)
     }
 
     public func computerTemplates() async throws -> [LinkComputerTemplate] {
@@ -242,6 +242,9 @@ import Observation
 
     private func openSignInPage(_ id: UUID, url: URL) async {
         do {
+            guard pairing.takeSignInPage(for: id, url: url) else {
+                throw LinkError("Noodle did not open a sign-in page it had not asked for.")
+            }
             guard let connection = connections.first(where: { $0.id == id }), let onSignInPage else {
                 throw LinkError("This Mac cannot open that sign-in.")
             }

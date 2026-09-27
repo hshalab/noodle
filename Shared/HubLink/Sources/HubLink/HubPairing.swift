@@ -95,6 +95,33 @@ import Observation
         return try await send(request, as: try identity(), key: hub.key, endpoints: hub.endpoints)
     }
 
+    /// How long a sign-in this device started waits for the Hub to send its page.
+    public static let signInWait: TimeInterval = 5 * 60
+    /// Sign-ins this device started, by connection, until their page arrives or they lapse.
+    @ObservationIgnored private var startedSignIns: [UUID: Date] = [:]
+
+    /// Asks the Hub to sign a connection in. The Hub answers by pushing `signInPage`, which
+    /// `takeSignInPage` lets open once.
+    public func signIn(connectionID: UUID, redirect: URL, now: Date = Date()) async throws {
+        // Before asking: the page can arrive before the answer does.
+        let earlier = startedSignIns[connectionID], deadline = now.addingTimeInterval(Self.signInWait)
+        startedSignIns[connectionID] = deadline
+        do {
+            _ = try await request(.signIn(connectionID: connectionID, redirect: redirect))
+        } catch {
+            // A second tap refused as "already signing in" leaves the first one's page able to open.
+            if startedSignIns[connectionID] == deadline { startedSignIns[connectionID] = earlier }
+            throw error
+        }
+    }
+
+    /// Whether to open a sign-in page the Hub pushed: only a web page, and only once for a sign-in
+    /// this device started, so a Hub cannot open pages, apps or other links on its own.
+    public func takeSignInPage(for connectionID: UUID, url: URL, now: Date = Date()) -> Bool {
+        guard let deadline = startedSignIns.removeValue(forKey: connectionID), deadline > now else { return false }
+        return ["http", "https"].contains(url.scheme?.lowercased())
+    }
+
     /// A one-time invitation for another device of this user, when the Hub lets them pair their own.
     public func invite() async throws -> LinkInvitation {
         guard case .invitation(let invitation) = try await request(.invite) else {

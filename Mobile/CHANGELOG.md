@@ -7,11 +7,16 @@
 - Create or edit a bot: after choosing a harness, choose its model. With a plan that limits models, only those are offered.
 - In your profile, tap Pair Another Device: scan its QR code with another phone or iPad, or copy or share the link. Once it expires, tap New Invitation.
 - On the Hub, in Settings > Users, turn off Can Pair for your user: Pair Another Device no longer shows after you pull to refresh your profile.
+- In Tools, sign a connection in: its sign-in page still opens and the connection signs in.
 
 ### Added
 
 - Choosing a bot's model from those your plan on the Hub allows.
 - Pair Another Device, in your profile, shows an invitation for another of your devices to join your Hub, when the Hub allows it.
+
+### Security
+
+- A Noodle Hub can no longer show a sign-in page on its own. The app shows one only for a sign-in you started, and only if it is a web page.
 
 ## [0.3.2] - 2026-09-27
 

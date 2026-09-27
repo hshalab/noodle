@@ -276,4 +276,49 @@ import XCTest
         let remote = try XCTUnwrap(try f.hub.repository.loadAgents().first)
         XCTAssertEqual(f.hub.connections.assigned(to: remote.id, for: f.ada), [notes.id])
     }
+
+    /// A connected mirror, one of its connections, and the pages it asked the browser to open.
+    private func signingIn(page: URL) async throws -> (Fixture, HubMirror, LinkConnection, opened: () -> [URL]) {
+        let f = try await fixture()
+        let mirror = f.mirror()
+        let notes = try await mirror.saveConnection(LinkConnectionDraft(name: "Notes", endpoint: URL(string: "https://example.com/mcp")!))
+        f.hub.connections.signInFlow = { _, _, browser in
+            _ = try await browser(page)
+            return nil
+        }
+        var opened: [URL] = []
+        mirror.onSignInPage = { _, url in
+            opened.append(url)
+            return URL(string: "noodle://mcp/oauth/callback?code=c1&state=s1")!
+        }
+        let running = Task { await mirror.run() }
+        addTeardownBlock { running.cancel() }
+        for _ in 0..<50 where !mirror.isConnected { try await Task.sleep(for: .milliseconds(100)) }
+        return (f, mirror, notes, { opened })
+    }
+
+    func testASignInStartedHereOpensItsPage() async throws {
+        let page = URL(string: "https://auth.example.com/authorize?state=s1")!
+        let (_, mirror, notes, opened) = try await signingIn(page: page)
+        try await mirror.signIn(notes.id, redirect: URL(string: "noodle://mcp/oauth/callback")!)
+        for _ in 0..<50 where opened().isEmpty { try await Task.sleep(for: .milliseconds(100)) }
+        XCTAssertEqual(opened(), [page])
+    }
+
+    func testTheHubCannotOpenASignInPageThisMacDidNotAskFor() async throws {
+        let (f, mirror, notes, opened) = try await signingIn(page: URL(string: "https://auth.example.com/authorize?state=s1")!)
+        // The Hub pushes a page for a sign-in the mirror never started.
+        _ = try await f.device.request(.signIn(connectionID: notes.id, redirect: URL(string: "noodle://mcp/oauth/callback")!))
+        for _ in 0..<50 where mirror.error == nil { try await Task.sleep(for: .milliseconds(100)) }
+        XCTAssertNotNil(mirror.error)
+        XCTAssertEqual(opened(), [])
+    }
+
+    func testASignInPageThatIsNotAWebPageStaysClosed() async throws {
+        let (_, mirror, notes, opened) = try await signingIn(page: URL(string: "file:///System/Applications/Calculator.app?state=s1")!)
+        try await mirror.signIn(notes.id, redirect: URL(string: "noodle://mcp/oauth/callback")!)
+        for _ in 0..<50 where mirror.error == nil { try await Task.sleep(for: .milliseconds(100)) }
+        XCTAssertNotNil(mirror.error)
+        XCTAssertEqual(opened(), [])
+    }
 }

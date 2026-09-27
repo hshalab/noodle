@@ -42,12 +42,15 @@ extension HubChats {
 
     /// Asks the Hub to sign a connection in; it sends back the page to open, which `signIn(_:page:)` shows.
     func startSignIn(_ connection: LinkConnection) async throws {
-        _ = try await pairing.request(.signIn(connectionID: connection.id, redirect: URL(string: "\(signInScheme)://mcp/oauth/callback")!))
+        try await pairing.signIn(connectionID: connection.id, redirect: URL(string: "\(signInScheme)://mcp/oauth/callback")!)
     }
 
     /// Shows the sign-in page in the phone's browser and hands the Hub the address it came back to.
     func signIn(_ id: UUID, page: URL) async {
         do {
+            guard pairing.takeSignInPage(for: id, url: page) else {
+                throw LinkError("Noodle did not open a sign-in page it had not asked for.")
+            }
             let callback = try await SignInBrowser.open(page, scheme: signInScheme)
             _ = try await pairing.request(.finishSignIn(connectionID: id, callback: callback))
         } catch {
