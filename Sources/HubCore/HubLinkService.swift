@@ -59,6 +59,13 @@ import Observation
     /// Unused invitations by their key. Kept in memory: an invitation outlives no relaunch.
     @ObservationIgnored private var invitations: [LinkPublicKey: (user: UUID, expires: Date)] = [:]
     @ObservationIgnored private let gate = LinkGate()
+    /// Tells devices that are away about unread replies.
+    @ObservationIgnored private let pushes: (any HubPushPublisher)?
+    /// How long a conversation stays quiet before its devices are told, so a burst of replies is one push.
+    @ObservationIgnored private let pushDelay: Duration
+    /// Each conversation's unread replies, as last pushed or as first seen.
+    @ObservationIgnored private var pushedUnread: [UUID: Int] = [:]
+    @ObservationIgnored private var pendingPushes: [UUID: Task<Void, Never>] = [:]
 
     private struct Settings: Codable {
         var manualAddress: String
@@ -70,7 +77,7 @@ import Observation
                 browsers: HubBrowsers? = nil,
                 port: UInt16 = LinkEndpoint.defaultPort, router: (any RouterPortMapper)? = nil,
                 localEndpoints: @escaping (UInt16) -> [LinkEndpoint] = LinkEndpoint.local(port:),
-                now: @escaping () -> Date = Date.init) {
+                now: @escaping () -> Date = Date.init, pushes: (any HubPushPublisher)? = nil, pushDelay: Duration = .seconds(2)) {
         self.hubName = hubName
         self.directory = directory
         self.access = access
@@ -83,13 +90,18 @@ import Observation
         routerMapper = router
         self.localEndpoints = localEndpoints
         self.now = now
+        self.pushes = pushes
+        self.pushDelay = pushDelay
         // A Hub that cannot keep its key cannot be paired with; a fresh key each launch would say so loudly.
         identity = (try? LinkIdentity.loadOrCreate(at: directory.appendingPathComponent("hub.key"))) ?? LinkIdentity()
         key = identity.publicKey
         let settings = try? JSONDecoder().decode(Settings.self, from: Data(contentsOf: directory.appendingPathComponent("link.json")))
         manualAddress = settings?.manualAddress ?? ""
         opensRouterPort = settings?.opensRouterPort ?? true
-        bots?.onChange = { [weak self] user, event in self?.push(event, to: user) }
+        bots?.onChange = { [weak self] user, event in
+            self?.push(event, to: user)
+            self?.schedulePushes(for: event, of: user)
+        }
         connections?.onSignInEnded = { [weak self] user in self?.push(.connectionsChanged, to: user) }
         updateGate()
         watchDevices()
@@ -299,6 +311,49 @@ import Observation
         for stream in streams.values where keys.contains(stream.peer) { stream.send(payload) }
     }
 
+    /// Whether a device is following the Hub right now, and so shows replies itself.
+    private func isFollowing(_ device: HubDevice) -> Bool {
+        streams.values.contains { $0.peer == device.key && !$0.isClosed }
+    }
+
+    private func schedulePushes(for event: LinkEvent, of user: UUID) {
+        guard pushes != nil else { return }
+        let conversation: UUID, read: Bool
+        switch event {
+        case .conversationChanged(let id, _): (conversation, read) = (id, false)
+        case .readChanged(let id, _): (conversation, read) = (id, true)
+        default: return
+        }
+        // What waits unread when the Hub first sees a conversation is not news, however soon a reply follows.
+        if pushedUnread[conversation] == nil, !read {
+            pushedUnread[conversation] = (try? bots?.unread(in: conversation)) ?? 0
+            return
+        }
+        pendingPushes[conversation]?.cancel()
+        pendingPushes[conversation] = Task { [weak self, pushDelay] in
+            try? await Task.sleep(for: pushDelay)
+            guard !Task.isCancelled else { return }
+            await self?.updatePushes(conversation, of: user, read: read)
+        }
+    }
+
+    /// Tells the user's devices that are away how many replies wait unread, once more have come,
+    /// and takes it back once they are read.
+    private func updatePushes(_ conversation: UUID, of user: UUID, read: Bool) async {
+        pendingPushes[conversation] = nil
+        guard let pushes, let unread = try? bots?.unread(in: conversation) else { return }
+        let known = pushedUnread[conversation]
+        pushedUnread[conversation] = unread
+        let devices = access.devices.filter { $0.user == user && $0.pushTopic != nil }
+        if unread == 0, read || (known ?? 0) > 0 {
+            for device in devices { try? await pushes.withdraw(topic: device.pushTopic!, conversation: conversation) }
+        } else if let known, unread > known {
+            for device in devices where !isFollowing(device) {
+                try? await pushes.publish(topic: device.pushTopic!, conversation: conversation, unread: unread)
+            }
+        }
+    }
+
     private func handle(_ request: LinkRequest, from key: LinkPublicKey) async throws -> LinkResponse {
         // On the owner's own Mac these are Noodle's, kept in its own settings.
         if access.isPersonal {
@@ -356,6 +411,10 @@ import Observation
             return .message(try hubBots().react(change, for: try user(key)))
         case .markRead(let mark):
             try hubBots().markRead(mark, for: try user(key))
+            return .done
+        case .pushTopic(let registration):
+            let topic = registration.topic.flatMap { (1...128).contains($0.count) ? $0 : nil }
+            access.setPushTopic(topic, for: try paired(key))
             return .done
         case .connections:
             return .connections(try hubConnections().link(for: try user(key)))
@@ -570,4 +629,12 @@ private final class LinkGate: @unchecked Sendable {
     @Sendable func admits(_ key: LinkPublicKey) -> Bool {
         lock.withLock { keys.contains(key) || invitations[key].map { $0 > Date() } ?? false }
     }
+}
+
+/// Shows a device that is away how many replies wait unread in a conversation, as a notification.
+/// Only the topic the device gave and the count leave the Hub; the device fetches the rest itself.
+public protocol HubPushPublisher: Sendable {
+    func publish(topic: String, conversation: UUID, unread: Int) async throws
+    /// The replies were read: nothing more to show.
+    func withdraw(topic: String, conversation: UUID) async throws
 }

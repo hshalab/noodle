@@ -112,6 +112,8 @@ public enum LinkRequest: Codable, Equatable, Sendable {
     /// This user has read a conversation up to a message, on this device. The Hub keeps the
     /// furthest and pushes `readChanged` to the user's devices.
     case markRead(LinkReadMark)
+    /// Where this device hears of unread replies while it is away from the Hub, or nil to stop.
+    case pushTopic(LinkPushTopic)
     /// This user's tool connections on the Hub.
     case connections
     /// Adds a connection, or changes one of this user's. It reaches no bot until assigned.
@@ -596,6 +598,25 @@ public struct LinkBot: Codable, Equatable, Identifiable, Sendable {
         phase = try c.decodeIfPresent(String.self, forKey: .phase).flatMap(LinkBotPhase.init(rawValue:))
         readUpTo = try c.decodeIfPresent(Date.self, forKey: .readUpTo)
     }
+}
+
+/// What a device away from the Hub listens on for unread replies. Only the Hub and the device know it.
+public struct LinkPushTopic: Codable, Equatable, Sendable {
+    public var topic: String?
+
+    public init(topic: String?) {
+        self.topic = topic
+    }
+}
+
+/// Where a Hub leaves word of unread replies for devices that are away: records in CloudKit's
+/// public database, one per device and conversation, which a device subscribes to by its topic.
+public enum LinkPush {
+    public static let container = "iCloud.com.pdparchitect.noodle"
+    public static let recordType = "Ping"
+    public static let topicField = "topic"
+    public static let conversationField = "conversation"
+    public static let unreadField = "unread"
 }
 
 /// How far a device has read a conversation: up to and including a message. It names the message

@@ -137,7 +137,7 @@ let project = Project(
                 "Support/AppSymbol.svg",
             ],
             // Includes Sparkle's two installer endpoints for this app's identifier.
-            entitlements: .file(path: "Support/Hub.entitlements"),
+            entitlements: .variable("$(HUB_ENTITLEMENTS)"),
             scripts: [embedHelpers, trimSparkle],
             dependencies: [
                 .package(product: "HubCore"),
@@ -155,6 +155,11 @@ let project = Project(
                 "PRODUCT_BUNDLE_IDENTIFIER": "$(HUB_APP_BUNDLE_ID)",
                 "PRODUCT_NAME": "$(HUB_APP_NAME)",
                 "EXECUTABLE_NAME": "NoodleHub",
+                // A public release passes HUB_ENTITLEMENTS=Support/Hub-Release.entitlements and the
+                // Developer ID profile they need as HUB_PROVISIONING_PROFILE.
+                "HUB_ENTITLEMENTS": "Support/Hub.entitlements",
+                "HUB_PROVISIONING_PROFILE": "",
+                "PROVISIONING_PROFILE_SPECIFIER": "$(HUB_PROVISIONING_PROFILE)",
                 // Embed Helpers writes into the app bundle.
                 "ENABLE_USER_SCRIPT_SANDBOXING": "NO",
                 "ASSETCATALOG_COMPILER_APPICON_NAME": "HubIcon",

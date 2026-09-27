@@ -16,7 +16,24 @@ import XCTest
 
     private let claude = HubHarness(provider: .claudeCode, profile: nil)
 
-    private func fixture() async throws -> Fixture {
+    /// Stands in for CloudKit, keeping what the Hub asked it to show.
+    private actor RecordedPushes: HubPushPublisher {
+        var shown: [String: Int] = [:]
+        var published: [String] = []
+
+        private func key(_ topic: String, _ conversation: UUID) -> String { "\(topic) \(conversation)" }
+
+        func publish(topic: String, conversation: UUID, unread: Int) {
+            shown[key(topic, conversation)] = unread
+            published.append(key(topic, conversation))
+        }
+
+        func withdraw(topic: String, conversation: UUID) { shown[key(topic, conversation)] = nil }
+
+        func unread(_ topic: String, _ conversation: UUID) -> Int? { shown[key(topic, conversation)] }
+    }
+
+    private func fixture(pushes: RecordedPushes? = nil) async throws -> Fixture {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("noodle-hub-bots-\(UUID())")
         addTeardownBlock { try? FileManager.default.removeItem(at: root) }
         let hub = Hub(root: root.appendingPathComponent("Hub"), messenger: nil)
@@ -24,7 +41,8 @@ import XCTest
         let link = HubLinkService(hubName: "Mac mini", directory: root.appendingPathComponent("Hub/Link"),
                                   access: hub.access, profiles: hub.harnessProfiles, bots: hub.bots,
                                   connections: hub.connections, port: 0,
-                                  localEndpoints: { [LinkEndpoint(host: "::1", port: $0)] })
+                                  localEndpoints: { [LinkEndpoint(host: "::1", port: $0)] },
+                                  pushes: pushes, pushDelay: .zero)
         await link.start()
         addTeardownBlock { await MainActor.run { link.stop() } }
         guard case .listening = link.state else { throw XCTSkip("Could not listen: \(link.state)") }
@@ -177,6 +195,41 @@ import XCTest
             _ = try await other.request(.markRead(read))
             XCTFail("Read another user's conversation")
         } catch {}
+    }
+
+    /// A device away from the Hub hears of unread replies, and they go away once read on any device.
+    /// Replies already there when the Hub starts watching, and replies to a device that is connected, push nothing.
+    func testUnreadRepliesArePushedToDevicesAway() async throws {
+        let pushes = RecordedPushes()
+        let f = try await fixture(pushes: pushes)
+        let bot = try await createBot(f)
+        _ = try f.hub.repository.sendAgentMessage(agentID: bot.id, conversationID: bot.conversationID, body: "Already here.")
+        let answer = try await f.device.request(.pushTopic(LinkPushTopic(topic: "phone-topic")))
+        XCTAssertEqual(answer, .done)
+        f.hub.bots.checkForChanges()
+
+        let reply = try f.hub.repository.sendAgentMessage(agentID: bot.id, conversationID: bot.conversationID, body: "Done.")
+        f.hub.bots.checkForChanges()
+        for _ in 0..<50 where await pushes.unread("phone-topic", bot.conversationID) != 2 { try await Task.sleep(for: .milliseconds(100)) }
+        let unread = await pushes.unread("phone-topic", bot.conversationID)
+        XCTAssertEqual(unread, 2)
+        let publishedOnce = await pushes.published.count
+        XCTAssertEqual(publishedOnce, 1)
+
+        _ = try await f.device.request(.markRead(LinkReadMark(conversationID: bot.conversationID, messageID: reply.id)))
+        for _ in 0..<50 where await pushes.unread("phone-topic", bot.conversationID) != nil { try await Task.sleep(for: .milliseconds(100)) }
+        let afterReading = await pushes.unread("phone-topic", bot.conversationID)
+        XCTAssertNil(afterReading)
+
+        // Connected, the device shows replies itself.
+        let events = try await f.device.subscribe()
+        _ = try await f.device.request(.bots)
+        _ = events
+        _ = try f.hub.repository.sendAgentMessage(agentID: bot.id, conversationID: bot.conversationID, body: "Anything else?")
+        f.hub.bots.checkForChanges()
+        try await Task.sleep(for: .milliseconds(300))
+        let whileConnected = await pushes.published.count
+        XCTAssertEqual(whileConnected, 1)
     }
 
     func testReactionsTravelBothWays() async throws {

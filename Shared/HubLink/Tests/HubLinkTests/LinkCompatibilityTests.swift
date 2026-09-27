@@ -121,6 +121,7 @@ final class LinkVersion1Tests: XCTestCase {
             "messagePageBefore": .messagePage(LinkMessagePage(conversationID: b, before: 120, limit: 50)),
             "messagePageAfter": .messagePage(LinkMessagePage(conversationID: b, after: 3, limit: 100)),
             "markRead": .markRead(LinkReadMark(conversationID: b, messageID: a)),
+            "pushTopic": .pushTopic(LinkPushTopic(topic: "topic")), "noPushTopic": .pushTopic(LinkPushTopic(topic: nil)),
         ]
     }
     private var nextResponses: [String: LinkResponse] {
@@ -192,6 +193,8 @@ final class LinkVersion1Tests: XCTestCase {
         "messagePageBefore": #"{"version":1,"request":{"messagePage":{"_0":{"before":120,"limit":50,"conversationID":"00000000-0000-0000-0000-00000000000B"}}}}"#,
         "messagePageAfter": #"{"version":1,"request":{"messagePage":{"_0":{"conversationID":"00000000-0000-0000-0000-00000000000B","after":3,"limit":100}}}}"#,
         "markRead": #"{"version":1,"request":{"markRead":{"_0":{"conversationID":"00000000-0000-0000-0000-00000000000B","messageID":"00000000-0000-0000-0000-00000000000A"}}}}"#,
+        "pushTopic": #"{"version":1,"request":{"pushTopic":{"_0":{"topic":"topic"}}}}"#,
+        "noPushTopic": #"{"version":1,"request":{"pushTopic":{"_0":{}}}}"#,
         "assignBrowsers": #"{"version":1,"request":{"assignBrowsers":{"botID":"00000000-0000-0000-0000-00000000000A","browserIDs":["00000000-0000-0000-0000-00000000000B"]}}}"#,
         "assignComputers": #"{"request":{"assignComputers":{"botID":"00000000-0000-0000-0000-00000000000A","computerIDs":["00000000-0000-0000-0000-00000000000B"]}},"version":1}"#,
         "assignConnections": #"{"version":1,"request":{"assignConnections":{"botID":"00000000-0000-0000-0000-00000000000A","connectionIDs":["00000000-0000-0000-0000-00000000000B"]}}}"#,

@@ -48,9 +48,11 @@ jobs:
           APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          HUB_PROVISIONING_PROFILE: ${{ secrets.HUB_PROVISIONING_PROFILE }}
         shell: zsh {0}
         run: |
           set -euo pipefail
+          : "${HUB_PROVISIONING_PROFILE:?Missing provisioning profile}"
           : "${MACOS_CERTIFICATE_P12:?Missing certificate}"
           : "${MACOS_CERTIFICATE_PASSWORD:?Missing certificate password}"
           : "${APP_STORE_CONNECT_API_KEY_P8:?Missing notarization key}"
@@ -71,11 +73,19 @@ jobs:
           [[ -n "$identity" ]]
           print -rn -- "$APP_STORE_CONNECT_API_KEY_P8" > "$RUNNER_TEMP/hub-notary.p8"
           print -rn -- "$SPARKLE_PRIVATE_KEY" > "$RUNNER_TEMP/hub-update.key"
+          print -rn -- "$HUB_PROVISIONING_PROFILE" | base64 --decode > "$RUNNER_TEMP/hub.provisionprofile"
+          print "HUB_PROVISIONING_PROFILE_PATH=$RUNNER_TEMP/hub.provisionprofile" >> "$GITHUB_ENV"
           print "NOODLE_SIGNING_IDENTITY=$identity" >> "$GITHUB_ENV"
           print "APPLE_API_KEY_PATH=$RUNNER_TEMP/hub-notary.p8" >> "$GITHUB_ENV"
           print "APPLE_API_KEY_ID=$APP_STORE_CONNECT_KEY_ID" >> "$GITHUB_ENV"
           print "APPLE_API_ISSUER_ID=$APP_STORE_CONNECT_ISSUER_ID" >> "$GITHUB_ENV"
           print "SPARKLE_PRIVATE_KEY_PATH=$RUNNER_TEMP/hub-update.key" >> "$GITHUB_ENV"
+
+      - name: Check CloudKit and the provisioning profile
+        env:
+          CLOUDKIT_MANAGEMENT_TOKEN: ${{ secrets.CLOUDKIT_MANAGEMENT_TOKEN }}
+        shell: zsh {0}
+        run: zsh scripts/verify-push-setup.sh Hub
 
       - name: Build, sign, notarize, staple and sign update feed
         shell: zsh {0}
@@ -95,7 +105,7 @@ jobs:
         if: always()
         shell: zsh {0}
         run: |
-          rm -f "$RUNNER_TEMP/hub-signing.p12" "$RUNNER_TEMP/hub-notary.p8" "$RUNNER_TEMP/hub-update.key"
+          rm -f "$RUNNER_TEMP/hub-signing.p12" "$RUNNER_TEMP/hub-notary.p8" "$RUNNER_TEMP/hub-update.key" "$RUNNER_TEMP/hub.provisionprofile"
           if [[ -f "$RUNNER_TEMP/hub-signing.keychain-db" ]]; then
             security delete-keychain "$RUNNER_TEMP/hub-signing.keychain-db"
           fi

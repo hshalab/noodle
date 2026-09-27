@@ -55,7 +55,8 @@ import NoodleRuntime
         link = HubLinkService(hubName: Host.current().localizedName ?? "Noodle Hub",
                               directory: root.appendingPathComponent("Link", isDirectory: true),
                               access: access, profiles: harnessProfiles, bots: bots, connections: connections,
-                              computers: computers, browsers: browsers, port: linkPort, router: router)
+                              computers: computers, browsers: browsers, port: linkPort, router: router,
+                              pushes: CloudKitPushes.ifEntitled())
     }
 
     /// Removes a user with their devices and the bots they keep here.

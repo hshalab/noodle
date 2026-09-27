@@ -28,16 +28,36 @@ final class AppIdentityTests: XCTestCase {
     }
 
     /// Release verification pins how many entitlements the reviewed policy has, so an unreviewed one
-    /// cannot ship. The pin has to follow the policy when it changes.
+    /// cannot ship: the policy alone, and a public release's, with its iCloud container and the two
+    /// keys its provisioning profile adds. The pins have to follow the policy when it changes.
     func testReleaseVerifiersPinTheNumberOfEntitlementsThePolicyHas() throws {
-        let expected = try Self.sandboxPolicy().count
+        let expected = [try Self.sandboxPolicy().count, try Self.plist("Support/Noodle-Release.entitlements").count + 2]
         for script in ["scripts/verify-noodle-release.sh"] {
             let text = try String(contentsOf: Self.repository.appendingPathComponent(script), encoding: .utf8)
             let pinned = text
-                .components(separatedBy: "entitlement_count\" != \"")
+                .components(separatedBy: "expected_count=")
                 .dropFirst()
                 .compactMap { Int($0.prefix(while: { $0.isNumber })) }
-            XCTAssertEqual(pinned, [expected], script)
+            XCTAssertEqual(pinned, expected, script)
+        }
+    }
+
+    /// A public release adds exactly the iCloud container to the reviewed policy, to tell devices away
+    /// from the Hub about unread replies. Anything else it adds has to be reviewed here first.
+    func testPublicReleasesAddOnlyTheICloudContainer() throws {
+        let iCloud: NSDictionary = [
+            "com.apple.developer.icloud-container-identifiers": ["iCloud.com.pdparchitect.noodle"],
+            "com.apple.developer.icloud-services": ["CloudKit"],
+            "com.apple.developer.icloud-container-environment": "Production",
+        ]
+        for (base, release) in [("Support/Noodle.entitlements", "Support/Noodle-Release.entitlements"),
+                                ("Hub/Support/Hub.entitlements", "Hub/Support/Hub-Release.entitlements")] {
+            let policy = try Self.plist(base)
+            var added = try Self.plist(release)
+            for (key, value) in policy {
+                XCTAssertEqual(added.removeValue(forKey: key) as? NSObject, value as? NSObject, "\(release): \(key)")
+            }
+            XCTAssertEqual(added as NSDictionary, iCloud, release)
         }
     }
 
@@ -45,7 +65,11 @@ final class AppIdentityTests: XCTestCase {
         .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
 
     private static func sandboxPolicy() throws -> [String: Any] {
-        let data = try Data(contentsOf: repository.appendingPathComponent("Support/Noodle.entitlements"))
+        try plist("Support/Noodle.entitlements")
+    }
+
+    private static func plist(_ path: String) throws -> [String: Any] {
+        let data = try Data(contentsOf: repository.appendingPathComponent(path))
         return try XCTUnwrap(PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any])
     }
 }

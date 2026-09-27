@@ -42,11 +42,15 @@ jobs:
         env:
           MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
           MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          NOODLE_PROVISIONING_PROFILE: ${{ secrets.NOODLE_PROVISIONING_PROFILE }}
         shell: zsh {0}
         run: |
           set -euo pipefail
           : "${MACOS_CERTIFICATE_P12:?Missing MACOS_CERTIFICATE_P12 secret}"
           : "${MACOS_CERTIFICATE_PASSWORD:?Missing MACOS_CERTIFICATE_PASSWORD secret}"
+          : "${NOODLE_PROVISIONING_PROFILE:?Missing NOODLE_PROVISIONING_PROFILE secret}"
+          print -rn -- "$NOODLE_PROVISIONING_PROFILE" | base64 --decode > "$RUNNER_TEMP/noodle.provisionprofile"
+          print "NOODLE_PROVISIONING_PROFILE_PATH=$RUNNER_TEMP/noodle.provisionprofile" >> "$GITHUB_ENV"
           keychain="$RUNNER_TEMP/noodle-signing.keychain-db"
           certificate="$RUNNER_TEMP/noodle-signing.p12"
           keychain_password="$(openssl rand -base64 32)"
@@ -64,6 +68,12 @@ jobs:
             exit 1
           fi
           print "NOODLE_SIGNING_IDENTITY=$identity" >> "$GITHUB_ENV"
+
+      - name: Check CloudKit and the provisioning profile
+        env:
+          CLOUDKIT_MANAGEMENT_TOKEN: ${{ secrets.CLOUDKIT_MANAGEMENT_TOKEN }}
+        shell: zsh {0}
+        run: zsh scripts/verify-push-setup.sh Noodle
 
       - name: Prepare notarization key
         env:
@@ -121,7 +131,7 @@ jobs:
         if: always()
         shell: zsh {0}
         run: |
-          rm -f "$RUNNER_TEMP/noodle-update.key" "$RUNNER_TEMP/noodle-signing.p12"
+          rm -f "$RUNNER_TEMP/noodle-update.key" "$RUNNER_TEMP/noodle-signing.p12" "$RUNNER_TEMP/noodle.provisionprofile"
           if [[ -n "${APPLE_API_KEY_PATH:-}" ]]; then rm -f "$APPLE_API_KEY_PATH"; fi
           if [[ -f "$RUNNER_TEMP/noodle-signing.keychain-db" ]]; then
             security delete-keychain "$RUNNER_TEMP/noodle-signing.keychain-db"

@@ -184,7 +184,7 @@ let project = Project(
                 .folderReference(path: "Support/ToolIcons"),
                 .folderReference(path: "Support/ThirdParty"),
             ],
-            entitlements: .file(path: "Support/Noodle.entitlements"),
+            entitlements: .variable("$(NOODLE_ENTITLEMENTS)"),
             scripts: [extractExtensionPoint, embedHelpers, trimSparkle],
             dependencies: [
                 .package(product: "BrowserBridge"),
@@ -223,6 +223,11 @@ let project = Project(
                     "PRODUCT_BUNDLE_IDENTIFIER": "$(NOODLE_APP_BUNDLE_ID)",
                     "PRODUCT_NAME": "$(NOODLE_APP_NAME)",
                     "EXECUTABLE_NAME": "Noodle",
+                    // A public release passes NOODLE_ENTITLEMENTS=Support/Noodle-Release.entitlements and the
+                    // Developer ID profile they need as NOODLE_PROVISIONING_PROFILE.
+                    "NOODLE_ENTITLEMENTS": "Support/Noodle.entitlements",
+                    "NOODLE_PROVISIONING_PROFILE": "",
+                    "PROVISIONING_PROFILE_SPECIFIER": "$(NOODLE_PROVISIONING_PROFILE)",
                     "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
                     // The script phases write into the app bundle.
                     "ENABLE_USER_SCRIPT_SANDBOXING": "NO",

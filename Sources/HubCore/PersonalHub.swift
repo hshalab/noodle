@@ -46,7 +46,8 @@ import NoodleRuntime
                        readMarks: directory.appendingPathComponent("read.json"))
         link = HubLinkService(hubName: name, directory: directory.appendingPathComponent("Link", isDirectory: true),
                               access: access, profiles: profiles, bots: bots, connections: connections, computers: computers,
-                              browsers: browsers, port: port, router: router, localEndpoints: localEndpoints)
+                              browsers: browsers, port: port, router: router, localEndpoints: localEndpoints,
+                              pushes: CloudKitPushes.ifEntitled())
     }
 
     /// Runs when the owner read a conversation further on one of their devices, so the Mac shows it read too.

@@ -1,5 +1,7 @@
+import CloudKit
 import Foundation
 import HubCore
+import HubLink
 import NoodleCore
 import XCTest
 
@@ -19,6 +21,27 @@ import XCTest
         try hub.repository.prepare()
         let created = try hub.repository.createAgent(named: "Alfred")
         XCTAssertTrue(hub.repository.directory(for: created.agent).path.hasPrefix(root.path))
+    }
+
+    /// Only an app signed with the iCloud container talks to CloudKit; tests and development builds never do.
+    func testPushesNeedTheICloudEntitlement() {
+        XCTAssertNil(CloudKitPushes.ifEntitled())
+    }
+
+    /// One record per device and conversation, found again by its name alone, carrying only the topic and the count.
+    func testAPushIsOneRecordPerTopicAndConversation() {
+        let conversation = UUID()
+        let record = CloudKitPushes.record(topic: "phone", conversation: conversation, unread: 3)
+        XCTAssertEqual(record.recordType, LinkPush.recordType)
+        XCTAssertEqual(record[LinkPush.topicField] as? String, "phone")
+        XCTAssertEqual(record[LinkPush.conversationField] as? String, conversation.uuidString)
+        XCTAssertEqual(record[LinkPush.unreadField] as? Int64, 3)
+        XCTAssertEqual(Set(record.allKeys()), [LinkPush.topicField, LinkPush.conversationField, LinkPush.unreadField])
+        XCTAssertEqual(CloudKitPushes.recordID(topic: "phone", conversation: conversation), record.recordID)
+        XCTAssertNotEqual(CloudKitPushes.recordID(topic: "tablet", conversation: conversation), record.recordID)
+        XCTAssertNotEqual(CloudKitPushes.recordID(topic: "phone", conversation: UUID()), record.recordID)
+        // The name does not give the topic away to anyone reading the public database.
+        XCTAssertFalse(record.recordID.recordName.contains("phone"))
     }
 
     func testHubKeepsUsageReportedByTheRuntime() throws {

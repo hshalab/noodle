@@ -393,6 +393,14 @@ import NoodleRuntime
         onRead?(mark.conversationID, upTo)
     }
 
+    /// How many of the bot's replies its owner has not read.
+    public func unread(in conversationID: UUID) throws -> Int {
+        let mark = readMarks[conversationID] ?? .distantPast
+        return try repository.loadMessages(conversationID: conversationID).filter {
+            if case .agent = $0.author { $0.createdAt > mark } else { false }
+        }.count
+    }
+
     private func saveReadMarks() throws {
         try FileManager.default.createDirectory(at: readMarksURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try JSONEncoder().encode(readMarks).write(to: readMarksURL, options: .atomic)

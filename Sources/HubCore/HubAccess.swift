@@ -53,14 +53,18 @@ public struct HubDevice: Identifiable, Codable, Hashable, Sendable {
     public let key: LinkPublicKey
     public let paired: Date
     public var lastSeen: Date?
+    /// Where the device hears of unread replies while away, if it asked to.
+    public var pushTopic: String?
 
-    public init(id: UUID = UUID(), user: UUID, name: String, key: LinkPublicKey, paired: Date, lastSeen: Date? = nil) {
+    public init(id: UUID = UUID(), user: UUID, name: String, key: LinkPublicKey, paired: Date, lastSeen: Date? = nil,
+                pushTopic: String? = nil) {
         self.id = id
         self.user = user
         self.name = name
         self.key = key
         self.paired = paired
         self.lastSeen = lastSeen
+        self.pushTopic = pushTopic
     }
 }
 
@@ -222,6 +226,12 @@ public struct HubDevice: Identifiable, Codable, Hashable, Sendable {
     public func markSeen(_ device: HubDevice, at date: Date) {
         guard let index = devices.firstIndex(where: { $0.id == device.id }) else { return }
         devices[index].lastSeen = date
+        save()
+    }
+
+    public func setPushTopic(_ topic: String?, for device: HubDevice) {
+        guard let index = devices.firstIndex(where: { $0.id == device.id }), devices[index].pushTopic != topic else { return }
+        devices[index].pushTopic = topic
         save()
     }
 

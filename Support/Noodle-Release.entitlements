@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Public releases only: tells devices away from the Hub about unread replies, through CloudKit.
+	     Every other build leaves it out, since the app cannot launch without the matching provisioning profile. -->
+	<key>com.apple.developer.icloud-container-environment</key>
+	<string>Production</string>
+	<key>com.apple.developer.icloud-container-identifiers</key>
+	<array>
+		<string>iCloud.com.pdparchitect.noodle</string>
+	</array>
+	<key>com.apple.developer.icloud-services</key>
+	<array>
+		<string>CloudKit</string>
+	</array>
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>$(TeamIdentifierPrefix)$(NOODLE_APP_BUNDLE_ID).sharing</string>
+		<string>$(TeamIdentifierPrefix)com.pdparchitect.noodle.computers$(NOODLE_COMPANION_SUFFIX)</string>
+		<string>$(TeamIdentifierPrefix)com.pdparchitect.noodle.applets$(NOODLE_COMPANION_SUFFIX)</string>
+		<string>$(TeamIdentifierPrefix)com.pdparchitect.noodle.browsers$(NOODLE_COMPANION_SUFFIX)</string>
+	</array>
+	<key>com.apple.security.device.audio-input</key>
+	<true/>
+	<key>com.apple.security.device.camera</key>
+	<true/>
+	<key>com.apple.security.files.user-selected.read-only</key>
+	<true/>
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<key>com.apple.security.network.server</key>
+	<true/>
+	<key>com.apple.security.personal-information.calendars</key>
+	<true/>
+	<key>com.apple.security.personal-information.reminders</key>
+	<true/>
+	<key>com.apple.security.temporary-exception.files.home-relative-path.read-only</key>
+	<array>
+		<string>/.local/bin/claude</string>
+		<string>/.local/share/claude/versions/</string>
+		<string>/.local/bin/fx</string>
+		<string>/Library/Application Support/com.apple.mobileAssetDesktop/</string>
+		<string>/Library/Application Support/com.apple.wallpaper/aerials/</string>
+	</array>
+	<key>com.apple.security.temporary-exception.files.home-relative-path.read-write</key>
+	<array>
+		<string>/.codex/</string>
+	</array>
+	<key>com.apple.security.temporary-exception.mach-lookup.global-name</key>
+	<array>
+		<string>$(PRODUCT_BUNDLE_IDENTIFIER)-spks</string>
+		<string>$(PRODUCT_BUNDLE_IDENTIFIER)-spki</string>
+	</array>
+</dict>
+</plist>

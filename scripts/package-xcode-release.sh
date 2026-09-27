@@ -39,6 +39,24 @@ output="$project_root/dist/$product-$version"
 [[ ! -e "$output" ]] || { print -u2 "Release output already exists: $output"; exit 1; }
 [[ "$(uname -m)" == arm64 ]] || { print -u2 "Public $app_folder archives require Apple silicon."; exit 1; }
 
+# An app with Support/APP-Release.entitlements reaches iCloud in public releases, which takes its Developer
+# ID provisioning profile, passed as <APP>_PROVISIONING_PROFILE_PATH. Other builds never carry either.
+release_signing=()
+if [[ -f "$folder/Support/$app_folder-Release.entitlements" ]]; then
+    profile_variable="${setting}_PROVISIONING_PROFILE_PATH"
+    profile="${(P)profile_variable:-}"
+    [[ -f "$profile" ]] || { print -u2 "Set $profile_variable to the Developer ID provisioning profile."; exit 1; }
+    security cms -D -i "$profile" > "$staging/profile.plist"
+    [[ "$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.application-identifier' "$staging/profile.plist")" == "$team.$bundle" ]] || {
+        print -u2 "The provisioning profile in $profile_variable is not for $bundle."; exit 1
+    }
+    profile_uuid="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$staging/profile.plist")"
+    profiles="$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
+    mkdir -p "$profiles"
+    cp "$profile" "$profiles/$profile_uuid.provisionprofile"
+    release_signing=("${setting}_ENTITLEMENTS=Support/$app_folder-Release.entitlements" "${setting}_PROVISIONING_PROFILE=$profile_uuid")
+fi
+
 # Release is the production identity. A public release signs with Developer ID, timestamps every
 # signature and turns updates on, through the project's <APP>_CODESIGN_TIMESTAMP and
 # <APP>_UPDATES_ENABLED settings. ARCHS on the command line also reaches the package dependencies,
@@ -52,7 +70,7 @@ xcodebuild -workspace "$folder/$scheme.xcworkspace" -scheme "$scheme" \
     -archivePath "$staging/$scheme.xcarchive" -skipPackagePluginValidation -skipMacroValidation \
     ARCHS=arm64 CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="$NOODLE_SIGNING_IDENTITY" DEVELOPMENT_TEAM="$team" \
     OTHER_CODE_SIGN_FLAGS=--timestamp "${setting}_CODESIGN_TIMESTAMP=--timestamp" \
-    "INFOPLIST_PREPROCESSOR_DEFINITIONS=${setting}_UPDATES_ENABLED=true" archive >&2
+    "INFOPLIST_PREPROCESSOR_DEFINITIONS=${setting}_UPDATES_ENABLED=true" "${release_signing[@]}" archive >&2
 app="$staging/$app_name.app"
 ditto "$staging/$scheme.xcarchive/Products/Applications/$app_name.app" "$app"
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" == "$bundle" ]]

@@ -171,6 +171,15 @@ GitHub Actions uses these encrypted secrets:
 - `APP_STORE_CONNECT_KEY_ID`
 - `APP_STORE_CONNECT_ISSUER_ID`
 - `SPARKLE_PRIVATE_KEY`
+- `NOODLE_PROVISIONING_PROFILE` and `HUB_PROVISIONING_PROFILE`: each app's Developer ID
+  provisioning profile, base64-encoded, which lets it reach iCloud to notify devices away from the Hub
+- `CLOUDKIT_MANAGEMENT_TOKEN`: a management token from the CloudKit Console, with which a release first
+  checks that CloudKit and the profiles match what the release needs
+
+Before a release, `scripts/verify-push-setup.sh` runs the same check on a Mac, given the token (or one
+saved with `xcrun cktool save-token --type management`) and `NOODLE_PROVISIONING_PROFILE_PATH` and
+`HUB_PROVISIONING_PROFILE_PATH` pointing at the profiles. Changes to CloudKit's schema must be deployed
+to Production before the release that needs them.
 
 CI removes temporary signing material after use. Keep keys out of the repository.
 Back up the Sparkle key securely; changing it requires Sparkle's key-transition

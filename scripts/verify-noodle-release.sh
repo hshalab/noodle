@@ -14,7 +14,25 @@ if [[ "$bundle" == com.pdparchitect.noodle ]]; then zsh "$project_root/scripts/v
 app_entitlements="$(codesign -d --entitlements :- "$app" 2>/dev/null | tr -d '[:space:]')"
 # Whitespace is stripped above, so "Application Support" appears without its space.
 entitlement_count="$(print -r -- "$app_entitlements" | grep -o '<key>' | wc -l | tr -d '[:space:]')"
-if [[ "$entitlement_count" != "12" ]] \
+# The reviewed policy. A public release also carries Support/Noodle-Release.entitlements' iCloud
+# container, and the two keys its provisioning profile adds, and must embed that profile.
+expected_count=12
+if [[ -f "$app/Contents/embedded.provisionprofile" ]]; then
+    expected_count=17
+    team="$(codesign -dv --verbose=4 "$app" 2>&1 | awk -F= '/^TeamIdentifier=/ { print $2 }')"
+    if ! print -r -- "$app_entitlements" | grep -q '<key>com.apple.developer.icloud-container-environment</key><string>Production</string>' \
+        || ! print -r -- "$app_entitlements" | grep -q '<key>com.apple.developer.icloud-container-identifiers</key><array><string>iCloud.com.pdparchitect.noodle</string></array>' \
+        || ! print -r -- "$app_entitlements" | grep -q '<key>com.apple.developer.icloud-services</key><array><string>CloudKit</string></array>' \
+        || ! print -r -- "$app_entitlements" | grep -q "<key>com.apple.application-identifier</key><string>$team.$bundle</string>" \
+        || ! print -r -- "$app_entitlements" | grep -q "<key>com.apple.developer.team-identifier</key><string>$team</string>"; then
+        print -u2 "The signed app's iCloud entitlements do not match Support/Noodle-Release.entitlements and its profile."
+        exit 1
+    fi
+elif [[ "${NOODLE_REQUIRE_DEVELOPER_ID:-0}" == "1" ]]; then
+    print -u2 "A public release must embed its Developer ID provisioning profile."
+    exit 1
+fi
+if [[ "$entitlement_count" != "$expected_count" ]] \
     || ! print -r -- "$app_entitlements" | grep -q '<key>com.apple.security.app-sandbox</key><true/>' \
     || ! print -r -- "$app_entitlements" | grep -q '<key>com.apple.security.files.user-selected.read-only</key><true/>' \
     || ! print -r -- "$app_entitlements" | grep -q '<key>com.apple.security.network.client</key><true/>' \
@@ -25,7 +43,7 @@ if [[ "$entitlement_count" != "12" ]] \
     || ! print -r -- "$app_entitlements" | grep -q '<key>com.apple.security.personal-information.reminders</key><true/>' \
     || ! print -r -- "$app_entitlements" | grep -q '<key>com.apple.security.temporary-exception.files.home-relative-path.read-write</key><array><string>/.codex/</string></array>' \
     || ! print -r -- "$app_entitlements" | grep -q '<key>com.apple.security.temporary-exception.files.home-relative-path.read-only</key><array><string>/.local/bin/claude</string><string>/.local/share/claude/versions/</string><string>/.local/bin/fx</string><string>/Library/ApplicationSupport/com.apple.mobileAssetDesktop/</string><string>/Library/ApplicationSupport/com.apple.wallpaper/aerials/</string></array>'; then
-    print -u2 "The signed app's sandbox entitlements do not match the reviewed twelve-key policy."
+    print -u2 "The signed app's sandbox entitlements do not match the reviewed policy."
     exit 1
 fi
 
