@@ -16,7 +16,7 @@
 - Bots can no longer pop a noodlet window up on the Hub's screen. Their noodlets run out of sight.
 - The Usage window keeps its bot, group, measure and period choices in the toolbar, with the period's dates under the title, totals in one strip above the chart and the breakdown in a table below it.
 - Buttons in the rows of the Users, Plans and Bots settings look like links, as in System Settings.
-- Remove for a device or user in Settings > Users, and Delete Plan, no longer end in an ellipsis, since they only ask to confirm.
+- Invite and Remove in Settings > Users, and Delete Plan, no longer end in an ellipsis, since they ask for nothing more.
 - Quitting the Hub, from its menu or with Command-Q, asks first and says how many people and devices are connected and how many bots are working. Logging out and shutting down are not held up.
 - Restarting to install an update asks first in the same way.
 - The menu bar menu groups Pair… and Usage apart from Settings…, and Usage no longer ends in “…”.

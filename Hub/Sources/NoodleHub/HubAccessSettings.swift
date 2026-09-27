@@ -105,7 +105,7 @@ struct HubUsersSettingsView: View {
             }
             .labelsHidden()
             .fixedSize()
-            Button("Invite…") { inviting = Invitation(user: user, invitation: host.hub.link.invite(user)) }
+            Button("Invite") { inviting = Invitation(user: user, invitation: host.hub.link.invite(user)) }
                 .buttonStyle(.link)
             Menu {
                 Toggle("Can Pair Devices", isOn: Binding(
