@@ -223,6 +223,32 @@ import XCTest
         XCTAssertEqual(link.connectedUsers.map(\.name), ["Ada"])
     }
 
+    func testADevicePairsAnotherForItsOwnUserUnlessTheOwnerTurnsItOff() async throws {
+        let (hub, link, device) = try await fixture()
+        _ = try hub.access.addUser(named: "Bea")
+        let ada = try hub.access.addUser(named: "Ada")
+        let phone = HubPairing(directory: device, deviceName: "Ada’s iPhone")
+        await phone.join(link.invite(ada).url().absoluteString)
+        XCTAssertEqual(phone.status?.canPairDevices, true)
+
+        let invitation = try await phone.invite()
+        XCTAssertEqual(invitation.userName, "Ada")
+        let tablet = HubPairing(directory: device.appendingPathExtension("2"), deviceName: "Ada’s iPad")
+        await tablet.join(invitation.url().absoluteString)
+        XCTAssertNil(tablet.error)
+        XCTAssertEqual(hub.access.devices.map(\.name), ["Ada’s iPhone", "Ada’s iPad"])
+        XCTAssertEqual(hub.access.devices.map(\.user), [ada.id, ada.id])
+        XCTAssertEqual(tablet.status?.canPairDevices, true)
+
+        hub.access.setCanPairDevices(false, for: ada)
+        await phone.refresh()
+        XCTAssertEqual(phone.status?.canPairDevices, false)
+        do {
+            _ = try await phone.invite()
+            XCTFail("A user not allowed to pair devices made an invitation")
+        } catch {}
+    }
+
     func testADeviceJoinsSeveralHubsAndLeavesOne() async throws {
         let (home, homeLink, device) = try await fixture()
         let (friend, friendLink, _) = try await fixture()

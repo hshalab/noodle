@@ -105,6 +105,12 @@ struct HubUsersSettingsView: View {
             }
             .labelsHidden()
             .fixedSize()
+            Toggle("Can Pair", isOn: Binding(
+                get: { user.canPairDevices },
+                set: { access.setCanPairDevices($0, for: user) }
+            ))
+            .toggleStyle(.checkbox)
+            .help("Lets \(user.name) pair more of their own devices from their phone.")
             Button("Invite…") { inviting = Invitation(user: user, invitation: host.hub.link.invite(user)) }
                 .buttonStyle(.link)
             Menu {

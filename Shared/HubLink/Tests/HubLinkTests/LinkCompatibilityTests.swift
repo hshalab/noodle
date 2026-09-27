@@ -28,6 +28,8 @@ final class LinkCompatibilityTests: XCTestCase {
         XCTAssertEqual(status.harnesses, [])
         XCTAssertEqual(status.endpoints, [])
         XCTAssertEqual(status.protocolVersion, 1)
+        // A Hub that cannot make invitations for devices never offers it.
+        XCTAssertFalse(status.canPairDevices)
 
         let harness = try decode(LinkHarness.self, #"{"provider":"codex","providerName":"Codex"}"#)
         XCTAssertEqual(harness.models, [])

@@ -158,6 +158,9 @@ public enum LinkRequest: Codable, Equatable, Sendable {
     case linkPreview(conversationID: UUID, attachmentID: UUID)
     /// A picture a list left out, answered with `picture`.
     case picture(LinkPictureOwner)
+    /// A one-time invitation for another device of this user, when the Hub lets them pair
+    /// their own devices. Answered with `invitation`.
+    case invite
 }
 
 /// Whose picture: a bot's, or the icon of a connection, computer or browser.
@@ -265,6 +268,7 @@ public enum LinkResponse: Codable, Equatable, Sendable {
     case chunk(data: Data, total: Int)
     /// A picture, or none when there is nothing to show yet.
     case picture(Data?)
+    case invitation(LinkInvitation)
     case done
     case failure(String)
 }
@@ -448,18 +452,23 @@ public struct LinkStatus: Codable, Equatable, Sendable {
     public var endpoints: [LinkEndpoint]
     /// The newest request version this Hub serves.
     public var protocolVersion: Int
+    /// Whether the user may ask for an invitation for another of their devices with `invite`.
+    public var canPairDevices: Bool
 
     public init(hubName: String, userName: String, planName: String, harnesses: [LinkHarness], endpoints: [LinkEndpoint],
-                protocolVersion: Int = LinkProtocol.version) {
+                protocolVersion: Int = LinkProtocol.version, canPairDevices: Bool = false) {
         self.hubName = hubName
         self.userName = userName
         self.planName = planName
         self.harnesses = harnesses
         self.endpoints = endpoints
         self.protocolVersion = protocolVersion
+        self.canPairDevices = canPairDevices
     }
 
-    private enum CodingKeys: String, CodingKey { case hubName, userName, planName, harnesses, endpoints, protocolVersion }
+    private enum CodingKeys: String, CodingKey {
+        case hubName, userName, planName, harnesses, endpoints, protocolVersion, canPairDevices
+    }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -469,6 +478,7 @@ public struct LinkStatus: Codable, Equatable, Sendable {
         harnesses = try c.decode(.harnesses, or: [])
         endpoints = try c.decode(.endpoints, or: [])
         protocolVersion = try c.decode(.protocolVersion, or: 1)
+        canPairDevices = try c.decode(.canPairDevices, or: false)
     }
 }
 

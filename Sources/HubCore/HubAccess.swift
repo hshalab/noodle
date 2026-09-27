@@ -50,11 +50,24 @@ public struct HubUser: Identifiable, Codable, Hashable, Sendable {
     public let id: UUID
     public var name: String
     public var plan: UUID
+    /// Whether their devices may ask for invitations for more of their own devices.
+    public var canPairDevices: Bool
 
-    public init(id: UUID = UUID(), name: String, plan: UUID = HubPlan.defaultID) {
+    public init(id: UUID = UUID(), name: String, plan: UUID = HubPlan.defaultID, canPairDevices: Bool = true) {
         self.id = id
         self.name = name
         self.plan = plan
+        self.canPairDevices = canPairDevices
+    }
+
+    private enum CodingKeys: String, CodingKey { case id, name, plan, canPairDevices }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        plan = try c.decode(UUID.self, forKey: .plan)
+        canPairDevices = try c.decodeIfPresent(Bool.self, forKey: .canPairDevices) ?? true
     }
 }
 
@@ -178,6 +191,10 @@ public struct HubDevice: Identifiable, Codable, Hashable, Sendable {
     public func move(_ user: HubUser, to plan: HubPlan) {
         guard plans.contains(where: { $0.id == plan.id }) else { return }
         update(user) { $0.plan = plan.id }
+    }
+
+    public func setCanPairDevices(_ canPairDevices: Bool, for user: HubUser) {
+        update(user) { $0.canPairDevices = canPairDevices }
     }
 
     /// Their devices go too. Remove a user through `Hub.remove`, which deletes their bots and connections first.
