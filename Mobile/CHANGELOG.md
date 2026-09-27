@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-09-27
+
 ### What to Test
 
 - Tap a notification of a new reply: the app opens that conversation.
