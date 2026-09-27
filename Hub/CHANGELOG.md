@@ -4,6 +4,10 @@
 
 ## [0.3.2] - 2026-09-27
 
+### Changed
+
+- Opening the Hub yourself shows its Settings, so it no longer seems to do nothing. At login it still starts quietly in the menu bar.
+
 ### Added
 
 - The menu bar icon shows a green dot while someone is connected to the Hub.

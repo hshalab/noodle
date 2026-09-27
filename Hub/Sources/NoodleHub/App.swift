@@ -52,8 +52,14 @@ struct NoodleHubApp: App {
     }()
     lazy var presence = HubPresence(link: settings.hub.link)
 
+    /// Opened by a person rather than as a login item, so it shows Settings instead of only a menu bar icon.
+    private var launchedByPerson = true
+
     func applicationWillFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        let event = NSAppleEventManager.shared().currentAppleEvent
+        launchedByPerson = event?.eventID != kAEOpenApplication
+            || event?.paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue != keyAELaunchedAsLogInItem
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -62,6 +68,21 @@ struct NoodleHubApp: App {
         catch { NSLog("Noodle Hub could not start its bots: \(error.localizedDescription)") }
         Task { await settings.hub.link.start() }
         presence.start()
+        if launchedByPerson { showSettings() }
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag { showSettings() }
+        return true
+    }
+
+    /// SwiftUI refuses a direct `showSettingsWindow:` outside a view, so this goes through its own Settings menu item.
+    private func showSettings() {
+        NSApp.unhide(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        guard let menu = NSApp.mainMenu?.items.first?.submenu,
+              let item = menu.items.firstIndex(where: { $0.keyEquivalent == "," }) else { return }
+        menu.performActionForItem(at: item)
     }
 
     func applicationWillTerminate(_ notification: Notification) {
