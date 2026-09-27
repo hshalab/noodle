@@ -7,6 +7,11 @@ import QuickLookThumbnailing
 import SwiftUI
 import UniformTypeIdentifiers
 
+extension EnvironmentValues {
+    /// Opens a live link full screen, presented by the conversation rather than the card that was tapped.
+    @Entry var watchLive: @MainActor (LinkAttachment) -> Void = { _ in }
+}
+
 /// One file in a message: a picture shown inline, anything else as a card. Tapping opens Quick Look.
 struct AttachmentView: View {
     let chats: HubChats
@@ -17,8 +22,8 @@ struct AttachmentView: View {
     @State private var image: UIImage?
     @State private var failed = false
     @State private var previewing: URL?
-    @State private var watching = false
     @State private var livePicture: Data?
+    @Environment(\.watchLive) private var watchLive
 
     private var isImage: Bool { attachment.mediaType.hasPrefix("image/") }
 
@@ -54,7 +59,7 @@ struct AttachmentView: View {
 
     /// A browser tab, computer or noodlet a bot shared: its last picture, opening live on the Hub's Mac.
     private var live: some View {
-        Button { watching = true } label: {
+        Button { watchLive(attachment) } label: {
             VStack(alignment: .leading, spacing: 6) {
                 ZStack {
                     Color(.secondarySystemBackground)
@@ -83,9 +88,6 @@ struct AttachmentView: View {
             // Cards come without their pictures; each is fetched as its card comes into view.
             guard attachment.card?.image == nil else { return }
             livePicture = try? await chats.picture(for: attachment, in: agent)
-        }
-        .fullScreenCover(isPresented: $watching) {
-            LiveSurfaceScreen(chats: chats, agent: agent, attachment: attachment)
         }
     }
 

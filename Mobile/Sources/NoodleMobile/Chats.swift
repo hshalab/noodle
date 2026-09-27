@@ -623,6 +623,9 @@ struct ChatView: View {
     @State private var photos: [PhotosPickerItem] = []
     @State private var takingPhoto = false
     @State private var importing = false
+    /// The live link open full screen. Held here, not by its card: the conversation unloads rows it
+    /// lays out again, as on rotating the phone, and a cover presented by a row would close with it.
+    @State private var watching: LinkAttachment?
     /// Whether the panel of things to attach is open over the conversation.
     @State private var attaching = false
     @Namespace private var attachGlass
@@ -726,6 +729,10 @@ struct ChatView: View {
         }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
             attach { try result.get().map(PickedFiles.copy) }
+        }
+        .environment(\.watchLive) { watching = $0 }
+        .fullScreenCover(item: $watching) { attachment in
+            LiveSurfaceScreen(chats: chats, agent: agent, attachment: attachment)
         }
     }
 

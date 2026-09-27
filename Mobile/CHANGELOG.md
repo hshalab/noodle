@@ -5,11 +5,13 @@
 ### What to Test
 
 - Record a voice message and tap the cross to discard it, including just beside it.
+- Open a shared browser, computer or noodlet and rotate the phone both ways: it stays open.
 
 ### Fixed
 
 - Tapping beside the discard button while recording no longer opens the picture or message behind it.
 - The live bars scroll smoothly while recording instead of stuttering.
+- Rotating the phone no longer closes a shared browser, computer or noodlet you are watching.
 
 ## [0.2.2] - 2026-09-27
 
