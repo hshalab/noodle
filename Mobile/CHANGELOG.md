@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### What to Test
+
+- Tap a notification of a new reply: the app opens that conversation.
+
+### Fixed
+
+- Tapping a notification no longer closes the app.
+
 ## [0.3.1] - 2026-09-27
 
 ### What to Test

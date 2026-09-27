@@ -179,7 +179,9 @@ GitHub Actions uses these encrypted secrets:
 Before a release, `scripts/verify-push-setup.sh` runs the same check on a Mac, given the token (or one
 saved with `xcrun cktool save-token --type management`) and `NOODLE_PROVISIONING_PROFILE_PATH` and
 `HUB_PROVISIONING_PROFILE_PATH` pointing at the profiles. Changes to CloudKit's schema must be deployed
-to Production before the release that needs them.
+to Production before the release that needs them. If phones log `attempting to create a subscription in a
+production container` although the schema matches, CloudKit needs a subscription created in Development
+and the schema deployed to Production again, even when the Console shows nothing to deploy.
 
 CI removes temporary signing material after use. Keep keys out of the repository.
 Back up the Sparkle key securely; changing it requires Sparkle's key-transition

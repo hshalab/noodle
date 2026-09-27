@@ -101,11 +101,12 @@ struct CloudKitSubscriptions: PushSubscriptions {
     /// with the phone connected.
     static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "NoodleMobile", category: "Notifications")
 
-    /// CloudKit's own words, which name what it refused.
+    /// CloudKit's code and reason, which name what it refused. Its description is left out: it names
+    /// the subscription, and with it the topic.
     static func describe(_ error: Error) -> String {
         guard let error = error as? CKError else { return error.localizedDescription }
-        let server = error.userInfo["ServerErrorDescription"] as? String
-        return "\(error.code.rawValue) \(error.localizedDescription)" + (server.map { " (\($0))" } ?? "")
+        let reason = (error.userInfo["ServerErrorDescription"] as? String) ?? "no reason given"
+        return "CloudKit error \(error.code.rawValue): \(reason)"
     }
 
     /// A conversation read here needs no notification any more.
@@ -118,7 +119,7 @@ struct CloudKitSubscriptions: PushSubscriptions {
 }
 
 /// Where tapped notifications arrive, and the conversation the app should open.
-@MainActor @Observable final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
+@MainActor @Observable final class AppDelegate: NSObject, UIApplicationDelegate, @preconcurrency UNUserNotificationCenterDelegate {
     var opening: NotificationRoute?
     /// Whether this launch registered for push, once known, and who waits to hear.
     @ObservationIgnored private var registered: Bool?
@@ -155,13 +156,13 @@ struct CloudKitSubscriptions: PushSubscriptions {
     }
 
     /// The app on screen shows replies as they come.
-    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
-                                            willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
+    // Both on the main actor: iOS requires their answers there, and aborts the app otherwise.
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
         []
     }
 
-    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
-        let route = PushTopic.route(userInfo: response.notification.request.content.userInfo)
-        await MainActor.run { opening = route }
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        opening = PushTopic.route(userInfo: response.notification.request.content.userInfo)
     }
 }
