@@ -185,6 +185,7 @@ final class NoodleStore {
         }
         usage = UsageHistory(url: self.repository.rootURL.appendingPathComponent("usage.sqlite"))
         self.runtime.onUsage = { [usage] in usage.record($0) }
+        self.runtime.recordedUsage = { [usage] in usage.recorded(session: $0) }
         hubs = HubMemberships(directory: self.repository.rootURL.appendingPathComponent("Hubs", isDirectory: true),
                               deviceName: Host.current().localizedName ?? "Mac")
         harnessSetup = HarnessSetupController(versionChecker: HarnessVersionChecker(),

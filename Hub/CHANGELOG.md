@@ -13,6 +13,7 @@
 - Each picture's size is sent with it, so Noodle for iPhone keeps its place in a conversation while pictures load.
 - Live views keep up on a slow or busy connection: video gets lighter to fit the link instead of arriving seconds late and stuttering.
 - Settings, Usage and bot Activity windows open in front of other apps instead of behind them.
+- Usage no longer counts a Claude bot’s earlier tokens and cost again each time the bot restarts. Usage recorded before this fix still includes the repeats.
 
 ## [0.3.1] - 2026-09-26
 

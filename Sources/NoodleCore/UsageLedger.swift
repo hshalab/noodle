@@ -26,6 +26,17 @@ public struct UsageTokens: Hashable, Sendable {
     }
 }
 
+/// Everything recorded for one model in one harness session.
+public struct UsageTotal: Hashable, Sendable {
+    public var tokens: UsageTokens
+    public var costUSD: Double
+
+    public init(tokens: UsageTokens = UsageTokens(), costUSD: Double = 0) {
+        self.tokens = tokens
+        self.costUSD = costUSD
+    }
+}
+
 /// One model's spend for one agent. Cost is nil when the harness does not report it.
 public struct UsageSample: Hashable, Sendable {
     public var date: Date
@@ -35,9 +46,11 @@ public struct UsageSample: Hashable, Sendable {
     public var model: String
     public var tokens: UsageTokens
     public var costUSD: Double?
+    /// Set for harnesses whose totals carry over when a session is resumed.
+    public var session: String?
 
     public init(date: Date, agentID: UUID, agentName: String, harness: String, model: String,
-                tokens: UsageTokens, costUSD: Double?) {
+                tokens: UsageTokens, costUSD: Double?, session: String? = nil) {
         self.date = date
         self.agentID = agentID
         self.agentName = agentName
@@ -45,6 +58,7 @@ public struct UsageSample: Hashable, Sendable {
         self.model = model
         self.tokens = tokens
         self.costUSD = costUSD
+        self.session = session
     }
 }
 
@@ -84,6 +98,10 @@ public final class UsageLedger: @unchecked Sendable {
                     cache_write INTEGER NOT NULL, reasoning INTEGER NOT NULL, cost_usd REAL);
                 CREATE INDEX IF NOT EXISTS usage_time ON usage(time);
                 """)
+            if try !withStatement("SELECT 1 FROM pragma_table_info('usage') WHERE name = 'session'", { sqlite3_step($0) == SQLITE_ROW }) {
+                try execute("ALTER TABLE usage ADD COLUMN session TEXT")
+            }
+            try execute("CREATE INDEX IF NOT EXISTS usage_session ON usage(session)")
         } catch {
             sqlite3_close(db)
             throw error
@@ -94,8 +112,8 @@ public final class UsageLedger: @unchecked Sendable {
 
     public func record(_ sample: UsageSample) throws {
         try withStatement("""
-            INSERT INTO usage (time, agent_id, agent_name, harness, model, input, output, cache_read, cache_write, reasoning, cost_usd)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO usage (time, agent_id, agent_name, harness, model, input, output, cache_read, cache_write, reasoning, cost_usd, session)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """) { statement in
             sqlite3_bind_double(statement, 1, sample.date.timeIntervalSince1970)
             bind(sample.agentID.uuidString, to: statement, at: 2)
@@ -107,6 +125,7 @@ public final class UsageLedger: @unchecked Sendable {
                 sqlite3_bind_int64(statement, Int32(6 + index), sqlite3_int64(value))
             }
             if let cost = sample.costUSD { sqlite3_bind_double(statement, 11, cost) } else { sqlite3_bind_null(statement, 11) }
+            if let session = sample.session { bind(session, to: statement, at: 12) } else { sqlite3_bind_null(statement, 12) }
             guard sqlite3_step(statement) == SQLITE_DONE else { throw UsageLedgerError("Could not save usage.") }
         }
     }
@@ -150,6 +169,23 @@ public final class UsageLedger: @unchecked Sendable {
                     harness: text(statement, 3), model: text(statement, 4), tokens: tokens, costUSD: cost))
             }
             return days
+        }
+    }
+
+    /// Totals per model recorded for one session.
+    public func recorded(session: String) throws -> [String: UsageTotal] {
+        try withStatement("""
+            SELECT model, SUM(input), SUM(output), SUM(cache_read), SUM(cache_write), SUM(reasoning), TOTAL(cost_usd)
+            FROM usage WHERE session = ? GROUP BY model
+            """) { statement in
+            bind(session, to: statement, at: 1)
+            var totals: [String: UsageTotal] = [:]
+            while sqlite3_step(statement) == SQLITE_ROW {
+                let column = { Int(sqlite3_column_int64(statement, $0)) }
+                totals[text(statement, 0)] = UsageTotal(tokens: UsageTokens(input: column(1), output: column(2),
+                    cacheRead: column(3), cacheWrite: column(4), reasoning: column(5)), costUSD: sqlite3_column_double(statement, 6))
+            }
+            return totals
         }
     }
 

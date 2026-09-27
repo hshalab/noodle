@@ -120,6 +120,8 @@ public final class AgentRuntimeCoordinator {
     }
     /// Receives what each model call cost. Nothing is kept here.
     @ObservationIgnored public var onUsage: (@MainActor (UsageSample) -> Void)?
+    /// What the usage ledger holds for a session, so resumed totals are not counted twice.
+    @ObservationIgnored public var recordedUsage: (@MainActor (String) -> [String: UsageTotal])?
     @ObservationIgnored private var usageMeters: [UUID: UsageMeter] = [:]
     private var lifecycleID = UUID()
     private var transitionIDs: [UUID: UUID] = [:]
@@ -659,10 +661,13 @@ public final class AgentRuntimeCoordinator {
     private func recordUsage(_ message: [String: Any], provider: HarnessProvider, agent: AgentRecord) {
         guard let onUsage else { return }
         let date = now()
-        for reading in usageMeters[agent.id, default: UsageMeter()].readings(message, provider: provider) {
+        let readings = usageMeters[agent.id, default: UsageMeter()].readings(message, provider: provider) {
+            recordedUsage?($0) ?? [:]
+        }
+        for reading in readings {
             onUsage(UsageSample(date: date, agentID: agent.id, agentName: agent.displayName, harness: provider.rawValue,
                 model: reading.model.isEmpty ? agent.modelIdentifier ?? "" : reading.model,
-                tokens: reading.tokens, costUSD: reading.costUSD))
+                tokens: reading.tokens, costUSD: reading.costUSD, session: reading.session))
         }
     }
 

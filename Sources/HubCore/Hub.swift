@@ -38,6 +38,7 @@ import NoodleRuntime
         harnessProfiles = HarnessProfilesController(store: repository.harnessProfiles)
         usage = UsageHistory(url: root.appendingPathComponent("usage.sqlite"))
         runtime.onUsage = { [usage] in usage.record($0) }
+        runtime.recordedUsage = { [usage] in usage.recorded(session: $0) }
         access = HubAccess(url: root.appendingPathComponent("access.json"))
         // One broker serves every tool a bot is given here, whichever kind it is.
         let tools = ToolProviderRegistry(), assignments = ToolAssignmentStore()

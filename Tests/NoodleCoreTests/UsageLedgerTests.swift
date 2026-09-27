@@ -1,4 +1,5 @@
 import Foundation
+import SQLite3
 import XCTest
 @testable import NoodleCore
 
@@ -39,5 +40,37 @@ final class UsageLedgerTests: XCTestCase {
         XCTAssertEqual(bobToday.tokens.total, 161)
         XCTAssertEqual(try ledger.days(from: today, to: today.addingTimeInterval(86_400)).count, 2)
         XCTAssertEqual(try ledger.days(from: today, to: today.addingTimeInterval(86_400), agentID: bob).count, 1)
+    }
+
+    func testRecordedTotalsSumOneSessionPerModelInHistoriesFromBeforeSessions() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let url = root.appendingPathComponent("usage.sqlite")
+        var db: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(url.path, &db), SQLITE_OK)
+        XCTAssertEqual(sqlite3_exec(db, """
+            CREATE TABLE usage (
+                time REAL NOT NULL, agent_id TEXT NOT NULL, agent_name TEXT NOT NULL,
+                harness TEXT NOT NULL, model TEXT NOT NULL,
+                input INTEGER NOT NULL, output INTEGER NOT NULL, cache_read INTEGER NOT NULL,
+                cache_write INTEGER NOT NULL, reasoning INTEGER NOT NULL, cost_usd REAL);
+            INSERT INTO usage VALUES (0, '\(UUID().uuidString)', 'A', 'claude-code', 'opus', 100, 100, 0, 0, 0, 9);
+            """, nil, nil, nil), SQLITE_OK)
+        sqlite3_close(db)
+        let ledger = try UsageLedger(url: url), agent = UUID()
+        func record(_ session: String?, _ model: String, _ output: Int, _ cost: Double?) throws {
+            try ledger.record(UsageSample(date: Date(), agentID: agent, agentName: "A", harness: "claude-code", model: model,
+                tokens: UsageTokens(input: 1, output: output, reasoning: 1), costUSD: cost, session: session))
+        }
+        try record("s", "opus", 10, 0.5)
+        try record("s", "opus", 20, 0.25)
+        try record("s", "haiku", 5, nil)
+        try record("other", "opus", 99, 1)
+        try record(nil, "opus", 99, 1)
+        XCTAssertEqual(try ledger.recorded(session: "s"), [
+            "opus": UsageTotal(tokens: UsageTokens(input: 2, output: 30, reasoning: 2), costUSD: 0.75),
+            "haiku": UsageTotal(tokens: UsageTokens(input: 1, output: 5, reasoning: 1), costUSD: 0)])
+        XCTAssertEqual(try ledger.days(from: Date(timeIntervalSince1970: 0), to: Date().addingTimeInterval(60)).count, 3)
     }
 }

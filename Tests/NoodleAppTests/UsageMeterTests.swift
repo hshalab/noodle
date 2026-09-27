@@ -17,16 +17,41 @@ import XCTest
         }
         let first = meter.readings(result(["claude-opus-5-5-20260101": model(10, 50, 1000, 200, 0.5)]), provider: .claudeCode)
         XCTAssertEqual(first, [UsageReading(model: "claude-opus-5-5",
-            tokens: UsageTokens(input: 10, output: 50, cacheRead: 1000, cacheWrite: 200, reasoning: 3), costUSD: 0.5)])
+            tokens: UsageTokens(input: 10, output: 50, cacheRead: 1000, cacheWrite: 200, reasoning: 3), costUSD: 0.5, session: "s")])
         let second = meter.readings(result(["claude-opus-5-5-20260101": model(15, 80, 3000, 200, 0.75),
                                             "claude-haiku-4-5-20251001": ["inputTokens": 7, "outputTokens": 9, "costUSD": 0.01]]),
                                     provider: .claudeCode)
         XCTAssertEqual(second.count, 2)
         XCTAssertEqual(second.first { $0.model == "claude-opus-5-5" },
-                       UsageReading(model: "claude-opus-5-5", tokens: UsageTokens(input: 5, output: 30, cacheRead: 2000), costUSD: 0.25))
+                       UsageReading(model: "claude-opus-5-5", tokens: UsageTokens(input: 5, output: 30, cacheRead: 2000), costUSD: 0.25, session: "s"))
         XCTAssertEqual(second.first { $0.model == "claude-haiku-4-5-20251001" }?.tokens.total, 16)
         XCTAssertTrue(meter.readings(result(["claude-opus-5-5-20260101": model(15, 80, 3000, 200, 0.75)]), provider: .claudeCode).isEmpty)
         XCTAssertTrue(meter.readings(["type": "assistant"], provider: .claudeCode).isEmpty)
+    }
+
+    /// A resumed Claude session reports its totals from before the restart, so
+    /// only what the ledger has not recorded for that session is new.
+    func testResumedClaudeSessionCountsOnlyWhatWasNotRecorded() {
+        var meter = UsageMeter()
+        func result(_ session: String, _ output: Int, _ read: Int, _ cost: Double) -> [String: Any] {
+            ["type": "result", "session_id": session, "modelUsage": ["claude-opus-5-5-20260101": [
+                "inputTokens": 10, "outputTokens": output, "cacheReadInputTokens": read, "costUSD": cost,
+                "canonicalModel": "claude-opus-5-5"]]]
+        }
+        let recorded = ["claude-opus-5-5": UsageTotal(tokens: UsageTokens(input: 10, output: 50, cacheRead: 1000), costUSD: 0.5)]
+        var asked: [String] = []
+        let resumed = meter.readings(result("s", 80, 3000, 0.75), provider: .claudeCode) { asked.append($0); return recorded }
+        XCTAssertEqual(asked, ["s"])
+        XCTAssertEqual(resumed, [UsageReading(model: "claude-opus-5-5", tokens: UsageTokens(output: 30, cacheRead: 2000),
+            costUSD: 0.25, session: "s")])
+        let next = meter.readings(result("s", 90, 3500, 0.875), provider: .claudeCode) { _ in recorded }
+        XCTAssertEqual(next.first?.tokens, UsageTokens(output: 10, cacheRead: 500))
+        XCTAssertEqual(next.first?.costUSD, 0.125)
+
+        // Totals below what was recorded mean Claude did not restore them.
+        var fresh = UsageMeter()
+        XCTAssertEqual(fresh.readings(result("s", 5, 100, 0.25), provider: .claudeCode) { _ in recorded }.first?.tokens,
+                       UsageTokens(input: 10, output: 5, cacheRead: 100))
     }
 
     func testCodexTokenUsageSeparatesCachedInput() {
@@ -132,5 +157,14 @@ import XCTest
         let days = f.store.usage.days(from: today, to: today.addingTimeInterval(86_400), agentID: nil)
         XCTAssertEqual(days.map(\.tokens.total), [7])
         XCTAssertTrue(FileManager.default.fileExists(atPath: f.repository.rootURL.appendingPathComponent("usage.sqlite").path))
+    }
+
+    func testRuntimeReadsWhatTheLedgerRecordedForASession() throws {
+        let f = try StoreFixture()
+        defer { f.cleanUp() }
+        f.store.runtime.onUsage?(UsageSample(date: Date(), agentID: f.a.id, agentName: f.a.displayName, harness: "claude-code",
+            model: "claude-opus-5-5", tokens: UsageTokens(input: 3, output: 4), costUSD: 0.25, session: "s"))
+        XCTAssertEqual(f.store.runtime.recordedUsage?("s"),
+                       ["claude-opus-5-5": UsageTotal(tokens: UsageTokens(input: 3, output: 4), costUSD: 0.25)])
     }
 }

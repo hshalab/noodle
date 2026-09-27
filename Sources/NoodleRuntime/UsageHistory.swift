@@ -20,6 +20,10 @@ public final class UsageHistory {
         revision += 1
     }
 
+    public func recorded(session: String) -> [String: UsageTotal] {
+        (try? ledger?.recorded(session: session)) ?? [:]
+    }
+
     public func days(from start: Date, to end: Date, agentID: UUID?) -> [UsageDay] {
         (try? ledger?.days(from: start, to: end, agentID: agentID)) ?? []
     }

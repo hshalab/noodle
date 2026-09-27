@@ -32,4 +32,21 @@ import XCTest
         second.launch.onActivity(result(output: 25, cost: 0.3))
         XCTAssertEqual(samples.map(\.tokens.output), [10, 15, 25])
     }
+
+    /// A resumed Claude session repeats its totals; what the ledger holds for it is not counted again.
+    func testRestartedClaudeSessionSubtractsWhatWasRecorded() throws {
+        let f = try RuntimeCoordinatorFixture()
+        defer { f.cleanUp() }
+        var samples: [UsageSample] = []
+        f.runtime.onUsage = { samples.append($0) }
+        f.runtime.recordedUsage = { session in
+            session == "s" ? ["claude-opus-5-5": UsageTotal(tokens: UsageTokens(output: 40), costUSD: 0.5)] : [:]
+        }
+        let agent = try f.agent("Ada", harness: .claudeCode)
+        try f.start(agent).launch.onActivity(["type": "result", "session_id": "s",
+            "modelUsage": ["claude-opus-5-5": ["outputTokens": 45, "costUSD": 0.75]]])
+        XCTAssertEqual(samples.map(\.tokens.output), [5])
+        XCTAssertEqual(samples.map(\.costUSD), [0.25])
+        XCTAssertEqual(samples.map(\.session), ["s"])
+    }
 }
