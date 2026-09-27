@@ -77,6 +77,12 @@ private struct ThisMacRows: View {
     @ViewBuilder private func network(_ link: HubLinkService) -> some View {
         Toggle("Open Port on Router", isOn: Binding(get: { link.opensRouterPort }, set: { link.opensRouterPort = $0 }))
             .help("Asks the router, through UPnP or NAT-PMP, to forward this Mac’s port so your devices reach it away from home")
+        Picker("Largest File", selection: Binding(get: { link.uploadLimit }, set: { link.uploadLimit = $0 })) {
+            ForEach(link.uploadLimitChoices, id: \.self) { limit in
+                Text(ByteCountFormatter.string(fromByteCount: Int64(limit), countStyle: .file)).tag(limit)
+            }
+        }
+        .help("The largest file your devices can send to a conversation on this Mac")
         LabeledContent("Addresses") {
             VStack(alignment: .trailing, spacing: 2) {
                 ForEach(link.endpoints, id: \.self) { endpoint in

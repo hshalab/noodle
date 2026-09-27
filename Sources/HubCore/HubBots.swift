@@ -58,6 +58,20 @@ import NoodleRuntime
         connections.onAssignmentsChange = { [weak self] in self?.toolBroker?.synchronizeSkills() }
         computers.onAssignmentsChange = { [weak self] in self?.toolBroker?.synchronizeSkills() }
         browsers.onAssignmentsChange = { [weak self] in self?.toolBroker?.synchronizeSkills() }
+        clearAbandonedUploads()
+    }
+
+    /// How long a file's pieces wait for the next one. Each piece touches the file, so one quiet
+    /// for longer is no longer arriving; its device starts again from the first piece.
+    static let abandonedUpload: TimeInterval = 3600
+
+    /// Deletes the pieces of files no longer arriving: at launch, and whenever another file starts.
+    private func clearAbandonedUploads(now: Date = Date()) {
+        let parts = (try? FileManager.default.contentsOfDirectory(at: uploads, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+        for part in parts where part.pathExtension == "part" {
+            let touched = (try? part.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
+            if now.timeIntervalSince(touched) > Self.abandonedUpload { try? FileManager.default.removeItem(at: part) }
+        }
     }
 
     /// Runs every bot, the messenger they reply through, and the checks that keep them going.
@@ -275,7 +289,10 @@ import NoodleRuntime
         if try repository.loadAttachments(conversationID: conversationID).contains(where: { $0.id == attachment.id }) { return }
         try FileManager.default.createDirectory(at: uploads, withIntermediateDirectories: true)
         let part = uploads.appendingPathComponent("\(attachment.id.uuidString).part")
-        if offset == 0 { FileManager.default.createFile(atPath: part.path, contents: nil) }
+        if offset == 0 {
+            clearAbandonedUploads()
+            FileManager.default.createFile(atPath: part.path, contents: nil)
+        }
         let size = ((try? FileManager.default.attributesOfItem(atPath: part.path))?[.size] as? NSNumber)?.intValue ?? -1
         guard size == offset, offset + data.count <= attachment.byteCount else {
             throw LinkError("A piece of the file arrived out of order. Send the file again.")

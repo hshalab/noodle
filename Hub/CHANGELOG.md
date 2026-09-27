@@ -10,6 +10,7 @@
 - Pair… in the menu bar menu opens a window to pair a new device, under the Noodle wordmark as on the welcome: choose one of the Hub's users or name a new one, then scan its QR code or share its link.
 - When the Hub's Mac is on Tailscale, the Hub lists its Tailscale name among its addresses, so devices can reach it wherever they are on your tailnet.
 - People can pair more of their own devices from Noodle on their phone. Can Pair Devices, in the actions menu beside each user in Settings > Users, is on unless you turn it off.
+- Largest File, in Settings > Network, sets the biggest file people can send to their bots on the Hub, 100 MB unless you change it. A larger file is refused before any of it is kept.
 
 ### Changed
 
@@ -28,6 +29,7 @@
 
 ### Fixed
 
+- A file that stops arriving partway, as when a device loses its connection, no longer leaves its pieces taking space on the Hub's Mac. They are deleted after an hour.
 - Settings > Network updates the Hub's addresses when its Mac's network changes, such as when Tailscale connects, instead of showing the ones it found when the window opened.
 
 ### Security

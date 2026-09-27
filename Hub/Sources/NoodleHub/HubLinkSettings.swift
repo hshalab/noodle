@@ -31,6 +31,12 @@ struct HubNetworkSettingsView: View {
             Section {
                 Toggle("Open Port on Router", isOn: $link.opensRouterPort)
                     .help("Asks the router, through UPnP or NAT-PMP, to forward the Hub’s port so devices can reach it away from home")
+                Picker("Largest File", selection: $link.uploadLimit) {
+                    ForEach(link.uploadLimitChoices, id: \.self) { limit in
+                        Text(ByteCountFormatter.string(fromByteCount: Int64(limit), countStyle: .file)).tag(limit)
+                    }
+                }
+                .help("The largest file a device can send to a conversation on the Hub")
             }
             Section("Addresses") {
                 ForEach(link.endpoints.filter { $0 != link.manualEndpoint }, id: \.self) { endpoint in

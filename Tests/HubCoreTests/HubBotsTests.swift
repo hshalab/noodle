@@ -12,6 +12,8 @@ import XCTest
         let link: HubLinkService
         let ada: HubUser
         let device: HubPairing
+        /// Where the Hub keeps files still arriving.
+        let uploads: URL
     }
 
     private let claude = HubHarness(provider: .claudeCode, profile: nil)
@@ -53,7 +55,8 @@ import XCTest
         let device = HubPairing(directory: root.appendingPathComponent("Device"), deviceName: "Mac")
         await device.join(link.invite(ada).url().absoluteString)
         XCTAssertNil(device.error)
-        return Fixture(hub: hub, link: link, ada: ada, device: device)
+        return Fixture(hub: hub, link: link, ada: ada, device: device,
+                       uploads: root.appendingPathComponent("Hub/Uploads", isDirectory: true))
     }
 
     private func createBot(_ f: Fixture, provider: String = "claude-code") async throws -> LinkBot {
@@ -380,6 +383,65 @@ import XCTest
         addTeardownBlock { try? FileManager.default.removeItem(at: copy) }
         try await f.device.download(attachment, from: bot.conversationID, to: copy)
         XCTAssertEqual(try Data(contentsOf: copy), bytes)
+    }
+
+    func testAFileLargerThanTheHubTakesIsRefusedAtItsFirstPiece() async throws {
+        let f = try await fixture()
+        XCTAssertEqual(f.link.uploadLimit, 100_000_000)
+        let bot = try await createBot(f)
+        f.link.uploadLimit = 1_000_000
+        let large = LinkAttachment(id: UUID(), filename: "Film.mov", mediaType: "video/quicktime", byteCount: 1_000_001)
+        do {
+            _ = try await f.device.request(.upload(conversationID: bot.conversationID, attachment: large, offset: 0, data: Data(count: 10)))
+            XCTFail("A file over the limit was taken")
+        } catch {
+            XCTAssertEqual((error as? LinkError)?.message, "Mac mini takes files up to 1 MB.")
+        }
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("hub-upload-\(UUID()).txt")
+        try Data(count: 1_000_000).write(to: file)
+        addTeardownBlock { try? FileManager.default.removeItem(at: file) }
+        let fits = LinkAttachment(id: UUID(), filename: "Note.txt", mediaType: "text/plain", byteCount: 1_000_000)
+        try await f.device.upload(file, as: fits, to: bot.conversationID)
+        XCTAssertEqual(try f.hub.repository.loadAttachments(conversationID: bot.conversationID).map(\.id), [fits.id])
+    }
+
+    func testPiecesOfFilesNoLongerArrivingAreCleared() async throws {
+        let f = try await fixture()
+        let bot = try await createBot(f)
+        let manager = FileManager.default
+        func part(untouchedFor age: TimeInterval) throws -> URL {
+            try manager.createDirectory(at: f.uploads, withIntermediateDirectories: true)
+            let url = f.uploads.appendingPathComponent("\(UUID().uuidString).part")
+            try Data(count: 10).write(to: url)
+            try manager.setAttributes([.modificationDate: Date().addingTimeInterval(-age)], ofItemAtPath: url.path)
+            return url
+        }
+        let abandoned = try part(untouchedFor: 2 * 3600), arriving = try part(untouchedFor: 60)
+        let file = manager.temporaryDirectory.appendingPathComponent("hub-upload-\(UUID()).txt")
+        try Data("hello".utf8).write(to: file)
+        addTeardownBlock { try? manager.removeItem(at: file) }
+        try await f.device.upload(file, as: LinkAttachment(id: UUID(), filename: "Note.txt", mediaType: "text/plain", byteCount: 5),
+                                  to: bot.conversationID)
+        XCTAssertFalse(manager.fileExists(atPath: abandoned.path))
+        XCTAssertTrue(manager.fileExists(atPath: arriving.path))
+
+        // And when the Hub opens again, before anything is sent.
+        let left = try part(untouchedFor: 2 * 3600)
+        _ = Hub(root: f.uploads.deletingLastPathComponent(), messenger: nil)
+        XCTAssertFalse(manager.fileExists(atPath: left.path))
+        XCTAssertTrue(manager.fileExists(atPath: arriving.path))
+    }
+
+    func testTheUploadLimitIsKeptAcrossLaunches() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("noodle-hub-limit-\(UUID())")
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+        let hub = Hub(root: root.appendingPathComponent("Hub"), messenger: nil)
+        func link() -> HubLinkService {
+            HubLinkService(hubName: "Mac mini", directory: root.appendingPathComponent("Link"), access: hub.access,
+                           profiles: hub.harnessProfiles)
+        }
+        link().uploadLimit = 5_000_000
+        XCTAssertEqual(link().uploadLimit, 5_000_000)
     }
 
     func testPicturesArriveWithTheirSize() async throws {

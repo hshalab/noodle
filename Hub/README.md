@@ -21,7 +21,8 @@ are connected and the addresses invitations carry. To reach the Hub away from ho
 Open Port on Router asks your router, through UPnP or NAT-PMP, to forward the Hub's UDP
 port, and paired devices learn the router's public address the next time they connect at
 home. If the router cannot, forward UDP port 38415 yourself, or use Add Address to record
-a domain or other address that reaches the Hub from outside your network.
+a domain or other address that reaches the Hub from outside your network. Largest File
+sets the biggest file people can send to their bots, 100 MB unless you change it.
 
 People who joined can keep bots on the Hub from Noodle, on the harnesses their plan
 lends. Those bots run here and keep their conversations here, and use the tool connections

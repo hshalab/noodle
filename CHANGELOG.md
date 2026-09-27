@@ -11,6 +11,7 @@ All notable changes to Noodle are documented here, following
 - Creating or editing a bot on a Noodle Hub lets you choose its model from those your plan allows.
 - When this Mac is on Tailscale, its Hub lists its Tailscale name among its addresses, so your devices can reach it wherever they are on your tailnet.
 - When this Mac is your Hub, Noodle for iPhone can pair more of your devices with it.
+- When this Mac is your Hub, Largest File in Settings > Hub sets the biggest file your devices can send to it, 100 MB unless you change it.
 - Web links in conversations open in Quick Look, with its button to continue in your browser. Turn off Preview web links in Settings > Conversation to open them straight in your browser.
 
 ### Changed
@@ -27,6 +28,7 @@ All notable changes to Noodle are documented here, following
 
 ### Fixed
 
+- When this Mac is your Hub, a file that stops arriving partway from one of your devices no longer leaves its pieces taking space. They are deleted after an hour.
 - Settings > Hub updates this Mac's addresses when its network changes, such as when Tailscale connects, instead of showing the ones it found when the window opened.
 - Scan with Camera, when joining a Noodle Hub, reads the invitation's QR code instead of making Noodle quit unexpectedly.
 

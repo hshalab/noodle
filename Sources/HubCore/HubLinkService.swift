@@ -37,6 +37,16 @@ import os
             if opensRouterPort { Task { await openRouterPort() } } else { closeRouterPort() }
         }
     }
+    /// The largest file, in bytes, a device may send to a conversation here.
+    public var uploadLimit: Int {
+        didSet { saveSettings() }
+    }
+    public static let defaultUploadLimit = 100_000_000
+    /// The limits Settings offers, with the current one when it is none of them.
+    public var uploadLimitChoices: [Int] {
+        let choices = [25, 50, 100, 250, 500, 1_000, 2_000].map { $0 * 1_000_000 }
+        return choices.contains(uploadLimit) ? choices : (choices + [uploadLimit]).sorted()
+    }
     public private(set) var router = RouterState.off
     /// Bumped whenever an interface comes or goes or a Tailscale name turns up, so views reading the endpoints draw them again.
     private var networkChanges = 0
@@ -75,6 +85,7 @@ import os
     private struct Settings: Codable {
         var manualAddress: String
         var opensRouterPort: Bool?
+        var uploadLimit: Int?
     }
 
     public init(hubName: String, directory: URL, access: HubAccess, profiles: HarnessProfilesController,
@@ -104,6 +115,7 @@ import os
         let settings = try? JSONDecoder().decode(Settings.self, from: Data(contentsOf: directory.appendingPathComponent("link.json")))
         manualAddress = settings?.manualAddress ?? ""
         opensRouterPort = settings?.opensRouterPort ?? true
+        uploadLimit = settings?.uploadLimit ?? Self.defaultUploadLimit
         bots?.onChange = { [weak self] user, event in
             self?.push(event, to: user)
             self?.schedulePushes(for: event, of: user)
@@ -439,6 +451,10 @@ import os
             return .message(try hubBots().send(message.body, id: message.id, attachmentIDs: message.attachmentIDs,
                                                in: message.conversationID, for: try user(key)))
         case .upload(let conversationID, let attachment, let offset, let data):
+            // Refused at the first piece, before any of the file is kept.
+            guard attachment.byteCount <= uploadLimit else {
+                throw LinkError("\(hubName) takes files up to \(ByteCountFormatter.string(fromByteCount: Int64(uploadLimit), countStyle: .file)).")
+            }
             try hubBots().receive(data, at: offset, of: attachment, in: conversationID, for: try user(key))
             return .done
         case .linkPreview(let conversationID, let attachmentID):
@@ -658,7 +674,8 @@ import os
 
     private func saveSettings() {
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        try? JSONEncoder().encode(Settings(manualAddress: manualAddress, opensRouterPort: opensRouterPort)).write(to: directory.appendingPathComponent("link.json"), options: .atomic)
+        try? JSONEncoder().encode(Settings(manualAddress: manualAddress, opensRouterPort: opensRouterPort,
+                                                  uploadLimit: uploadLimit)).write(to: directory.appendingPathComponent("link.json"), options: .atomic)
     }
 }
 
