@@ -354,6 +354,9 @@ import Observation
             return .chunk(data: data, total: total)
         case .react(let change):
             return .message(try hubBots().react(change, for: try user(key)))
+        case .markRead(let mark):
+            try hubBots().markRead(mark, for: try user(key))
+            return .done
         case .connections:
             return .connections(try hubConnections().link(for: try user(key)))
         case .picture(let owner):

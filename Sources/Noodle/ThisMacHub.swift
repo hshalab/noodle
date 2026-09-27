@@ -12,6 +12,8 @@ import Observation
     var isOn: Bool { hub != nil }
     /// Runs after a device made, changed or deleted a bot, so Noodle reloads its bots.
     @ObservationIgnored var onBotsEdited: (() -> Void)?
+    /// Runs when the owner read a conversation further on one of their devices.
+    @ObservationIgnored var onRead: ((_ conversationID: UUID, _ upTo: Date) -> Void)?
 
     @ObservationIgnored private let repository: WorkspaceRepository
     @ObservationIgnored private let runtime: AgentRuntimeCoordinator
@@ -48,6 +50,7 @@ import Observation
             // Copies of bots kept on joined Hubs are those Hubs', not this Mac's.
             hub.bots.isHidden = { [runtime] in runtime.remoteAgentIDs.contains($0) }
             hub.bots.onBotsEdited = { [weak self] in self?.onBotsEdited?() }
+            hub.onRead = { [weak self] in self?.onRead?($0, $1) }
             self.hub = hub
             await hub.start()
             awake = ProcessInfo.processInfo.beginActivity(options: [.idleSystemSleepDisabled],

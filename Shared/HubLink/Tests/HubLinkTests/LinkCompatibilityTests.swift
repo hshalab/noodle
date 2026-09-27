@@ -120,6 +120,7 @@ final class LinkVersion1Tests: XCTestCase {
             "openSurface": .openSurface(conversationID: b, attachmentID: c), "linkPreview": .linkPreview(conversationID: b, attachmentID: c),
             "messagePageBefore": .messagePage(LinkMessagePage(conversationID: b, before: 120, limit: 50)),
             "messagePageAfter": .messagePage(LinkMessagePage(conversationID: b, after: 3, limit: 100)),
+            "markRead": .markRead(LinkReadMark(conversationID: b, messageID: a)),
         ]
     }
     private var nextResponses: [String: LinkResponse] {
@@ -142,6 +143,8 @@ final class LinkVersion1Tests: XCTestCase {
                                                                          delivered: true)], count: 120, start: 70)),
             "linkMessage": .message(LinkMessage(id: a, conversationID: b, author: .bot(c), body: "Here", createdAt: date, delivered: true,
                                                 attachments: [link])),
+            "readBot": .bot(LinkBot(id: a, conversationID: b, draft: LinkBotDraft(name: "Alfred", provider: "codex"), createdAt: date,
+                                    readUpTo: date)),
         ]
     }
     private var nextEvents: [String: LinkEvent] {
@@ -151,6 +154,7 @@ final class LinkVersion1Tests: XCTestCase {
             "computersChanged": .computersChanged, "computerCreated": .computerCreated(requestID: a, computer: computer, error: nil),
             "computerFailed": .computerCreated(requestID: a, computer: nil, error: "No space"), "browsersChanged": .browsersChanged,
             "surfaceOpened": .surfaceOpened(sessionID: a), "surfaceFailed": .surfaceFailed(reason: "The computer is stopped."),
+            "readChanged": .readChanged(conversationID: b, upTo: date),
         ]
     }
 
@@ -187,6 +191,7 @@ final class LinkVersion1Tests: XCTestCase {
     private static let nextRequestJSON: [String: String] = [
         "messagePageBefore": #"{"version":1,"request":{"messagePage":{"_0":{"before":120,"limit":50,"conversationID":"00000000-0000-0000-0000-00000000000B"}}}}"#,
         "messagePageAfter": #"{"version":1,"request":{"messagePage":{"_0":{"conversationID":"00000000-0000-0000-0000-00000000000B","after":3,"limit":100}}}}"#,
+        "markRead": #"{"version":1,"request":{"markRead":{"_0":{"conversationID":"00000000-0000-0000-0000-00000000000B","messageID":"00000000-0000-0000-0000-00000000000A"}}}}"#,
         "assignBrowsers": #"{"version":1,"request":{"assignBrowsers":{"botID":"00000000-0000-0000-0000-00000000000A","browserIDs":["00000000-0000-0000-0000-00000000000B"]}}}"#,
         "assignComputers": #"{"request":{"assignComputers":{"botID":"00000000-0000-0000-0000-00000000000A","computerIDs":["00000000-0000-0000-0000-00000000000B"]}},"version":1}"#,
         "assignConnections": #"{"version":1,"request":{"assignConnections":{"botID":"00000000-0000-0000-0000-00000000000A","connectionIDs":["00000000-0000-0000-0000-00000000000B"]}}}"#,
@@ -218,7 +223,8 @@ final class LinkVersion1Tests: XCTestCase {
         "connections": #"{"connections":{"_0":[{"signedIn":true,"botIDs":["00000000-0000-0000-0000-00000000000B"],"draft":{"id":"00000000-0000-0000-0000-00000000000A","description":"Notes","endpoint":"https:\/\/mcp.notion.com\/mcp","instructions":"Search first.","name":"Notion"},"iconData":"AQ=="}]}}"#,
         "linkMessage": #"{"message":{"_0":{"reactions":[],"id":"00000000-0000-0000-0000-00000000000A","attachments":[{"id":"00000000-0000-0000-0000-00000000000C","mediaType":"application\/x-webloc","filename":"Hacker News.webloc","card":{"icon":"BQ==","symbol":"globe","colour":1,"title":"Hacker News","capturedAt":1790000000,"detail":"https:\/\/news.ycombinator.com","image":"BA=="},"byteCount":180,"url":"noodlebrowser:\/\/00000000-0000-0000-0000-00000000000a?tab=00000000-0000-0000-0000-00000000000b"}],"body":"Here","delivered":true,"createdAt":1790000000,"conversationID":"00000000-0000-0000-0000-00000000000B","author":{"bot":{"_0":"00000000-0000-0000-0000-00000000000C"}}}}}"#,
         "noPicture": #"{"picture":{}}"#,
-        "picture": #"{"picture":{"_0":"Bg=="}}"#
+        "picture": #"{"picture":{"_0":"Bg=="}}"#,
+        "readBot": #"{"bot":{"_0":{"id":"00000000-0000-0000-0000-00000000000A","conversationID":"00000000-0000-0000-0000-00000000000B","draft":{"name":"Alfred","provider":"codex"},"createdAt":1790000000,"readUpTo":1790000000}}}"#
     ]
     private static let nextEventJSON: [String: String] = [
         "browsersChanged": #"{"browsersChanged":{}}"#,
@@ -228,7 +234,8 @@ final class LinkVersion1Tests: XCTestCase {
         "connectionsChanged": #"{"connectionsChanged":{}}"#,
         "signInPage": #"{"signInPage":{"connectionID":"00000000-0000-0000-0000-00000000000A","url":"https:\/\/example.com\/auth"}}"#,
         "surfaceFailed": #"{"surfaceFailed":{"reason":"The computer is stopped."}}"#,
-        "surfaceOpened": #"{"surfaceOpened":{"sessionID":"00000000-0000-0000-0000-00000000000A"}}"#
+        "surfaceOpened": #"{"surfaceOpened":{"sessionID":"00000000-0000-0000-0000-00000000000A"}}"#,
+        "readChanged": #"{"readChanged":{"conversationID":"00000000-0000-0000-0000-00000000000B","upTo":1790000000}}"#
     ]
     private static let controlJSON = [
         #"{"input":{"_0":{"pointer":{"_0":"down","clickCount":2,"x":10,"y":20}}}}"#,

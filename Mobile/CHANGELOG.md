@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### What to Test
+
+- Read a conversation on your Mac: its unread dot on the phone goes away. Read one on the phone: it clears on your Mac.
+- Pair a second phone or iPad: conversations you already read elsewhere are not unread there.
+
+### Changed
+
+- Conversations you read on another device are read here too, and reading here clears them on your other devices. This needs a Hub from this release on.
+
 ## [0.2.2] - 2026-09-27
 
 ### What to Test

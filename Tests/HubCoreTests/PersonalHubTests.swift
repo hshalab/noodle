@@ -65,6 +65,28 @@ import XCTest
         XCTAssertEqual(page.messages.map(\.body), ["Hi there", "Hey, how are you?"])
     }
 
+    /// Reading on the Mac reads on the phone, and reading on the phone tells the Mac.
+    func testReadingIsSharedBetweenTheMacAndThePhone() async throws {
+        let (f, made) = try await fixture(bots: ["Eli"])
+        let conversation = try XCTUnwrap(f.repository.loadConversations().first { $0.participantIDs == [made[0].id] })
+        _ = try f.repository.sendAgentMessage(agentID: made[0].id, conversationID: conversation.id, body: "Morning")
+        // As kept, which is to the second.
+        let morning = try XCTUnwrap(f.repository.loadMessages(conversationID: conversation.id).last)
+
+        f.personal.markRead(conversation: conversation.id)
+        guard case .bots(let bots) = try await f.device.request(.bots) else { return XCTFail("no bots") }
+        XCTAssertEqual(bots.first?.readUpTo, morning.createdAt)
+
+        let evening = ChatMessage(id: UUID(), conversationID: conversation.id, author: .agent(made[0].id), body: "Evening",
+                                  createdAt: morning.createdAt.addingTimeInterval(60), delivery: .delivered)
+        try f.repository.append(evening)
+        var read: (conversation: UUID, upTo: Date)?
+        f.personal.onRead = { read = ($0, $1) }
+        _ = try await f.device.request(.markRead(LinkReadMark(conversationID: conversation.id, messageID: evening.id)))
+        XCTAssertEqual(read?.conversation, conversation.id)
+        XCTAssertEqual(read?.upTo, evening.createdAt)
+    }
+
     /// A long conversation, well past what one answer may carry, arrives newest first and page by
     /// page as the person scrolls back; a device reading onward gets the rest the same way.
     func testALongConversationArrivesPageByPage() async throws {

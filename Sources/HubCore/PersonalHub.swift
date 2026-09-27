@@ -18,6 +18,7 @@ import NoodleRuntime
     public let access: HubAccess
     public let bots: HubBots
     public let link: HubLinkService
+    private let repository: WorkspaceRepository
     private let connections: HubConnections
     private let computers: HubComputers
     private let browsers: HubBrowsers
@@ -29,6 +30,7 @@ import NoodleRuntime
                 applets: AppletController, profiles: HarnessProfilesController, port: UInt16 = PersonalHub.port,
                 router: (any RouterPortMapper)? = nil,
                 localEndpoints: @escaping (UInt16) -> [LinkEndpoint] = LinkEndpoint.local(port:)) {
+        self.repository = repository
         access = HubAccess(url: directory.appendingPathComponent("access.json"), personal: true)
         // Noodle keeps its own tools, computers and browsers for its bots; these only answer devices.
         let tools = ToolProviderRegistry(), assignments = ToolAssignmentStore()
@@ -40,10 +42,24 @@ import NoodleRuntime
         browsers = HubBrowsers(root: directory, access: access, tools: tools, assignments: assignments,
                                call: BrowserToolProvider.liveTransport())
         bots = HubBots(repository: repository, runtime: runtime, access: access, connections: connections, computers: computers,
-                       browsers: browsers, applets: applets, uploads: directory.appendingPathComponent("Uploads", isDirectory: true))
+                       browsers: browsers, applets: applets, uploads: directory.appendingPathComponent("Uploads", isDirectory: true),
+                       readMarks: directory.appendingPathComponent("read.json"))
         link = HubLinkService(hubName: name, directory: directory.appendingPathComponent("Link", isDirectory: true),
                               access: access, profiles: profiles, bots: bots, connections: connections, computers: computers,
                               browsers: browsers, port: port, router: router, localEndpoints: localEndpoints)
+    }
+
+    /// Runs when the owner read a conversation further on one of their devices, so the Mac shows it read too.
+    public var onRead: ((_ conversationID: UUID, _ upTo: Date) -> Void)? {
+        get { bots.onRead }
+        set { bots.onRead = newValue }
+    }
+
+    /// The owner read a conversation on the Mac, up to its latest message; their devices show it read.
+    public func markRead(conversation id: UUID) {
+        guard let latest = try? repository.loadMessages(conversationID: id).last else { return }
+        // Not a conversation devices see, such as one with several bots: nothing to tell them.
+        try? bots.markRead(LinkReadMark(conversationID: id, messageID: latest.id), for: owner)
     }
 
     public func start() async {

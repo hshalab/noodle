@@ -6,6 +6,10 @@ All notable changes to Noodle are documented here, following
 
 ## [Unreleased]
 
+### Changed
+
+- Conversations read on another device are read here too, for bots on a Noodle Hub and, when this Mac is your Hub, for the bots on this Mac. Reading here clears them on your other devices.
+
 ## [0.28.2] - 2026-09-27
 
 ### Changed

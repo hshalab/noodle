@@ -134,6 +134,51 @@ import XCTest
         XCTAssertEqual(page.messages.first?.author, .bot(bot.id))
     }
 
+    /// Reading on one device reads on all of the user's devices, and a device that joins later starts from it.
+    func testReadingIsKeptOnTheHub() async throws {
+        let f = try await fixture()
+        let bot = try await createBot(f)
+        _ = try await f.device.request(.send(LinkOutgoingMessage(conversationID: bot.conversationID, id: UUID(), body: "Hello")))
+        _ = try f.hub.repository.sendAgentMessage(agentID: bot.id, conversationID: bot.conversationID, body: "Done.")
+        XCTAssertNil(bot.readUpTo)
+        // Dates as a device has them, having crossed the link.
+        guard case .messages(let page) = try await f.device.request(.messages(conversationID: bot.conversationID, after: 0)),
+              let hello = page.messages.first, let reply = page.messages.last, page.messages.count == 2 else {
+            return XCTFail("no messages")
+        }
+        let phone = HubPairing(directory: FileManager.default.temporaryDirectory.appendingPathComponent("noodle-hub-phone-\(UUID())"),
+                               deviceName: "Phone")
+        await phone.join(f.link.invite(f.ada).url().absoluteString)
+        let events = try await phone.subscribe()
+
+        let read = LinkReadMark(conversationID: bot.conversationID, messageID: reply.id)
+        let answer = try await f.device.request(.markRead(read))
+        XCTAssertEqual(answer, .done)
+        var heard: Date?
+        for try await event in events {
+            if case .readChanged(bot.conversationID, let upTo) = event { heard = upTo; break }
+        }
+        XCTAssertEqual(heard, reply.createdAt)
+
+        // An older mark, from a device that fell behind, does not unread what was read.
+        _ = try await phone.request(.markRead(LinkReadMark(conversationID: bot.conversationID, messageID: hello.id)))
+        guard case .bots(let listed) = try await phone.request(.bots) else { return XCTFail("no bots") }
+        XCTAssertEqual(listed.first?.readUpTo, reply.createdAt)
+        do {
+            _ = try await phone.request(.markRead(LinkReadMark(conversationID: bot.conversationID, messageID: UUID())))
+            XCTFail("Read a message that is not there")
+        } catch {}
+
+        let grace = try f.hub.access.addUser(named: "Grace")
+        let other = HubPairing(directory: FileManager.default.temporaryDirectory.appendingPathComponent("noodle-hub-other-\(UUID())"),
+                               deviceName: "Other")
+        await other.join(f.link.invite(grace).url().absoluteString)
+        do {
+            _ = try await other.request(.markRead(read))
+            XCTFail("Read another user's conversation")
+        } catch {}
+    }
+
     func testReactionsTravelBothWays() async throws {
         let f = try await fixture()
         let bot = try await createBot(f)
