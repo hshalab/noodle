@@ -71,6 +71,8 @@ import NoodleRuntime
         let now = Date()
         agents.forEach { runtime.seedHeartbeatActivity(for: $0.id, at: now) }
         runtime.startAll(agents: agents, repository: repository)
+        // Devices are offered the models the Hub finds.
+        runtime.refreshCapabilities()
         applets.start(agents: agents)
         try startTools()
         running = true
@@ -141,6 +143,9 @@ import NoodleRuntime
         runtime.stopAll()
         running = false
     }
+
+    /// The models the Hub's own copy of the harness offers.
+    public func models(for provider: HarnessProvider) -> [HarnessModel] { runtime.models(for: provider.rawValue) }
 
     public func bots(for user: HubUser) throws -> [LinkBot] {
         let conversations = try repository.loadConversations()
@@ -319,6 +324,11 @@ import NoodleRuntime
             let name = agent.harnessIdentifier.flatMap(HarnessProvider.init(rawValue:))?.displayName ?? "this harness"
             throw LinkError("Your plan no longer lends \(name).")
         }
+        if let provider = agent.harnessIdentifier.flatMap(HarnessProvider.init(rawValue:)),
+           !access.lends(HubHarness(provider: provider, profile: profile), model: agent.modelIdentifier, to: user) {
+            throw LinkError(agent.modelIdentifier.map { "Your plan no longer lends \($0) on \(provider.displayName)." }
+                            ?? "Your plan needs a model chosen for \(provider.displayName).")
+        }
         let message = try repository.sendUserMessage(conversationID: conversationID, body: body,
                                                      attachmentIDs: attachmentIDs, id: id)
         if running || watching { runtime.notify([agent], repository: repository) }
@@ -433,8 +443,13 @@ import NoodleRuntime
         guard let provider = HarnessProvider(rawValue: draft.provider) else {
             throw LinkError("This Noodle Hub does not know the harness \(draft.provider).")
         }
-        guard lends(HubHarness(provider: provider, profile: draft.profile), to: user) else {
+        let harness = HubHarness(provider: provider, profile: draft.profile)
+        guard lends(harness, to: user) else {
             throw LinkError("Your plan \(verb) \(provider.displayName).")
+        }
+        guard access.lends(harness, model: draft.model, to: user) else {
+            throw LinkError(draft.model.map { "Your plan \(verb) \($0) on \(provider.displayName)." }
+                            ?? "Your plan needs a model chosen for \(provider.displayName).")
         }
         return provider
     }

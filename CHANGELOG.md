@@ -6,6 +6,10 @@ All notable changes to Noodle are documented here, following
 
 ## [Unreleased]
 
+### Added
+
+- Creating or editing a bot on a Noodle Hub lets you choose its model from those your plan allows.
+
 ### Changed
 
 - Bots can no longer pop a noodlet window up on your screen. Their noodlets run out of sight until you open one yourself.

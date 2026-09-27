@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### What to Test
+
+- Create or edit a bot: after choosing a harness, choose its model. With a plan that limits models, only those are offered.
+
+### Added
+
+- Choosing a bot's model from those your plan on the Hub allows.
+
 ## [0.3.2] - 2026-09-27
 
 ### What to Test

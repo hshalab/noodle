@@ -87,6 +87,7 @@ struct HubUsersSettingsView: View {
             }
             Spacer(minLength: 8)
             Button("Remove…") { removingDevice = device }
+                .buttonStyle(.link)
         }
         .padding(.leading, 32)
     }
@@ -105,6 +106,7 @@ struct HubUsersSettingsView: View {
             .labelsHidden()
             .fixedSize()
             Button("Invite…") { inviting = Invitation(user: user, invitation: host.hub.link.invite(user)) }
+                .buttonStyle(.link)
             Menu {
                 Button("Rename…") { naming = NamingRequest(.rename(user), name: user.name) }
                 Button("Remove…", role: .destructive) { removing = user }
@@ -143,6 +145,7 @@ struct HubPlansSettingsView: View {
                         }
                         Spacer(minLength: 8)
                         Button("Edit…") { editing = Editing(id: plan.id) }
+                            .buttonStyle(.link)
                     }
                 }
             } header: {
@@ -236,7 +239,10 @@ struct HubPlanEditor: View {
         }
         .frame(width: 480)
         .fixedSize(horizontal: false, vertical: true)
-        .onAppear { name = plan?.name ?? "" }
+        .onAppear {
+            name = plan?.name ?? ""
+            host.runtime.refreshCapabilities()
+        }
         .alert("Delete Plan?", isPresented: $confirmingDelete) {
             Button("Delete", role: .destructive) {
                 if let plan { access.delete(plan) }
@@ -248,7 +254,7 @@ struct HubPlanEditor: View {
         }
     }
 
-    /// A row per login. Each row is where a later choice of models for that harness belongs.
+    /// A row per login, with the models a lent one allows.
     @ViewBuilder private func harnessList(_ plan: HubPlan) -> some View {
         let entries = Self.harnesses(host)
         if entries.isEmpty {
@@ -277,6 +283,9 @@ struct HubPlanEditor: View {
                         .toggleStyle(.switch)
                         .controlSize(.mini)
                         .padding(.horizontal, 12).padding(.vertical, 8)
+                        if plan.harnesses.contains(entry.harness) {
+                            modelList(entry.harness, in: plan)
+                        }
                     }
                 }
             }
@@ -287,6 +296,35 @@ struct HubPlanEditor: View {
             .overlay {
                 RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.secondary.opacity(0.11))
             }
+        }
+    }
+
+    /// Any model, or only those ticked; the last one ticked stays so the harness still lends something.
+    @ViewBuilder private func modelList(_ harness: HubHarness, in plan: HubPlan) -> some View {
+        let known = host.runtime.models(for: harness.provider.rawValue)
+        let allowed = plan.models[harness]
+        let ids = known.map(\.id) + (allowed ?? []).subtracting(known.map(\.id)).sorted()
+        if !ids.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                Toggle("All models", isOn: Binding(
+                    get: { allowed == nil },
+                    set: { access.setModels($0 ? nil : Set(ids), for: harness, in: plan) }
+                ))
+                if let allowed {
+                    ForEach(ids, id: \.self) { id in
+                        Toggle(known.first { $0.id == id }?.displayName ?? id, isOn: Binding(
+                            get: { allowed.contains(id) },
+                            set: { access.setModels($0 ? allowed.union([id]) : allowed.subtracting([id]), for: harness, in: plan) }
+                        ))
+                        .disabled(allowed == [id])
+                        .padding(.leading, 20)
+                    }
+                }
+            }
+            .toggleStyle(.checkbox)
+            .controlSize(.small)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, 44).padding(.trailing, 12).padding(.bottom, 10)
         }
     }
 

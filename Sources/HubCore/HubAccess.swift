@@ -22,11 +22,24 @@ public struct HubPlan: Identifiable, Codable, Hashable, Sendable {
     public let id: UUID
     public var name: String
     public var harnesses: Set<HubHarness>
+    /// The models a bot may use on each harness; a harness missing here may use any, the harness default included.
+    public var models: [HubHarness: Set<String>]
 
-    public init(id: UUID = UUID(), name: String, harnesses: Set<HubHarness> = []) {
+    public init(id: UUID = UUID(), name: String, harnesses: Set<HubHarness> = [], models: [HubHarness: Set<String>] = [:]) {
         self.id = id
         self.name = name
         self.harnesses = harnesses
+        self.models = models
+    }
+
+    private enum CodingKeys: String, CodingKey { case id, name, harnesses, models }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        harnesses = try c.decode(Set<HubHarness>.self, forKey: .harnesses)
+        models = try c.decodeIfPresent([HubHarness: Set<String>].self, forKey: .models) ?? [:]
     }
 
     public var isDefault: Bool { id == Self.defaultID }
@@ -131,6 +144,19 @@ public struct HubDevice: Identifiable, Codable, Hashable, Sendable {
     public func lends(_ harness: HubHarness, to user: HubUser) -> Bool {
         guard let current = users.first(where: { $0.id == user.id }) else { return false }
         return isPersonal || harnesses(for: current).contains(harness)
+    }
+
+    /// The models the user's plan allows on `harness`; nil when any may be used.
+    public func models(on harness: HubHarness, for user: HubUser) -> Set<String>? {
+        guard !isPersonal else { return nil }
+        return plans.first { $0.id == user.plan }?.models[harness]
+    }
+
+    /// Whether the user may run a bot on `harness` with `model`, nil being the harness default.
+    public func lends(_ harness: HubHarness, model: String?, to user: HubUser) -> Bool {
+        guard lends(harness, to: user), let current = users.first(where: { $0.id == user.id }) else { return false }
+        guard let allowed = models(on: harness, for: current) else { return true }
+        return model.map(allowed.contains) ?? false
     }
 
     /// The owner of everything on a personal Mac.
@@ -249,8 +275,13 @@ public struct HubDevice: Identifiable, Codable, Hashable, Sendable {
 
     public func set(_ harness: HubHarness, included: Bool, in plan: HubPlan) {
         update(plan) {
-            if included { $0.harnesses.insert(harness) } else { $0.harnesses.remove(harness) }
+            if included { $0.harnesses.insert(harness) } else { $0.harnesses.remove(harness); $0.models[harness] = nil }
         }
+    }
+
+    /// Limits the models a bot may use on `harness`; nil, or none, lets it use any.
+    public func setModels(_ models: Set<String>?, for harness: HubHarness, in plan: HubPlan) {
+        update(plan) { $0.models[harness] = models?.isEmpty == false ? models : nil }
     }
 
     /// Users on a deleted plan go back to Default.
@@ -263,7 +294,10 @@ public struct HubDevice: Identifiable, Codable, Hashable, Sendable {
 
     /// Called when a harness profile is deleted.
     public func removeProfile(_ profile: UUID) {
-        for index in plans.indices { plans[index].harnesses = plans[index].harnesses.filter { $0.profile != profile } }
+        for index in plans.indices {
+            plans[index].harnesses = plans[index].harnesses.filter { $0.profile != profile }
+            plans[index].models = plans[index].models.filter { $0.key.profile != profile }
+        }
         save()
     }
 

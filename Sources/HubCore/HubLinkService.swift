@@ -570,8 +570,17 @@ import os
                 guard let profile = profiles.profile(id) else { return nil }
                 profileName = profile.displayName
             }
+            let known = bots?.models(for: harness.provider) ?? []
+            var models = known.map { LinkModel(id: $0.id, name: $0.displayName) }
+            let allowed = user.flatMap { access.models(on: harness, for: $0) }
+            if let allowed {
+                // Models the Hub no longer lists stay usable until the plan drops them.
+                models = models.filter { allowed.contains($0.id) }
+                    + allowed.subtracting(known.map(\.id)).sorted().map { LinkModel(id: $0, name: $0) }
+            }
             return LinkHarness(provider: harness.provider.rawValue, providerName: harness.provider.displayName,
-                               profile: harness.profile, profileName: profileName)
+                               profile: harness.profile, profileName: profileName, models: models,
+                               restrictsModels: allowed != nil)
         }
         .sorted { ($0.providerName, $0.profileName ?? "") < ($1.providerName, $1.profileName ?? "") }
         return LinkStatus(hubName: hubName, userName: user?.name ?? "", planName: plan?.name ?? "",

@@ -46,10 +46,12 @@ struct HubBotsSettingsView: View {
             Button("Show Folder") {
                 NSWorkspace.shared.activateFileViewerSelecting([host.repository.directory(for: agent)])
             }
+            .buttonStyle(.link)
             Button("Activity") {
                 NSApp.activate(ignoringOtherApps: true)
                 host.activityWindows.show(agent: agent, log: host.runtime.activity.log(for: agent.id))
             }
+            .buttonStyle(.link)
         }
     }
 }

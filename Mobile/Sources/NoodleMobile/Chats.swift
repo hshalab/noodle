@@ -1165,7 +1165,18 @@ struct AgentEditor: View {
         } set: { harness in
             draft.provider = harness?.provider ?? ""
             draft.profile = harness?.profile
+            draft.model = harness?.initialModel
+            draft.reasoningEffort = nil
         }
+    }
+
+    /// The models the chosen harness offers, plus the agent's current one if the plan no longer lends it.
+    private var models: [LinkModel] {
+        var models = harness.wrappedValue?.models ?? []
+        if let model = draft.model, !models.contains(where: { $0.id == model }) {
+            models.insert(LinkModel(id: model, name: model), at: 0)
+        }
+        return models
     }
 
     var body: some View {
@@ -1206,6 +1217,14 @@ struct AgentEditor: View {
                                     .tag(LinkHarness?.some(harness))
                             }
                         }
+                        if let lent = harness.wrappedValue, !models.isEmpty {
+                            Picker("Model", selection: $draft.model) {
+                                if !lent.restrictsModels || draft.model == nil {
+                                    Text(lent.restrictsModels ? "Choose" : "Default").tag(String?.none)
+                                }
+                                ForEach(models) { Text($0.name).tag(String?.some($0.id)) }
+                            }
+                        }
                     }
                 }
                 if let problem {
@@ -1238,7 +1257,8 @@ struct AgentEditor: View {
                         ProgressView()
                     } else {
                         Button(agent == nil ? "Create" : "Save", action: save)
-                            .disabled(draft.name.trimmingCharacters(in: .whitespaces).isEmpty || draft.provider.isEmpty)
+                            .disabled(draft.name.trimmingCharacters(in: .whitespaces).isEmpty || draft.provider.isEmpty
+                                      || (harness.wrappedValue?.restrictsModels == true && draft.model == nil))
                     }
                 }
             }
