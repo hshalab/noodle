@@ -9,6 +9,7 @@ All notable changes to Noodle are documented here, following
 ### Changed
 
 - Bots can no longer pop a noodlet window up on your screen. Their noodlets run out of sight until you open one yourself.
+- The Usage window keeps its bot, group, measure and period choices in the toolbar, with the period's dates under the title, totals in one strip above the chart and the breakdown in a table below it.
 
 ## [0.29.1] - 2026-09-27
 

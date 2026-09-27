@@ -9,6 +9,7 @@
 ### Changed
 
 - Bots can no longer pop a noodlet window up on the Hub's screen. Their noodlets run out of sight.
+- The Usage window keeps its bot, group, measure and period choices in the toolbar, with the period's dates under the title, totals in one strip above the chart and the breakdown in a table below it.
 
 ## [0.4.1] - 2026-09-27
 
