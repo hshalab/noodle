@@ -94,18 +94,48 @@ final class LinkProtocolTests: XCTestCase {
         }
     }
 
-    func testAMissedTailscaleNameIsAskedAgainLater() {
-        final class Answers { var name: String?; var clock = Date(timeIntervalSince1970: 0) }
+    func testTailscaleNamesAreLookedUpInTheBackgroundAndAMissIsAskedAgainLater() {
+        final class Answers { var name: String?; var clock = Date(timeIntervalSince1970: 0); var pending: [() -> Void] = []; var found = 0 }
         let answers = Answers()
-        let lookups = ReverseLookups(now: { answers.clock }) { _ in answers.name }
+        let lookups = ReverseLookups(now: { answers.clock }, run: { answers.pending.append($0) },
+                                     found: { answers.found += 1 }) { _ in answers.name }
+        func settle() { while !answers.pending.isEmpty { answers.pending.removeFirst()() } }
         XCTAssertNil(lookups.name(of: "100.101.102.103"))
-        answers.name = "mac.tail1234.ts.net."
+        XCTAssertNil(lookups.name(of: "100.101.102.103"))
+        XCTAssertEqual(answers.pending.count, 1, "one lookup at a time, off the caller")
+        settle()
+        answers.name = "mac.tail1234.ts.net"
         XCTAssertNil(lookups.name(of: "100.101.102.103"), "a miss is remembered for a while")
+        XCTAssertTrue(answers.pending.isEmpty)
         answers.clock += ReverseLookups.missLifetime + 1
-        XCTAssertEqual(lookups.name(of: "100.101.102.103"), "mac.tail1234.ts.net.")
+        XCTAssertNil(lookups.name(of: "100.101.102.103"))
+        settle()
+        XCTAssertEqual(answers.found, 1)
+        XCTAssertEqual(lookups.name(of: "100.101.102.103"), "mac.tail1234.ts.net")
         answers.name = nil
         answers.clock += 3600
-        XCTAssertEqual(lookups.name(of: "100.101.102.103"), "mac.tail1234.ts.net.", "a found name is kept")
+        XCTAssertEqual(lookups.name(of: "100.101.102.103"), "mac.tail1234.ts.net", "a found name is kept")
+        XCTAssertTrue(answers.pending.isEmpty)
+    }
+
+    func testTailscalesResolverIsAskedForTheNameOfAnAddress() throws {
+        let query = try XCTUnwrap(TailnetDNS.query(for: "100.90.231.122", id: 0x1234))
+        var expected = Data([0x12, 0x34, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0])
+        for label in ["122", "231", "90", "100", "in-addr", "arpa"] { expected.append(UInt8(label.utf8.count)); expected.append(contentsOf: label.utf8) }
+        expected.append(contentsOf: [0, 0, 12, 0, 1])
+        XCTAssertEqual(query, expected)
+        // The reply 100.100.100.100 gave for this Mac: the question again, then a PTR answer pointing back at it.
+        var reply = Data([0x12, 0x34, 0x85, 0x00, 0, 1, 0, 1, 0, 0, 0, 0])
+        reply.append(query.dropFirst(12))
+        reply.append(contentsOf: [0xC0, 0x0C, 0, 12, 0, 1, 0, 0, 2, 0x58, 0, 38])
+        for label in ["petkos-macbook-pro", "tail325532", "ts", "net"] { reply.append(UInt8(label.utf8.count)); reply.append(contentsOf: label.utf8) }
+        reply.append(0)
+        XCTAssertEqual(TailnetDNS.name(inReply: reply, id: 0x1234), "petkos-macbook-pro.tail325532.ts.net")
+        XCTAssertNil(TailnetDNS.name(inReply: reply, id: 0x4321), "another query's reply")
+        var refused = reply
+        refused[3] = 0x83
+        XCTAssertNil(TailnetDNS.name(inReply: refused, id: 0x1234))
+        XCTAssertNil(TailnetDNS.name(inReply: reply.prefix(40), id: 0x1234))
     }
 
     func testTheKeySurvivesARelaunch() throws {

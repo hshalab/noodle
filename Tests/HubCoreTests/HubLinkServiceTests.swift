@@ -307,6 +307,19 @@ import XCTest
         XCTAssertEqual(link.endpoints.map(\.host), ["192.168.1.2", "100.90.1.2"])
     }
 
+    func testSettingsRedrawWhenATailscaleNameTurnsUp() async {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("noodle-hub-link-\(UUID())")
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+        let hub = Hub(root: root.appendingPathComponent("Hub"), messenger: nil)
+        let link = HubLinkService(hubName: "Mac mini", directory: root.appendingPathComponent("Hub/Link"),
+                                  access: hub.access, profiles: hub.harnessProfiles,
+                                  localEndpoints: { [LinkEndpoint(host: "100.90.1.2", port: $0)] })
+        let redraw = expectation(description: "redraw")
+        withObservationTracking { _ = link.endpoints } onChange: { redraw.fulfill() }
+        NotificationCenter.default.post(name: LinkEndpoint.localNamesChanged, object: nil)
+        await fulfillment(of: [redraw], timeout: 1)
+    }
+
     func testTheRoutersOutsideAddressReachesInvitationsAndPairedDevices() async throws {
         let outside = LinkEndpoint(host: "203.0.113.9", port: 38_415)
         let router = StandInRouter(.success(RouterMapping(endpoint: outside, method: .natPMP, lifetime: 3600)))

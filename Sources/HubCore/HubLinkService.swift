@@ -38,7 +38,7 @@ import os
         }
     }
     public private(set) var router = RouterState.off
-    /// Bumped whenever an interface comes or goes, so views reading the endpoints draw them again.
+    /// Bumped whenever an interface comes or goes or a Tailscale name turns up, so views reading the endpoints draw them again.
     private var networkChanges = 0
     public let key: LinkPublicKey
     public let hubName: String
@@ -111,6 +111,9 @@ import os
         connections?.onSignInEnded = { [weak self] user in self?.push(.connectionsChanged, to: user) }
         updateGate()
         watchDevices()
+        NotificationCenter.default.addObserver(forName: LinkEndpoint.localNamesChanged, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.networkChanged() }
+        }
     }
 
     public func start() async {
