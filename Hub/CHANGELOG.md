@@ -7,7 +7,7 @@
 - Settings has a Companions tab to install, open and update Noodle Computer, Browser and Applet on the Hub's Mac. Its badge shows how many have an update.
 - A plan can limit which models each harness it lends may use. Bots on a harness with limited models must use one of them.
 - The first launch opens on a welcome, as Noodle's does, that ends in pairing your first device.
-- Pair… in the menu bar menu opens a window to pair a new device, with its QR code and link.
+- Pair… in the menu bar menu opens a window to pair a new device: choose one of the Hub's users or name a new one, then scan its QR code or share its link.
 - When the Hub's Mac is on Tailscale, the Hub lists its Tailscale name among its addresses, so devices can reach it wherever they are on your tailnet.
 
 ### Changed
@@ -17,6 +17,7 @@
 - Buttons in the rows of the Users, Plans and Bots settings look like links, as in System Settings.
 - Quitting the Hub, from its menu or with Command-Q, asks first and says how many people and devices are connected and how many bots are working. Logging out and shutting down are not held up.
 - Restarting to install an update asks first in the same way.
+- The menu bar menu groups Pair… and Usage apart from Settings…, and Usage no longer ends in “…”.
 
 ## [0.4.1] - 2026-09-27
 

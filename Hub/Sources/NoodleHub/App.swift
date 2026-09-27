@@ -213,13 +213,14 @@ struct HubMenu: View {
             NSApp.activate(ignoringOtherApps: true)
             openWindow(id: HubPairView.windowID)
         }
-        Button("Usage…") {
+        Button("Usage") {
             hub.usage.agentFilter = nil
             NSApp.unhide(nil)
             NSApp.activate(ignoringOtherApps: true)
             openWindow(id: UsageView.windowID)
         }
         .keyboardShortcut("u", modifiers: [.command, .shift])
+        Divider()
         Button("Settings…") {
             // A menu bar app is never frontmost on its own, and cooperative activation leaves it behind.
             NSApp.unhide(nil)
