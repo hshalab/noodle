@@ -162,8 +162,10 @@ import AppletCore
         throw AppletError("Unknown command. Use --help.")
       }
       if identity == AppletBuildIdentity.current.cliID { try request.keepOutOfSight() }
+      // Noodle and Noodle Hub each pass a bot's request on for that bot; asking for nobody,
+      // they act for their own person. The command on its own is always that person's.
       let owner =
-        identity == AppletBuildIdentity.current.noodleID
+        [AppletBuildIdentity.current.noodleID, AppletBuildIdentity.current.hubID].contains(identity)
         ? (request.owner ?? "local") : "local"
       request.owner = owner
       if let id = request.noodletID {

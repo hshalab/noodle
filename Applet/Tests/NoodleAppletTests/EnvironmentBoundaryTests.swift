@@ -27,6 +27,37 @@ import XCTest
         XCTAssertTrue(runtime.sessions.isEmpty)
     }
 
+    /// Noodle Hub passes on its bots' requests as Noodle does, each for the bot that asked: a Hub
+    /// bot reaches only its own noodlets, while the Hub itself, asking for nobody, reaches any.
+    func testAHubBotReachesOnlyItsOwnNoodlets() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let suite = "AppletHubOwners." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { try? FileManager.default.removeItem(at: root); defaults.removePersistentDomain(forName: suite) }
+        let library = botLibrary(root: root, defaults: defaults)
+        let runtime = AppletRuntime(library: library, defaults: defaults)
+        let hub = AppletBuildIdentity.current.hubID
+        let own = try botNoodlet(htmlNoodlet("Board"), named: "Board", owner: "ada", root: root, hub: true)
+        let theirs = try botNoodlet(htmlNoodlet("Diary"), named: "Diary", owner: "kai", root: root, hub: true)
+        library.scan()
+
+        var list = AppletRequest(.list)
+        list.owner = "ada"
+        let listed = await runtime.handle(list, identity: hub)
+        XCTAssertEqual(listed.items?.map(\.path), [own])
+
+        var info = AppletRequest(.info)
+        info.noodletID = try library.linkID(for: NoodletPackage(url: URL(fileURLWithPath: theirs)))
+        info.owner = "ada"
+        let refused = await runtime.handle(info, identity: hub)
+        XCTAssertEqual(refused.errorCode, "session-unavailable")
+
+        info.owner = nil
+        let described = await runtime.handle(info, identity: hub)
+        XCTAssertNil(described.error)
+        XCTAssertEqual(described.path, theirs)
+    }
+
     /// A bot's noodlet is used where the bot keeps it, and says so, so whoever links to it can
     /// tell whose it is. Applet keeps no copy, and no other bot can use it.
     func testABotsNoodletIsUsedInItsOwnFolderAndOnlyByThatBot() async throws {

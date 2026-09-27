@@ -9,8 +9,8 @@ public enum AppletBuildIdentity: String, CaseIterable, Sendable {
     public var noodleID: String { "com.pdparchitect.noodle" + suffix }
     public var cliID: String { providerID + ".cli" }
     public var previewID: String { providerID + ".preview" }
-    /// Noodle Hub, which runs the noodlets of the bots people keep on it. Applet treats it as a
-    /// trusted local caller; the Hub decides which bot a noodlet belongs to.
+    /// Noodle Hub, which runs the noodlets of the bots people keep on it. Like Noodle, it passes
+    /// a bot's request on for that bot, and acts for its own person when it names no bot.
     public var hubID: String { "com.pdparchitect.noodle.hub" + suffix }
     public var clientIDs: [String] { [noodleID, cliID, hubID] }
     public var groupSuffix: String { "com.pdparchitect.noodle.applets" + suffix }

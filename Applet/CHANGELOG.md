@@ -14,6 +14,10 @@
 - When an agent updates a noodlet you have open, the new version replaces the old one in the same spot, with no gap. It takes the keyboard only if you were using the noodlet.
 - Buttons that only open System Settings or a web page no longer end in “…”; “…” is kept for commands that ask for something before they act.
 
+### Security
+
+- A bot on Noodle Hub reaches only its own noodlets and those shared with its conversations. Before, it could list and use every noodlet on the Hub's Mac, other people's included.
+
 ## [0.11.1] - 2026-09-27
 
 ### Fixed

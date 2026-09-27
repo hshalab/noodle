@@ -30,6 +30,10 @@
 
 - Settings > Network updates the Hub's addresses when its Mac's network changes, such as when Tailscale connects, instead of showing the ones it found when the window opened.
 
+### Security
+
+- A bot on the Hub reaches only its own noodlets and those shared with its conversations, once Noodle Applet on the Hub's Mac is updated. Before, it could list and use every noodlet on the Mac, other people's included.
+
 ## [0.4.1] - 2026-09-27
 
 ### Changed
