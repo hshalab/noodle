@@ -129,6 +129,7 @@ import XCTest
                     XCTAssertTrue(FileManager.default.fileExists(atPath: url.path), "\(name): \(entry.key)")
                 }
                 XCTAssertEqual(store.hasUnreadMessages(in: conversation), entry.unread == true, "\(name): \(entry.key)")
+                XCTAssertEqual(store.isPinned(conversation.id), entry.pinned == true, "\(name): \(entry.key)")
             }
             if let selected = scenario.present?.select {
                 XCTAssertEqual(store.selectedConversationID, seeded.conversations[selected]?.id, name)
@@ -218,6 +219,19 @@ import XCTest
             XCTAssertTrue($0.localizedDescription.contains("grace"), $0.localizedDescription)
         }
         XCTAssertThrowsError(try Scenario.load(from: try fixture(extra: "\"appearance\": \"light\",")))
+    }
+
+    func testPinnedConversationsSitAboveTheRestInTheOrderListed() throws {
+        let folder = try fixture()
+        let file = folder.appendingPathComponent("scenario.json")
+        let json = try String(contentsOf: file, encoding: .utf8)
+            .replacingOccurrences(of: "{ \"key\": \"rex\", \"direct\": \"rex\" }", with: "{ \"key\": \"rex\", \"direct\": \"rex\", \"pinned\": true }")
+            .replacingOccurrences(of: "\"direct\": \"ada\",", with: "\"direct\": \"ada\", \"pinned\": true,")
+        try Data(json.utf8).write(to: file)
+        let session = try session(try Scenario.load(from: folder))
+        XCTAssertEqual(session.store.pinnedConversations.map(\.id),
+                       [session.seeded.conversations["ada"]?.id, session.seeded.conversations["rex"]?.id].compactMap { $0 })
+        XCTAssertTrue(session.store.directConversations.isEmpty)
     }
 
     func testSettingsKeysAreKnownPreferences() throws {

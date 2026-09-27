@@ -20,7 +20,7 @@
     { "key": "sol", "name": "Sol", "harness": "claude-code", "model": "sonnet",
       "description": "Looks after the accounts and the tax return", "avatar": { "image": "cast/sol.jpg" } },
     { "key": "bruno", "name": "Bruno", "harness": "claude-code", "model": "haiku",
-      "description": "Picks the film for family movie night", "avatar": { "image": "assets/bruno.jpg" } },
+      "description": "Picks the film for family movie night", "avatar": { "image": "cast/bruno.jpg" } },
     { "key": "coach", "name": "Coach", "harness": "claude-code", "model": "sonnet",
       "description": "Keeps the whole family moving", "avatar": { "image": "assets/coach.jpg" } }
   ],

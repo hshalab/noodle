@@ -20,14 +20,14 @@
     { "key": "wren", "name": "Wren", "harness": "codex", "model": "gpt-5.2-codex", "effort": "high",
       "description": "Builds features, reviews code and chases bugs",
       "backstory": "You are a careful engineer. You measure before you change anything and you leave a test behind every fix.",
-      "avatar": { "image": "assets/wren.jpg" },
+      "avatar": { "image": "cast/wren.jpg" },
       "autoReplies": ["On it. I will post the diff when the tests pass.", "Pushed. The suite is green."] },
     { "key": "victor", "name": "Victor", "harness": "claude-code", "model": "opus", "effort": "high",
-      "description": "Reviews every pull request before it merges", "avatar": { "image": "assets/victor.jpg" } },
+      "description": "Reviews every pull request before it merges", "avatar": { "image": "cast/victor.jpg" } },
     { "key": "mila", "name": "Mila", "harness": "grok-build", "model": "grok-code",
-      "description": "QA: reproduces bugs and writes the test plans", "avatar": { "image": "assets/mila.jpg" } },
+      "description": "QA: reproduces bugs and writes the test plans", "avatar": { "image": "cast/mila.jpg" } },
     { "key": "ivan", "name": "Ivan", "harness": "opencode", "model": "local/coder-large",
-      "description": "Infrastructure: builds, CI and releases", "avatar": { "image": "assets/ivan.jpg" } }
+      "description": "Infrastructure: builds, CI and releases", "avatar": { "image": "cast/ivan.jpg" } }
   ],
   "conversations": [
     { "key": "wren", "direct": "wren",

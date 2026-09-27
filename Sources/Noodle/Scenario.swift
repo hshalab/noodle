@@ -128,6 +128,8 @@ struct Scenario: Codable {
         var group: Group?
         var background: Background?
         var unread: Bool?
+        /// Pinned in the order the conversations are listed.
+        var pinned: Bool?
         var messages: [Message]?
 
         struct Group: Codable {
@@ -755,6 +757,7 @@ extension Scenario {
             if let key = entry.direct { seeded.directs[key] = conversation }
         }
         try repository.saveUnreadConversationIDs(unread)
+        try repository.savePinnedConversationIDs((conversations ?? []).filter { $0.pinned == true }.compactMap { seeded.conversations[$0.key]?.id })
         // Seeded history is already read: without this every bot is woken for it as it starts.
         for agent in seeded.agents.values { _ = try repository.latestMessages(for: agent.id) }
 
