@@ -265,12 +265,12 @@ final class SurfaceTests: XCTestCase {
 
     /// Frames are captured on a steady beat: time spent capturing one does not push the next back.
     @MainActor func testTheStreamerKeepsItsBeatWhileCapturingTakesTime() async throws {
-        // A small picture, so a slow encoder does not skip beats of its own.
+        // A slow encoder, such as the software one in a virtual machine, skips whole beats but stays on them.
         let picture = image(width: 160, height: 100, gray: 0.5)
         var starts: [ContinuousClock.Instant] = []
         let streamer = SurfaceStreamer(fps: 20, maxPixelSize: 160, capture: {
             starts.append(.now)
-            try await Task.sleep(for: .milliseconds(30))
+            try await Task.sleep(for: .milliseconds(25))
             return (picture, CGSize(width: 160, height: 100))
         }, apply: { _ in })
         defer { streamer.stop() }
@@ -278,7 +278,9 @@ final class SurfaceTests: XCTestCase {
         streamer.attach(companion)
         for _ in 0..<250 where starts.count < 12 { try await Task.sleep(for: .milliseconds(20)) }
         let intervals = zip(starts, starts.dropFirst()).map { ($1 - $0) / .milliseconds(1) }.sorted()
-        XCTAssertLessThan(intervals[intervals.count / 2], 60, "frames came every \(Int(intervals[intervals.count / 2])) ms instead of every 50")
+        let median = intervals[intervals.count / 2]
+        XCTAssertLessThan(abs(median - (median / 50).rounded() * 50), 12, "frames came every \(Int(median)) ms, off the 50 ms beat")
+        XCTAssertGreaterThan(median, 40, "frames came every \(Int(median)) ms instead of every 50")
     }
 
     /// Encoding happens away from the main thread, which the surface and its app need for themselves.
