@@ -229,7 +229,18 @@ public struct NoodletSecrets: Sendable {
         }
         cast = NoodletCast(window)
         cast.changed = { [weak self] in self.map { $0.emit(["id":"cast","value":$0.cast.isCasting]) } }
-        if !NoodletContext.isBackground { window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true) }
+        // A new version of a noodlet the user is watching draws behind the old window, then takes its place.
+        if !NoodletContext.isBackground, let data = env["NOODLET_PLACE"]?.data(using: .utf8),
+           let place = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let frame = place["frame"] as? [[Double]], frame.count == 2, frame.allSatisfy({ $0.count == 2 }),
+           let replaced = place["window"] as? Int {
+            window.setFrame(NSRect(x: frame[0][0], y: frame[0][1], width: frame[1][0], height: frame[1][1]), display: true)
+            window.order(.below, relativeTo: replaced)
+            let focused = place["focused"] as? Bool == true, window: NSWindow = window
+            DispatchQueue.main.async {
+                if focused { window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true) } else { window.order(.above, relativeTo: replaced) }
+            }
+        } else if !NoodletContext.isBackground { window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true) }
         NoodletHost.emit = { [weak self] in self?.emit($0) }
         // In front, the noodlet's own process owns the menu bar, not Applet.
         let appMenu = NSMenu(), fileMenu = NSMenu(title: "File"), bar = NSMenu()
@@ -285,6 +296,10 @@ public struct NoodletSecrets: Sendable {
             switch op {
             case "show": window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
             case "hide": window.orderOut(nil)
+            case "place":
+                guard window.isVisible else { throw RuntimeError("The window is not on screen.") }
+                let frame = window.frame
+                value = ["frame":[[frame.minX,frame.minY],[frame.width,frame.height]], "focused":NSApp.isActive && window.isKeyWindow, "window":window.windowNumber]
             case "cast":
                 let display = (command["display"] as? NSNumber)?.uint32Value
                 guard let screen = NSScreen.screens.first(where: { ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value == display }) else { throw RuntimeError("That display is no longer connected.") }

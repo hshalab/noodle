@@ -1,7 +1,25 @@
 import AppKit
 import AppletCore
 
+/// Where the window of a noodlet the user is watching sits, so its next version takes its place.
+struct WindowPlace: Codable, Equatable {
+  var frame: CGRect
+  /// Whether the user was working in the noodlet, the only time its next version takes the keyboard.
+  var focused: Bool
+  var window: Int
+}
+
 @MainActor enum WindowPresentation {
+  /// Straight over the window it replaces, so nothing jumps or flashes.
+  static func present(_ window: NSWindow, in place: WindowPlace) {
+    window.setFrame(place.frame, display: true)
+    if place.focused {
+      window.makeKeyAndOrderFront(nil)
+      NSApp.activate(ignoringOtherApps: true)
+    } else {
+      window.order(.above, relativeTo: place.window)
+    }
+  }
   static func make(_ options: NoodletWindowOptions, size: CGSize) -> NSWindow {
     let frame = CGRect(origin: .zero, size: size)
     if options.type == .preview {

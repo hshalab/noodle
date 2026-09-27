@@ -5,6 +5,7 @@
 ### Changed
 
 - Only you bring a noodlet to the front, by opening it. Agents working on noodlets can no longer show a window, from Noodle or the `noodlet` command.
+- When an agent updates a noodlet you have open, the new version replaces the old one in the same spot, with no gap. It takes the keyboard only if you were using the noodlet.
 
 ## [0.11.1] - 2026-09-27
 

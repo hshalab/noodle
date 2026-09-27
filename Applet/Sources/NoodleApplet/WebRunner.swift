@@ -107,7 +107,13 @@ final class WebRunner: NSObject, WKNavigationDelegate, WKUIDelegate,
     defer { soundSink = nil }
     _ = try await evaluate("return await window.__noodletSound?.stop() ?? false")
   }
-  func start(foreground: Bool) async throws {
+  var place: WindowPlace? {
+    guard window.isVisible, window.alphaValue > 0 else { return nil }
+    return WindowPlace(
+      frame: window.frame, focused: NSApp.isActive && window.isKeyWindow, window: window.windowNumber)
+  }
+  /// A page taking another's place comes up once it has loaded, over the one it replaces.
+  func start(foreground: Bool, in place: WindowPlace? = nil) async throws {
     if !package.manifest.network {
       let rules =
         "[{\"trigger\":{\"url-filter\":\"^https?://\"},\"action\":{\"type\":\"block\"}},{\"trigger\":{\"url-filter\":\"^wss?://\"},\"action\":{\"type\":\"block\"}}]"
@@ -117,7 +123,11 @@ final class WebRunner: NSObject, WKNavigationDelegate, WKUIDelegate,
     }
     setMuted(!foreground)
     if !foreground { log.append("audio", "Muted: a noodlet makes sound only while it is in the foreground.") }
-    if foreground { show() }
+    if foreground, let place {
+      // WebKit draws only a window on screen, so the page loads hidden behind the one it replaces.
+      window.setFrame(place.frame, display: false)
+      window.order(.below, relativeTo: place.window)
+    } else if foreground { show() }
     try await withCheckedThrowingContinuation { continuation in
       loadContinuation = continuation
       loadTimer = Task { [weak self] in
@@ -132,6 +142,7 @@ final class WebRunner: NSObject, WKNavigationDelegate, WKUIDelegate,
         package.url.appendingPathComponent(package.manifest.entry),
         allowingReadAccessTo: package.url)
     }
+    if foreground, let place { WindowPresentation.present(window, in: place) }
   }
   func show() {
     restoreSeen()
