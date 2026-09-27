@@ -260,8 +260,10 @@ final class SurfaceTests: XCTestCase {
 
     /// Frames are captured on a steady beat: time spent capturing one does not push the next back.
     @MainActor func testTheStreamerKeepsItsBeatWhileCapturingTakesTime() async throws {
-        // A virtual machine's software encoder and clock are too slow to hold a 50 ms beat.
-        try skipWithoutHardwareEncoder()
+        // A virtual machine's timers are too coarse to hold a 50 ms beat.
+        var virtual: Int32 = 0, size = MemoryLayout<Int32>.size
+        sysctlbyname("kern.hv_vmm_present", &virtual, &size, nil, 0)
+        try XCTSkipIf(virtual == 1, "this Mac is a virtual machine")
         let picture = image(width: 160, height: 100, gray: 0.5)
         var starts: [ContinuousClock.Instant] = []
         let streamer = SurfaceStreamer(fps: 20, maxPixelSize: 160, capture: {
