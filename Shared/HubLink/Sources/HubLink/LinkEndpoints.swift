@@ -61,11 +61,12 @@ extension LinkEndpoint {
         return name
     }
 
-    /// Settings reads the endpoints on every redraw, so each address is looked up once.
-    private static let reverseLookups = Mutex<[String: String?]>([:])
+    /// Settings reads the endpoints on every redraw, so each address is looked up rarely.
+    private static let reverseLookups = ReverseLookups(now: Date.init, resolve: reverseLookup)
 
-    private static func cachedReverseLookup(_ address: String) -> String? {
-        if let known = reverseLookups.withLock({ $0[address] }) { return known }
+    private static func cachedReverseLookup(_ address: String) -> String? { reverseLookups.name(of: address) }
+
+    private static func reverseLookup(_ address: String) -> String? {
         var socket = sockaddr_in()
         socket.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
         socket.sin_family = sa_family_t(AF_INET)
@@ -76,9 +77,7 @@ extension LinkEndpoint {
                 getnameinfo($0, socklen_t(MemoryLayout<sockaddr_in>.size), &buffer, socklen_t(buffer.count), nil, 0, NI_NAMEREQD)
             }
         }
-        let name = status == 0 ? String(cString: buffer) : nil
-        reverseLookups.withLock { $0[address] = name }
-        return name
+        return status == 0 ? String(cString: buffer) : nil
     }
 
     /// Reads "host", "host:port", "[v6]:port" or a bare IPv6 address.
@@ -96,5 +95,29 @@ extension LinkEndpoint {
         } else {
             self.init(host: text, port: defaultPort)
         }
+    }
+}
+
+/// Names found for addresses, kept for good. A miss is asked again after a while: Tailscale's
+/// resolver may not be up yet when Settings first draws.
+final class ReverseLookups: @unchecked Sendable {
+    static let missLifetime: TimeInterval = 30
+
+    private let now: () -> Date
+    private let resolve: (String) -> String?
+    private let answers = Mutex<[String: (name: String?, asked: Date)]>([:])
+
+    init(now: @escaping () -> Date, resolve: @escaping (String) -> String?) {
+        self.now = now
+        self.resolve = resolve
+    }
+
+    func name(of address: String) -> String? {
+        let date = now()
+        if let known = answers.withLock({ $0[address] }),
+           known.name != nil || date.timeIntervalSince(known.asked) <= Self.missLifetime { return known.name }
+        let name = resolve(address)
+        answers.withLock { $0[address] = (name, date) }
+        return name
     }
 }

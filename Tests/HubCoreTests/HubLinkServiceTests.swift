@@ -1,7 +1,8 @@
 import Foundation
-import HubCore
+@testable import HubCore
 import HubLink
 import NoodleCore
+import Observation
 import XCTest
 
 /// A device and the Hub talking over real QUIC on this Mac, as they do in the apps.
@@ -287,6 +288,23 @@ import XCTest
         XCTAssertNotNil(hubs.joinError)
         XCTAssertTrue(hubs.hubs.isEmpty)
         XCTAssertTrue(HubMemberships(directory: device, deviceName: "Mac").hubs.isEmpty)
+    }
+
+    func testSettingsRedrawWhenTheNetworkChanges() async {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("noodle-hub-link-\(UUID())")
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+        let hub = Hub(root: root.appendingPathComponent("Hub"), messenger: nil)
+        var hosts = ["192.168.1.2"]
+        let link = HubLinkService(hubName: "Mac mini", directory: root.appendingPathComponent("Hub/Link"),
+                                  access: hub.access, profiles: hub.harnessProfiles,
+                                  localEndpoints: { port in hosts.map { LinkEndpoint(host: $0, port: port) } })
+        XCTAssertEqual(link.endpoints.map(\.host), ["192.168.1.2"])
+        let redraw = expectation(description: "redraw")
+        withObservationTracking { _ = link.endpoints } onChange: { redraw.fulfill() }
+        hosts.append("100.90.1.2")
+        link.networkChanged()
+        await fulfillment(of: [redraw], timeout: 1)
+        XCTAssertEqual(link.endpoints.map(\.host), ["192.168.1.2", "100.90.1.2"])
     }
 
     func testTheRoutersOutsideAddressReachesInvitationsAndPairedDevices() async throws {

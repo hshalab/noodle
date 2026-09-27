@@ -20,6 +20,10 @@ All notable changes to Noodle are documented here, following
 - The Usage window keeps its bot, group, measure and period choices in the toolbar, with the period's dates under the title, totals in one strip above the chart and the breakdown in a table below it.
 - Buttons that only open System Settings or a web page no longer end in “…”; “…” is kept for commands that ask for something before they act.
 
+### Fixed
+
+- Settings > Hub updates this Mac's addresses when its network changes, such as when Tailscale connects, instead of showing the ones it found when the window opened.
+
 ## [0.29.1] - 2026-09-27
 
 ### Changed

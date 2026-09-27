@@ -24,6 +24,10 @@
 - Restarting to install an update asks first in the same way.
 - The menu bar menu groups Pair… and Usage apart from Settings…, and Usage no longer ends in “…”.
 
+### Fixed
+
+- Settings > Network updates the Hub's addresses when its Mac's network changes, such as when Tailscale connects, instead of showing the ones it found when the window opened.
+
 ## [0.4.1] - 2026-09-27
 
 ### Changed

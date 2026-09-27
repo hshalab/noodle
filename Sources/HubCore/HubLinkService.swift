@@ -3,6 +3,7 @@ import BrowserBridge
 import ComputerBridge
 import Foundation
 import HubLink
+import Network
 import NoodleCore
 import NoodleRuntime
 import Observation
@@ -37,6 +38,8 @@ import os
         }
     }
     public private(set) var router = RouterState.off
+    /// Bumped whenever an interface comes or goes, so views reading the endpoints draw them again.
+    private var networkChanges = 0
     public let key: LinkPublicKey
     public let hubName: String
 
@@ -54,6 +57,7 @@ import os
     @ObservationIgnored private let localEndpoints: (UInt16) -> [LinkEndpoint]
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private var server: LinkServer?
+    @ObservationIgnored private var pathMonitor: NWPathMonitor?
     @ObservationIgnored private let routerMapper: (any RouterPortMapper)?
     /// Keeps the router's port open until cancelled.
     @ObservationIgnored private var routerRenewal: Task<Void, Never>?
@@ -119,6 +123,7 @@ import os
             try await server.start()
             self.server = server
             state = .listening(port: server.port ?? port)
+            watchNetwork()
         } catch {
             state = .failed(error.localizedDescription)
             return
@@ -132,11 +137,14 @@ import os
         streams.removeAll()
         server?.stop()
         server = nil
+        pathMonitor?.cancel()
+        pathMonitor = nil
         state = .stopped
     }
 
     /// What invitations and paired devices are told to try, in order.
     public var endpoints: [LinkEndpoint] {
+        _ = networkChanges
         var endpoints = localEndpoints(listeningPort)
         if case .open(let mapping) = router { endpoints.append(mapping.endpoint) }
         if let manualEndpoint, !endpoints.contains(manualEndpoint) { endpoints.append(manualEndpoint) }
@@ -258,6 +266,19 @@ import os
     }
 
     /// Keeps the gate in step with the devices however they change, including from Settings.
+    private func watchNetwork() {
+        let monitor = NWPathMonitor()
+        monitor.pathUpdateHandler = { [weak self] _ in
+            Task { @MainActor in self?.networkChanged() }
+        }
+        monitor.start(queue: .global(qos: .utility))
+        pathMonitor = monitor
+    }
+
+    func networkChanged() {
+        networkChanges += 1
+    }
+
     private func watchDevices() {
         withObservationTracking { _ = access.devices } onChange: { [weak self] in
             Task { @MainActor in

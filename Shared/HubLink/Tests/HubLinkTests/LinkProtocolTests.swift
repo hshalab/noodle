@@ -94,6 +94,20 @@ final class LinkProtocolTests: XCTestCase {
         }
     }
 
+    func testAMissedTailscaleNameIsAskedAgainLater() {
+        final class Answers { var name: String?; var clock = Date(timeIntervalSince1970: 0) }
+        let answers = Answers()
+        let lookups = ReverseLookups(now: { answers.clock }) { _ in answers.name }
+        XCTAssertNil(lookups.name(of: "100.101.102.103"))
+        answers.name = "mac.tail1234.ts.net."
+        XCTAssertNil(lookups.name(of: "100.101.102.103"), "a miss is remembered for a while")
+        answers.clock += ReverseLookups.missLifetime + 1
+        XCTAssertEqual(lookups.name(of: "100.101.102.103"), "mac.tail1234.ts.net.")
+        answers.name = nil
+        answers.clock += 3600
+        XCTAssertEqual(lookups.name(of: "100.101.102.103"), "mac.tail1234.ts.net.", "a found name is kept")
+    }
+
     func testTheKeySurvivesARelaunch() throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("hub-link-\(UUID())/device.key")
         addTeardownBlock { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
