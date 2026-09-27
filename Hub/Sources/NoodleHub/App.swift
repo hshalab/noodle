@@ -25,6 +25,21 @@ struct NoodleHubApp: App {
         } label: {
             HubMenuBarLabel(presence: delegate.presence)
         }
+        Window(hubAppName, id: HubWelcomeView.windowID) {
+            HubWelcomeView(hub: delegate.settings.hub)
+                .preferredColorScheme(.dark)
+        }
+        .windowStyle(.hiddenTitleBar)
+        .defaultSize(width: 620, height: 720)
+        .windowResizability(.contentMinSize)
+        .restorationBehavior(.disabled)
+        .defaultLaunchBehavior(delegate.showsWelcome ? .presented : .suppressed)
+        Window("Pair a Device", id: HubPairView.windowID) {
+            HubPairView(hub: delegate.settings.hub)
+                .preferredColorScheme(.dark)
+        }
+        .windowResizability(.contentSize)
+        .restorationBehavior(.disabled)
         Window("Usage", id: UsageView.windowID) {
             UsageView(history: delegate.settings.hub.usage, agents: delegate.settings.agents)
                 .preferredColorScheme(.dark)
@@ -54,6 +69,8 @@ struct NoodleHubApp: App {
 
     /// Opened by a person rather than as a login item, so it shows Settings instead of only a menu bar icon.
     private var launchedByPerson = true
+    /// The first launch opens on the welcome, which ends in pairing a device, instead of Settings.
+    lazy var showsWelcome = HubWelcomeView.isNeeded(settings.hub)
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -68,7 +85,41 @@ struct NoodleHubApp: App {
         catch { NSLog("Noodle Hub could not start its bots: \(error.localizedDescription)") }
         Task { await settings.hub.link.start() }
         presence.start()
-        if launchedByPerson { showSettings() }
+        HubUpdater.shared.confirmsRelaunch = { [weak self] in
+            self?.confirm("Update and Restart \(hubAppName)?", button: "Update and Restart",
+                          consequence: "Devices can’t reach the Hub and its bots stop while it restarts.") ?? true
+        }
+        if showsWelcome {
+            NSApp.activate(ignoringOtherApps: true)
+        } else if launchedByPerson {
+            showSettings()
+        }
+    }
+
+    /// Set once a person agreed to quit, so the question is not asked twice.
+    private var quitConfirmed = false
+
+    /// Quitting cuts off every device and stops the bots, so a person is asked first however they
+    /// quit. Logging out, shutting down and an update the person already agreed to go ahead.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let event = NSAppleEventManager.shared().currentAppleEvent
+        let reason = event?.attributeDescriptor(forKeyword: kAEQuitReason)?.enumCodeValue
+        if quitConfirmed || HubUpdater.shared.isRelaunching || !HubQuit.asksFirst(quitReason: reason) { return .terminateNow }
+        guard confirm("Quit \(hubAppName)?", button: "Quit",
+                      consequence: "Devices can’t reach the Hub and its bots stop until it opens again.") else { return .terminateCancel }
+        quitConfirmed = true
+        return .terminateNow
+    }
+
+    /// Asks before the Hub goes away, saying who is connected and which bots are working.
+    private func confirm(_ title: String, button: String, consequence: String) -> Bool {
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = [settings.hub.activity.interruption, consequence].compactMap(\.self).joined(separator: " ")
+        alert.addButton(withTitle: button)
+        alert.addButton(withTitle: "Cancel").keyEquivalent = "\u{1b}"
+        return alert.runModal() == .alertFirstButtonReturn
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -157,6 +208,11 @@ struct HubMenu: View {
     let hub: Hub
 
     var body: some View {
+        Button("Pair…") {
+            NSApp.unhide(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            openWindow(id: HubPairView.windowID)
+        }
         Button("Usage…") {
             hub.usage.agentFilter = nil
             NSApp.unhide(nil)
@@ -172,6 +228,7 @@ struct HubMenu: View {
         }
         .keyboardShortcut(",")
         Divider()
+        // Asks first, in the delegate, as Command-Q anywhere in the app does.
         Button("Quit \(hubAppName)") { NSApp.terminate(nil) }
             .keyboardShortcut("q")
     }

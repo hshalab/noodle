@@ -1,4 +1,6 @@
 import CoreGraphics
+import CoreImage
+import CoreImage.CIFilterBuiltins
 import Foundation
 import Vision
 
@@ -13,5 +15,14 @@ extension LinkInvitation {
             throw LinkError(codes.isEmpty ? "No QR code was found in the picture." : "The QR code is not a Noodle Hub invitation.")
         }
         self = invitation
+    }
+
+    /// The QR code of its link, a pixel a module, for a device to scan.
+    public func qrCode() -> CGImage? {
+        let filter = CIFilter.qrCodeGenerator()
+        filter.message = Data(url().absoluteString.utf8)
+        filter.correctionLevel = "M"
+        guard let output = filter.outputImage else { return nil }
+        return CIContext().createCGImage(output, from: output.extent)
     }
 }

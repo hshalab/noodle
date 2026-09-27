@@ -83,6 +83,7 @@ let project = Project(
         .local(path: "."),
         .local(path: ".."),
         .local(path: "../Shared/SettingsUI"),
+        .local(path: "../Shared/Brand"),
         .local(path: "../Shared/HubLink"),
         .local(path: "../Shared/LaunchChecks"),
         .local(path: "../Applet"),
@@ -142,6 +143,7 @@ let project = Project(
             dependencies: [
                 .package(product: "HubCore"),
                 .package(product: "HubLink"),
+                .package(product: "NoodleBrand"),
                 .package(product: "NoodleLaunchChecks"),
                 .package(product: "NoodleRuntimeSettings"),
                 .package(product: "NoodleSettingsUI"),

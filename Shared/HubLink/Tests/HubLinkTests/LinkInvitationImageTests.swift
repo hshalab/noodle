@@ -25,6 +25,13 @@ final class LinkInvitationImageTests: XCTestCase {
         XCTAssertEqual(try LinkInvitation(image: try picture(of: invitation.url().absoluteString)), invitation)
     }
 
+    func testTheInvitationsOwnQRCodeReadsBack() throws {
+        let code = try XCTUnwrap(invitation.qrCode())
+        let scaled = CIImage(cgImage: code).transformed(by: CGAffineTransform(scaleX: 8, y: 8))
+        let image = try XCTUnwrap(CIContext().createCGImage(scaled, from: scaled.extent))
+        XCTAssertEqual(try LinkInvitation(image: image), invitation)
+    }
+
     func testPicturesWithoutAnInvitationSaySo() throws {
         XCTAssertThrowsError(try LinkInvitation(image: try picture(of: "https://example.com")))
         let blank = try XCTUnwrap(CIContext().createCGImage(CIImage(color: .white).cropped(to: CGRect(x: 0, y: 0, width: 200, height: 200)),

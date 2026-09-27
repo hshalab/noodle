@@ -11,6 +11,7 @@ let package = Package(
         // Noodle itself: the Hub runs bots with the same runtime.
         .package(path: ".."),
         .package(path: "../Shared/SettingsUI"),
+        .package(path: "../Shared/Brand"),
         .package(path: "../Shared/HubLink"),
         .package(path: "../Shared/LaunchChecks"),
         .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.9.4"),
@@ -21,6 +22,7 @@ let package = Package(
             dependencies: [
                 .product(name: "HubCore", package: "noodle"),
                 .product(name: "HubLink", package: "HubLink"),
+                .product(name: "NoodleBrand", package: "Brand"),
                 .product(name: "NoodleLaunchChecks", package: "LaunchChecks"),
                 .product(name: "NoodleRuntimeSettings", package: "noodle"),
                 .product(name: "NoodleSettingsUI", package: "SettingsUI"),

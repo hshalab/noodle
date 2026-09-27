@@ -15,6 +15,10 @@ import SwiftUI
     var enabled: Bool {
         Bundle.main.object(forInfoDictionaryKey: "NoodleUpdatesEnabled") as? Bool == true
     }
+    /// Asks the person before an update restarts the Hub; nil goes ahead.
+    var confirmsRelaunch: (() -> Bool)?
+    /// The person agreed to restart for an update, so quitting for it asks nothing more.
+    private(set) var isRelaunching = false
     private var started = false
     private lazy var controller = SPUStandardUpdaterController(
         startingUpdater: false, updaterDelegate: self, userDriverDelegate: nil)
@@ -47,6 +51,21 @@ extension HubUpdater: SPUUpdaterDelegate {
 
     nonisolated func updaterDidNotFindUpdate(_ updater: SPUUpdater, error: Error) {
         MainActor.assumeIsolated { availableVersion = nil }
+    }
+
+    /// Asks before restarting, since that cuts off devices and stops bots. Declined, the Hub keeps
+    /// running with the update downloaded.
+    nonisolated func updater(_ updater: SPUUpdater, shouldPostponeRelaunchForUpdate item: SUAppcastItem,
+                             untilInvoking installHandler: @escaping () -> Void) -> Bool {
+        MainActor.assumeIsolated {
+            guard confirmsRelaunch?() ?? true else { return true }
+            isRelaunching = true
+            return false
+        }
+    }
+
+    nonisolated func updaterWillRelaunchApplication(_ updater: SPUUpdater) {
+        MainActor.assumeIsolated { isRelaunching = true }
     }
 }
 

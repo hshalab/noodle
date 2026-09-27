@@ -1,4 +1,5 @@
 import AppletBridge
+import CoreServices
 import BrowserBridge
 import ComputerBridge
 import Foundation
@@ -70,6 +71,49 @@ import NoodleRuntime
 
     public static func root(applicationSupport: URL) -> URL {
         applicationSupport.appendingPathComponent(folderName, isDirectory: true)
+    }
+
+    /// Who is connected and which bots are working, which quitting would cut off.
+    public var activity: HubActivity {
+        let agents = (try? repository.loadAgents()) ?? []
+        return HubActivity(people: link.connectedUsers.count, devices: link.connectedDevices.count,
+                           workingBots: agents.filter { runtime.snapshot(for: $0.id).phase == .working }.count)
+    }
+}
+
+/// What quitting the Hub would interrupt.
+public struct HubActivity: Equatable, Sendable {
+    public var people: Int
+    public var devices: Int
+    public var workingBots: Int
+
+    public init(people: Int, devices: Int, workingBots: Int) {
+        self.people = people
+        self.devices = devices
+        self.workingBots = workingBots
+    }
+
+    /// One sentence saying so, or nil when nothing would be interrupted.
+    public var interruption: String? {
+        var parts: [String] = []
+        if devices > 0 {
+            parts.append("\(people) \(people == 1 ? "person" : "people") on \(devices) \(devices == 1 ? "device" : "devices") "
+                         + (people == 1 ? "is" : "are") + " connected")
+        }
+        if workingBots > 0 {
+            parts.append("\(workingBots) \(workingBots == 1 ? "bot is" : "bots are") working")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: ", and ") + "."
+    }
+}
+
+/// When quitting the Hub asks first.
+public enum HubQuit {
+    /// A person quitting is asked; logging out, restarting and shutting down, which name their
+    /// reason in the quit event, are not held up.
+    public static func asksFirst(quitReason: OSType?) -> Bool {
+        let system = [kAELogOut, kAEReallyLogOut, kAEShowRestartDialog, kAEShowShutdownDialog, kAERestart, kAEShutDown]
+        return !system.map { OSType($0) }.contains(quitReason ?? 0)
     }
 }
 
