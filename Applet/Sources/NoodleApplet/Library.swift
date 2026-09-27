@@ -43,6 +43,8 @@ struct LibraryEntry: Identifiable, Equatable {
   @Published var pinned: [String]
   /// Kept in the library but listed only under Hidden: never in All, Recent, Pinned or the menu bar.
   @Published var hidden: [String]
+  /// Made or opened by Noodle Hub's bots; listed only under Hub, apart from this Mac's own.
+  @Published var hub: [String]
   private let defaults: UserDefaults
   private struct Registration {
     let url: URL
@@ -66,6 +68,7 @@ struct LibraryEntry: Identifiable, Equatable {
     recent = defaults.stringArray(forKey: "recent") ?? []
     pinned = defaults.stringArray(forKey: "pinned") ?? []
     hidden = defaults.stringArray(forKey: "hidden") ?? []
+    hub = defaults.stringArray(forKey: "hub") ?? []
     do {
       try FileManager.default.createDirectory(
         at: documents, withIntermediateDirectories: true)
@@ -160,9 +163,11 @@ struct LibraryEntry: Identifiable, Equatable {
       recent.removeAll { deleted.contains($0) }
       pinned.removeAll { deleted.contains($0) }
       hidden.removeAll { deleted.contains($0) }
+      hub.removeAll { deleted.contains($0) }
       defaults.set(recent, forKey: "recent")
       defaults.set(pinned, forKey: "pinned")
       defaults.set(hidden, forKey: "hidden")
+      defaults.set(hub, forKey: "hub")
     }
     var found: [String: LibraryEntry] = [:]
     let thumbnails = root.appendingPathComponent("Thumbnails", isDirectory: true)
@@ -234,13 +239,19 @@ struct LibraryEntry: Identifiable, Equatable {
   /// The most recent noodlets for the menu bar that are not already pinned there.
   var menuRecent: [LibraryEntry] {
     Array(
-      recent.filter { !pinned.contains($0) && !hidden.contains($0) }
+      recent.filter { !pinned.contains($0) && !hidden.contains($0) && !hub.contains($0) }
         .compactMap { key in entries.first { $0.id == key } }.prefix(8))
   }
-  /// Categories holding at least one noodlet that is not hidden, in the fixed category order.
+  /// Categories holding at least one of this Mac's own noodlets that is not hidden, in the
+  /// fixed category order.
   var categories: [String] {
-    let used = Set(entries.filter { !hidden.contains($0.id) }.compactMap(\.package.manifest.category))
+    let used = Set(entries.filter { !hidden.contains($0.id) && !hub.contains($0.id) }.compactMap(\.package.manifest.category))
     return NoodletManifest.knownCategories.filter(used.contains)
+  }
+  func markHub(_ key: String) {
+    guard !hub.contains(key) else { return }
+    hub.append(key)
+    defaults.set(hub, forKey: "hub")
   }
   /// Hides a noodlet, or shows a hidden one again. Its pin is kept for when it is shown.
   func hide(_ key: String) {

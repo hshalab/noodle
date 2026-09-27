@@ -409,6 +409,13 @@ struct ComputerLibraryView: View {
     }
   }
 
+  /// Computers Noodle Hub keeps for its bots are listed apart from this Mac's own.
+  private func rows(_ sessions: [ComputerSession]) -> some View {
+    ForEach(sessions) { session in
+      ComputerRow(store: store, session: session).tag(session.id)
+    }
+  }
+
   private var createMenu: some View {
     Menu {
       Button("New Container", systemImage: "desktopcomputer") { showingNew = true }
@@ -423,11 +430,9 @@ struct ComputerLibraryView: View {
   var body: some View {
     NavigationSplitView(columnVisibility: $columnVisibility) {
       List(selection: $store.selection) {
-        Section("Computers") {
-          ForEach(filteredSessions) { session in
-            ComputerRow(store: store, session: session).tag(session.id)
-          }
-        }
+        Section("Computers") { rows(filteredSessions.filter { $0.computer.hub != true }) }
+        let hub = filteredSessions.filter { $0.computer.hub == true }
+        if !hub.isEmpty { Section("Hub") { rows(hub) } }
       }
       .listStyle(.sidebar)
       .scrollContentBackground(.hidden)

@@ -80,6 +80,8 @@ public struct Computer: Codable, Identifiable, Equatable, Sendable {
     public var webPort: Int?
     public var appearance: ComputerAppearance?
     public var localMacSetupRequested: Bool?
+    /// Kept for Noodle Hub's bots rather than this Mac's own; listed apart.
+    public var hub: Bool?
 
     public init(id: UUID = UUID(), name: String, kind: ComputerKind, cpuCount: Int = 4,
                 memoryGiB: Int = 4, diskGiB: Int = 64, networkEnabled: Bool = true,

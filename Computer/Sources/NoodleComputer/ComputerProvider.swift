@@ -88,12 +88,14 @@ import WebKit
                 store.error = nil
                 throw ComputerBridgeError(message)
             }
+            store.note(session, usedBy: peer)
             return ComputerResponse(computers: [Self.remote(session)])
         }
         guard let session = store.sessions.first(where: { $0.id == request.computerID }),
               session.computer.kind == .container || session.computer.kind == .localMac else {
             throw ComputerBridgeError("This computer no longer exists or is not supported by this provider version.")
         }
+        store.note(session, usedBy: peer)
         if request.operation == .update, let draft = request.computer {
             var appearance = session.computer.appearance ?? ComputerAppearance()
             if let symbol = draft.symbol { appearance.iconSymbol = symbol }

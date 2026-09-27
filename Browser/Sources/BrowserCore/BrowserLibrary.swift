@@ -21,6 +21,9 @@ public struct BrowserProfile: Codable, Identifiable, Equatable, Sendable {
     public var backgroundPreset: String?
     public var backgroundFilename: String?
     public var backgroundMediaKind: BackgroundMediaKind?
+    /// Kept for Noodle Hub's bots rather than this Mac's own; listed apart. Optional, so
+    /// archives written before it decode without it.
+    public var hub: Bool?
     public var background: ConversationBackground {
         get { .init(preset: backgroundPreset.flatMap(ConversationBackgroundPreset.init(rawValue:)), imageFilename: backgroundFilename, mediaKind: backgroundMediaKind) }
         set { backgroundPreset = newValue.preset?.rawValue; backgroundFilename = newValue.imageFilename; backgroundMediaKind = newValue.mediaKind }

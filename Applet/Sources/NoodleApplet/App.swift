@@ -245,6 +245,7 @@ private enum LibrarySection: String, CaseIterable, Identifiable {
   case recent = "Recent"
   case pinned = "Pinned"
   case hidden = "Hidden"
+  case hub = "Hub"
   var id: Self { self }
   var symbol: String {
     switch self {
@@ -252,6 +253,7 @@ private enum LibrarySection: String, CaseIterable, Identifiable {
     case .recent: "clock"
     case .pinned: "pin"
     case .hidden: "eye.slash"
+    case .hub: "server.rack"
     }
   }
 }
@@ -294,6 +296,8 @@ private struct LibraryView: View {
     let matches = library.entries.filter {
       (search.isEmpty || $0.title.localizedCaseInsensitiveContains(search))
         && (section == .hidden) == library.hidden.contains($0.id)
+        // Noodle Hub's bots' noodlets are listed apart, unless pinned or hidden.
+        && ([.hidden, .pinned].contains(section) || (section == .hub) == library.hub.contains($0.id))
         && (section != .pinned || library.pinned.contains($0.id))
         && (section != .recent || library.recent.contains($0.id))
         && (category == nil || $0.package.manifest.category == category)
@@ -310,8 +314,13 @@ private struct LibraryView: View {
     NavigationSplitView(columnVisibility: $columnVisibility) {
       List(selection: $selection) {
         Section("Library") {
-          ForEach(LibrarySection.allCases) { section in
+          ForEach(LibrarySection.allCases.filter { $0 != .hub }) { section in
             Label(section.rawValue, systemImage: section.symbol).tag(LibraryFilter.section(section))
+          }
+        }
+        if library.entries.contains(where: { library.hub.contains($0.id) }) {
+          Section("Hub") {
+            Label("Noodlets", systemImage: LibrarySection.hub.symbol).tag(LibraryFilter.section(.hub))
           }
         }
         if !library.categories.isEmpty {

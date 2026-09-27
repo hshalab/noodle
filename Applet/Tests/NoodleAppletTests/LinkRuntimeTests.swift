@@ -4,6 +4,33 @@ import XCTest
 @testable import NoodleApplet
 
 @MainActor final class LinkRuntimeTests: XCTestCase {
+    func testNoodletsHubBotsMakeOrTheHubOpensAreListedAsHub() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let suite = "HubNoodlets." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { try? FileManager.default.removeItem(at: root); defaults.removePersistentDomain(forName: suite) }
+        let library = AppletLibrary(root: root, defaults: defaults, installExamples: false, watchChanges: false)
+        let runtime = AppletRuntime(library: library, defaults: defaults)
+        let identity = AppletBuildIdentity.current
+        func key(_ response: AppletResponse) throws -> String {
+            try NoodletPackage(url: URL(fileURLWithPath: XCTUnwrap(response.path))).key
+        }
+        var validate = AppletRequest(.validate)
+        validate.files = ["noodlet.json": try JSONEncoder().encode(NoodletManifest(title: "A")), "index.html": Data("a".utf8)]
+        // The Hub is sandboxed, so its bots work inside its container.
+        validate.path = AppletRuntime.hubContainer.appendingPathComponent("Bots/A.noodlet").path
+        let made = try key(await runtime.handle(validate, identity: identity.cliID).checked())
+        validate.path = "/Users/someone/Own.noodlet"
+        let own = try await runtime.handle(validate, identity: identity.cliID).checked()
+        XCTAssertEqual(library.hub, [made])
+        // Made before the library recorded it, and opened by the Hub since.
+        var info = AppletRequest(.info); info.noodletID = own.noodletID
+        _ = try await runtime.handle(info, identity: identity.noodleID).checked()
+        XCTAssertEqual(library.hub, [made])
+        _ = try await runtime.handle(info, identity: identity.hubID).checked()
+        XCTAssertEqual(Set(library.hub), [made, try key(own)])
+        XCTAssertEqual(Set(defaults.stringArray(forKey: "hub") ?? []), Set(library.hub))
+    }
     func testArchivedOperationsRetainAvailableMetadataWithoutGrantingAccess() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let suite = "ArchivedSessions." + UUID().uuidString

@@ -22,13 +22,13 @@ import WebKit
     func startServer(socket: URL? = nil) {
         do {
             server = try BrowserConnectionServer(socket: socket ?? BrowserConnection.socketURL(), team: BrowserConnection.signingTeam(),
-                                                 handler: { [weak self] request, _ in
+                                                 handler: { [weak self] request, caller in
                 guard let self else { return .init(error: "Browser stopped.") }
-                do { return try await self.perform(request) }
+                do { return try await self.perform(request, caller: caller) }
                 catch { return .init(error: error.localizedDescription) }
-            }, surface: { [weak self] request, _, socket in
+            }, surface: { [weak self] request, caller, socket in
                 guard let self else { return .init(error: "Browser stopped.") }
-                do { return try await self.perform(request, surface: socket) }
+                do { return try await self.perform(request, caller: caller, surface: socket) }
                 catch { return .init(error: error.localizedDescription) }
             })
         } catch { failure = error.localizedDescription }
@@ -136,20 +136,27 @@ import WebKit
         for tab in tabs.values { tab.stop() }
         tabs.removeAll()
     }
-    func perform(_ request: BrowserRequest, surface: SurfaceSocket? = nil) async throws -> BrowserResponse {
+    /// `caller` is the signed app asking, when it came over the connection.
+    func perform(_ request: BrowserRequest, caller: String? = nil, surface: SurfaceSocket? = nil) async throws -> BrowserResponse {
         try request.validate()
         var response = BrowserResponse()
         if request.operation == .list {
             guard library.failure == nil else { throw BrowserError(library.failure!) }
             response.browsers = library.profiles.map(\.remote); response.features = [SurfaceSocket.feature]; return response
         }
+        let hub = caller == BrowserBuildIdentity.current.hubID
         if request.operation == .create, let draft = request.profile {
-            response.browser = try library.create(name: draft.name, description: draft.description,
-                                                  symbol: draft.symbol ?? "globe", colour: draft.colour).remote
+            var made = try library.create(name: draft.name, description: draft.description,
+                                          symbol: draft.symbol ?? "globe", colour: draft.colour)
+            if hub { made.hub = true; try library.update(made) }
+            response.browser = made.remote
             return response
         }
         let id = request.browserID!
-        let profile = try library.profile(id)
+        var profile = try library.profile(id)
+        // The Hub only reaches browsers it made, so one it uses that says otherwise was
+        // made before browsers recorded it.
+        if hub, profile.hub != true { profile.hub = true; try library.update(profile) }
         if request.operation == .update, let draft = request.profile {
             var changed = profile
             changed.name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)

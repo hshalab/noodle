@@ -4,6 +4,23 @@ import BrowserCore
 import XCTest
 
 final class BrowserRuntimeTests: XCTestCase {
+    @MainActor func testBrowsersTheHubMakesOrUsesAreListedAsHub() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let library = BrowserLibrary(root: root), identity = BrowserBuildIdentity.current
+        let runtime = BrowserRuntime(library: library)
+        var create = BrowserRequest(.create); create.profile = BrowserDraft(name: "Hub made")
+        let made = try await runtime.perform(create, caller: identity.hubID).browser!
+        XCTAssertEqual(try library.profile(made.id).hub, true)
+        let own = try await runtime.perform(create, caller: identity.noodleID).browser!
+        XCTAssertNil(try library.profile(own.id).hub)
+        // Made by the Hub before it said so: the Hub only ever uses its own.
+        let earlier = try library.create(name: "Earlier")
+        _ = try await runtime.perform(.init(.bookmarks, browserID: earlier.id), caller: identity.noodleID)
+        XCTAssertNil(try library.profile(earlier.id).hub)
+        _ = try await runtime.perform(.init(.bookmarks, browserID: earlier.id), caller: identity.hubID)
+        XCTAssertEqual(try library.profile(earlier.id).hub, true)
+    }
     @MainActor func testRecordCommandsRespectPauseAndProfileOwnership() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }

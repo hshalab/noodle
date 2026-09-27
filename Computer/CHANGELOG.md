@@ -4,6 +4,7 @@
 
 ### Changed
 
+- Computers Noodle Hub keeps for its bots are listed under Hub in the sidebar, apart from your own.
 - Computer follows the system's light or dark appearance instead of always being dark.
 - Delete, Delete Computer, Clean Caches and Restart, Enable Account Helper and the New Container, New from Container Image and New Local Mac commands no longer end in an ellipsis.
 - Check for Updates, in the app menu and Settings > Update, no longer ends in an ellipsis.

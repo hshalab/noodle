@@ -36,24 +36,28 @@ struct BrowserLibraryView: View {
             search.isEmpty || $0.name.localizedCaseInsensitiveContains(search) || $0.description?.localizedCaseInsensitiveContains(search) == true
         }
     }
+    /// Browsers Noodle Hub keeps for its bots are listed apart from this Mac's own.
+    private func rows(_ profiles: [BrowserProfile]) -> some View {
+        ForEach(profiles) { profile in
+            BrowserSidebarRow(profile: profile)
+                .tag(profile.id)
+                .contextMenu {
+                    Button("Edit Browser…", systemImage: "slider.horizontal.3") { presentation.editing = profile }
+                    Button("Change Background…", systemImage: "photo") { presentation.backgroundEditing = profile }
+                    Button(profile.paused ? "Resume Agents" : "Pause Agents", systemImage: profile.paused ? "play.fill" : "pause.fill") {
+                        do { try runtime.setPaused(!profile.paused, browserID: profile.id) } catch { runtime.failure = error.localizedDescription }
+                    }
+                    Divider()
+                    Button("Delete Browser", systemImage: "trash", role: .destructive) { deleting = profile }
+                }
+        }
+    }
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             List(selection: $presentation.selection) {
-                Section("Browsers") {
-                    ForEach(filtered) { profile in
-                        BrowserSidebarRow(profile: profile)
-                            .tag(profile.id)
-                            .contextMenu {
-                                Button("Edit Browser…", systemImage: "slider.horizontal.3") { presentation.editing = profile }
-                                Button("Change Background…", systemImage: "photo") { presentation.backgroundEditing = profile }
-                                Button(profile.paused ? "Resume Agents" : "Pause Agents", systemImage: profile.paused ? "play.fill" : "pause.fill") {
-                                    do { try runtime.setPaused(!profile.paused, browserID: profile.id) } catch { runtime.failure = error.localizedDescription }
-                                }
-                                Divider()
-                                Button("Delete Browser", systemImage: "trash", role: .destructive) { deleting = profile }
-                            }
-                    }
-                }
+                Section("Browsers") { rows(filtered.filter { $0.hub != true }) }
+                let hub = filtered.filter { $0.hub == true }
+                if !hub.isEmpty { Section("Hub") { rows(hub) } }
             }
             .listStyle(.sidebar)
             .scrollContentBackground(.hidden)

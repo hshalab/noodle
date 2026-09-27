@@ -675,6 +675,15 @@ enum ComputerDisplayMode: String {
         } catch { self.error = error.localizedDescription }
     }
 
+    /// Marks a computer Noodle Hub made or uses. The Hub only reaches computers it made, so
+    /// one it uses that says otherwise was made before computers recorded it.
+    func note(_ session: ComputerSession, usedBy caller: String) {
+        guard caller == ComputerBuildIdentity.current.hubID, session.computer.hub != true else { return }
+        var computer = session.computer
+        computer.hub = true
+        do { session.computer = try library.save(computer) } catch { self.error = error.localizedDescription }
+    }
+
     func rename(_ session: ComputerSession, name: String, description: String? = nil, appearance: ComputerAppearance? = nil) {
         var computer = session.computer
         computer.name = name.trimmingCharacters(in: .whitespacesAndNewlines)

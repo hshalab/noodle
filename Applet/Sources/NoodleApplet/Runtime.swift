@@ -97,6 +97,18 @@ import AppletCore
   lazy var authorize: (NoodletPackage) async -> String? = { [defaults] in
     await AppletPermissions.authorize($0, defaults: defaults)
   }
+  /// Where Noodle Hub, sandboxed, keeps its bots' work.
+  static var hubContainer: URL {
+    // Applet is sandboxed too, so its own home is its container, not the user's.
+    let home = getpwuid(getuid()).map { String(cString: $0.pointee.pw_dir) } ?? NSHomeDirectory()
+    return URL(fileURLWithPath: home).appendingPathComponent(
+      "Library/Containers/\(AppletBuildIdentity.current.hubID)", isDirectory: true)
+  }
+  /// The Hub only reaches noodlets of its own bots, so one it opens was made by them.
+  private func fromHub(_ identity: String, path: String?) -> Bool {
+    identity == AppletBuildIdentity.current.hubID
+      || path.map { URL(fileURLWithPath: $0).standardizedFileURL.path.hasPrefix(Self.hubContainer.path + "/") } == true
+  }
   init(library: AppletLibrary, defaults: UserDefaults = .standard) {
     self.defaults = defaults
     self.library = library
@@ -181,6 +193,7 @@ import AppletCore
             throw AppletError("Session is unavailable for this noodlet.", code: "session-unavailable")
           }
         }
+        if fromHub(identity, path: nil) { library.markHub(package.key) }
         request.path = package.url.path
         request.noodletID = nil
       }
@@ -306,6 +319,7 @@ import AppletCore
           owners[package.key] = owner
           defaults.set(owners, forKey: "packageOwners")
         }
+        if fromHub(identity, path: input.path) { library.markHub(package.key) }
         _ = try package.files()
         _ = try library.linkID(for: package)
         library.scan()
