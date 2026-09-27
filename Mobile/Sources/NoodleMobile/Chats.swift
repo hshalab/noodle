@@ -737,6 +737,8 @@ struct ChatView: View {
                 }
                 .padding(.horizontal, 12).padding(.vertical, 4)
                 .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                // A tap that misses a control must not reach the conversation underneath.
+                .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             } else {
                 messageComposer
             }

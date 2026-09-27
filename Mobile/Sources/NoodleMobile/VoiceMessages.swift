@@ -12,6 +12,8 @@ import SwiftUI
     private(set) var duration: TimeInterval = 0
     private(set) var levels: [Float] = []
     private(set) var liveLevels: [Float] = []
+    /// When the microphone started, so the live meter scrolls with the clock rather than with each poll.
+    private(set) var recordingStarted = Date()
     private(set) var transcript: String?
     private(set) var error: String?
     private(set) var preparation = "Preparing speech…"
@@ -71,6 +73,7 @@ import SwiftUI
                 Self.tap(input, into: sink)
                 try engine.start()
                 self.engine = engine
+                recordingStarted = Date()
                 phase = .recording
                 meter(token: token)
             } catch {
@@ -378,7 +381,7 @@ struct VoiceRecordingBar: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
                 Button { Task { await recorder.discard() } } label: {
-                    Image(systemName: "xmark").frame(width: 30, height: 36)
+                    Image(systemName: "xmark").frame(width: 30, height: 36).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .disabled(recorder.isSending)
@@ -391,14 +394,15 @@ struct VoiceRecordingBar: View {
                 } else {
                     if recorder.phase == .recording {
                         Circle().fill(.red).frame(width: 6, height: 6)
-                        LiveVoiceWaveform(samples: recorder.liveLevels, duration: recorder.duration).frame(height: 22)
+                        LiveVoiceWaveform(samples: recorder.liveLevels, duration: recorder.duration,
+                                          started: recorder.recordingStarted).frame(height: 22)
                     } else {
                         VoiceWaveform(samples: recorder.levels).frame(height: 22)
                     }
                     Text(voiceTime(recorder.duration)).font(.caption.monospacedDigit())
                     if recorder.phase == .recording {
                         Button { Task { await recorder.finish() } } label: {
-                            Image(systemName: "stop.fill").frame(width: 30, height: 36)
+                            Image(systemName: "stop.fill").frame(width: 30, height: 36).contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Stop Recording")
@@ -444,7 +448,14 @@ struct VoiceRecordingBar: View {
 struct LiveVoiceWaveform: View {
     let samples: [Float]
     var duration: TimeInterval = 0
+    var started = Date()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Where the meter is, in 50 ms samples. It follows the clock a quarter of a second behind, so
+    /// samples arriving in uneven chunks are already there when they scroll in; it waits for late audio.
+    static func position(elapsed: TimeInterval, sampleCount: Int) -> Double {
+        min(Double(sampleCount), max(0, (elapsed - 0.25) / 0.05))
+    }
 
     static func bars(samples: [Float], width: CGFloat, height: CGFloat, sampleCount: Int, position: Double) -> [CGRect] {
         let spacing: CGFloat = 5
@@ -464,23 +475,20 @@ struct LiveVoiceWaveform: View {
     }
 
     var body: some View {
-        let position = max(Double(samples.count), duration / 0.05)
-        Bars(samples: samples, sampleCount: Int(position + 0.000001), position: position)
-            .fill(.primary.opacity(0.7))
-            .clipped()
-            .animation(reduceMotion ? nil : .linear(duration: 0.1), value: position)
-            .accessibilityLabel("Live microphone waveform")
+        let sampleCount = max(samples.count, Int(duration / 0.05 + 0.000001))
+        TimelineView(.animation(minimumInterval: reduceMotion ? 0.1 : nil)) { timeline in
+            Bars(samples: samples, sampleCount: sampleCount,
+                 position: Self.position(elapsed: timeline.date.timeIntervalSince(started), sampleCount: sampleCount))
+                .fill(.primary.opacity(0.7))
+                .clipped()
+        }
+        .accessibilityLabel("Live microphone waveform")
     }
 
     private struct Bars: Shape {
         let samples: [Float]
         let sampleCount: Int
-        var position: Double
-
-        var animatableData: Double {
-            get { position }
-            set { position = newValue }
-        }
+        let position: Double
 
         func path(in rect: CGRect) -> Path {
             Path { path in

@@ -31,4 +31,23 @@ import Testing
         sink.finish()
         #expect(sink.snapshot().duration > 0)
     }
+
+    // Audio arrives in uneven chunks; the meter still moves the same distance every frame.
+    @Test func theLiveMeterScrollsAtAnEvenPaceBetweenChunks() {
+        let frame = 1.0 / 60
+        var positions: [Double] = []
+        for step in 60..<120 {
+            let elapsed = Double(step) * frame
+            // Whole 4096-frame buffers at 48 kHz, read every 100 ms: the samples the view has lag and jump.
+            let polled = (elapsed / 0.1).rounded(.down) * 0.1
+            let delivered = (polled * 48_000 / 4096).rounded(.down) * 4096 / 48_000
+            positions.append(LiveVoiceWaveform.position(elapsed: elapsed, sampleCount: Int(delivered / 0.05)))
+        }
+        let steps = zip(positions.dropFirst(), positions).map { $0 - $1 }
+        #expect(steps.allSatisfy { abs($0 - frame / 0.05) < 0.000001 })
+    }
+
+    @Test func theLiveMeterNeverRunsAheadOfTheAudio() {
+        #expect(LiveVoiceWaveform.position(elapsed: 5, sampleCount: 20) == 20)
+    }
 }

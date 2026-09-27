@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### What to Test
+
+- Record a voice message and tap the cross to discard it, including just beside it.
+
+### Fixed
+
+- Tapping beside the discard button while recording no longer opens the picture or message behind it.
+- The live bars scroll smoothly while recording instead of stuttering.
+
 ## [0.2.2] - 2026-09-27
 
 ### What to Test
