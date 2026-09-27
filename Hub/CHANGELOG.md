@@ -17,6 +17,7 @@
 - The Usage window keeps its bot, group, measure and period choices in the toolbar, with the period's dates under the title, totals in one strip above the chart and the breakdown in a table below it.
 - Buttons in the rows of the Users, Plans and Bots settings look like links, as in System Settings.
 - Invite and Remove in Settings > Users, and Delete Plan, no longer end in an ellipsis, since they ask for nothing more.
+- A user's plan is chosen from the Plan submenu of their actions menu in Settings > Users, and shows under their name.
 - Quitting the Hub, from its menu or with Command-Q, asks first and says how many people and devices are connected and how many bots are working. Logging out and shutting down are not held up.
 - Restarting to install an update asks first in the same way.
 - The menu bar menu groups Pair… and Usage apart from Settings…, and Usage no longer ends in “…”.

@@ -95,19 +95,23 @@ struct HubUsersSettingsView: View {
     private func userRow(_ user: HubUser) -> some View {
         HStack(spacing: 10) {
             Image(systemName: "person.crop.circle").font(.title3).foregroundStyle(.secondary)
-            Text(user.name).lineLimit(1)
-            Spacer(minLength: 8)
-            Picker("Plan for \(user.name)", selection: Binding(
-                get: { user.plan },
-                set: { id in access.plans.first { $0.id == id }.map { access.move(user, to: $0) } }
-            )) {
-                ForEach(access.plans) { Text($0.name).tag($0.id) }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(user.name).lineLimit(1)
+                if let plan = access.plans.first(where: { $0.id == user.plan }) {
+                    Text(plan.name).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
             }
-            .labelsHidden()
-            .fixedSize()
+            Spacer(minLength: 8)
             Button("Invite") { inviting = Invitation(user: user, invitation: host.hub.link.invite(user)) }
                 .buttonStyle(.link)
             Menu {
+                Picker("Plan", selection: Binding(
+                    get: { user.plan },
+                    set: { id in access.plans.first { $0.id == id }.map { access.move(user, to: $0) } }
+                )) {
+                    ForEach(access.plans) { Text($0.name).tag($0.id) }
+                }
+                .pickerStyle(.menu)
                 Toggle("Can Pair Devices", isOn: Binding(
                     get: { user.canPairDevices },
                     set: { access.setCanPairDevices($0, for: user) }
