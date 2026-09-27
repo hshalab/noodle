@@ -4,6 +4,7 @@
 
 ### Changed
 
+- Settings > Permissions and Storage show where each noodlet lives, so noodlets with the same name can be told apart.
 - Noodlets made by Noodle Hub's bots are listed under Hub in the sidebar, not in All, Recent, the categories or the menu bar's recent list.
 - Applet follows the system's light or dark appearance instead of always being dark.
 - Move to Trash and Remove no longer end in an ellipsis, since they only ask to confirm.

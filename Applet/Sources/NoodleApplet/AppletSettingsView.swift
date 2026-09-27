@@ -94,6 +94,7 @@ struct SettingsListPanel<Content: View>: View {
 private struct SettingsListRow<Accessory: View>: View {
     let title: String
     var detail: String?
+    var location: String?
     var divider = true
     @ViewBuilder var accessory: Accessory
 
@@ -102,6 +103,10 @@ private struct SettingsListRow<Accessory: View>: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(title).lineLimit(1)
                 if let detail { Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(2) }
+                if let location {
+                    Text(location).font(.caption).foregroundStyle(.secondary)
+                        .lineLimit(1).truncationMode(.middle).help(location)
+                }
             }
             Spacer(minLength: 8)
             accessory.controlSize(.small)
@@ -115,6 +120,14 @@ private struct SettingsListRow<Accessory: View>: View {
     library.entries.first { $0.package.key == key }?.package.manifest.title ?? "Removed Noodlet"
 }
 
+/// Where the noodlet lives, so noodlets with the same title can be told apart.
+@MainActor private func noodletLocation(_ key: String, in library: AppletLibrary) -> String? {
+    guard let path = library.entries.first(where: { $0.package.key == key })?.package.url.path else { return nil }
+    // The sandbox's own home is the container, so abbreviate against the real one.
+    let home = getpwuid(getuid()).map { String(cString: $0.pointee.pw_dir) } ?? NSHomeDirectory()
+    return path.hasPrefix(home + "/") ? "~" + path.dropFirst(home.count) : path
+}
+
 private struct AppletPermissionsSettingsView: View {
     @ObservedObject var library: AppletLibrary
     @State private var grants: [String: [String]] = [:]
@@ -126,6 +139,7 @@ private struct AppletPermissionsSettingsView: View {
                 SettingsListRow(
                     title: noodletTitle(key, in: library),
                     detail: (grants[key] ?? []).compactMap { AppletPermissions.titles[$0] }.joined(separator: ", "),
+                    location: noodletLocation(key, in: library),
                     divider: key != keys.last
                 ) {
                     Button("Remove") {
@@ -196,6 +210,7 @@ private struct AppletStorageSettingsView: View {
                 SettingsListRow(
                     title: noodletTitle(key, in: library),
                     detail: ByteCountFormatter.string(fromByteCount: Int64(sizes[key] ?? 0), countStyle: .file),
+                    location: noodletLocation(key, in: library),
                     divider: key != keys.last
                 ) {
                     Button("Remove") { removing = key }
