@@ -392,6 +392,10 @@ import os
             let device = try paired(key)
             access.markSeen(device, at: now())
             return .status(status(for: device))
+        case .invite:
+            let user = try user(key)
+            guard user.canPairDevices else { throw LinkError("You cannot pair devices with \(hubName). Ask whoever keeps it.") }
+            return .invitation(invite(user))
         case .subscribe:
             throw LinkError("Subscriptions open a stream.")
         case .bots:
@@ -584,7 +588,7 @@ import os
         }
         .sorted { ($0.providerName, $0.profileName ?? "") < ($1.providerName, $1.profileName ?? "") }
         return LinkStatus(hubName: hubName, userName: user?.name ?? "", planName: plan?.name ?? "",
-                          harnesses: harnesses, endpoints: endpoints)
+                          harnesses: harnesses, endpoints: endpoints, canPairDevices: user?.canPairDevices ?? false)
     }
 
     /// Opens the port on the router, then renews it halfway through each lease, or every

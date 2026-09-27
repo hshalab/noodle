@@ -95,6 +95,14 @@ import Observation
         return try await send(request, as: try identity(), key: hub.key, endpoints: hub.endpoints)
     }
 
+    /// A one-time invitation for another device of this user, when the Hub lets them pair their own.
+    public func invite() async throws -> LinkInvitation {
+        guard case .invitation(let invitation) = try await request(.invite) else {
+            throw LinkError("The Hub sent an unexpected answer.")
+        }
+        return invitation
+    }
+
     /// Sends a file to one of this user's conversations on the Hub, piece by piece.
     public func upload(_ file: URL, as attachment: LinkAttachment, to conversationID: UUID) async throws {
         let handle = try FileHandle(forReadingFrom: file)

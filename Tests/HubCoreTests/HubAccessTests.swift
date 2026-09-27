@@ -107,4 +107,21 @@ import XCTest
         XCTAssertEqual(access.plans.first?.harnesses, [HubHarness(provider: .codex, profile: nil)])
         XCTAssertEqual(access.plans.first?.models, [:])
     }
+
+    func testUsersCanPairTheirOwnDevicesUnlessTheOwnerTurnsItOff() throws {
+        let (access, url) = access()
+        let ada = try access.addUser(named: "Ada")
+        XCTAssertTrue(ada.canPairDevices)
+        access.setCanPairDevices(false, for: ada)
+        XCTAssertEqual(HubAccess(url: url).users.first?.canPairDevices, false)
+        access.setCanPairDevices(true, for: ada)
+        XCTAssertEqual(HubAccess(url: url).users.first?.canPairDevices, true)
+    }
+
+    func testUsersSavedBeforePairingCanPairTheirOwnDevices() throws {
+        let (_, url) = access()
+        let json = #"{"users":[{"id":"\#(UUID())","name":"Ada","plan":"\#(HubPlan.defaultID)"}],"plans":[]}"#
+        try Data(json.utf8).write(to: url)
+        XCTAssertEqual(HubAccess(url: url).users.first?.canPairDevices, true)
+    }
 }

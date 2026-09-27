@@ -10,6 +10,7 @@ All notable changes to Noodle are documented here, following
 
 - Creating or editing a bot on a Noodle Hub lets you choose its model from those your plan allows.
 - When this Mac is on Tailscale, its Hub lists its Tailscale name among its addresses, so your devices can reach it wherever they are on your tailnet.
+- When this Mac is your Hub, Noodle for iPhone can pair more of your devices with it.
 
 ### Changed
 

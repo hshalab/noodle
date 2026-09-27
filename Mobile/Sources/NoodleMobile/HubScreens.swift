@@ -310,6 +310,7 @@ struct ProfileView: View {
     @Environment(\.dismiss) private var dismiss
     let pairing: HubPairing
     @State private var leaving = false
+    @State private var pairingDevice = false
 
     var body: some View {
         List {
@@ -344,11 +345,17 @@ struct ProfileView: View {
             if let error = pairing.error {
                 Section { Text(error).foregroundStyle(.orange) }
             }
+            if pairing.status?.canPairDevices == true {
+                Section {
+                    Button("Pair Another Device") { pairingDevice = true }
+                }
+            }
             Section {
                 Button("Leave Hub", role: .destructive) { leaving = true }
             }
         }
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $pairingDevice) { PairDeviceView(pairing: pairing) }
         .refreshable { await pairing.refresh() }
         .confirmationDialog("Leave \(pairing.hubName)?", isPresented: $leaving, titleVisibility: .visible) {
             Button("Leave", role: .destructive) {
@@ -370,6 +377,71 @@ struct ProfileView: View {
             ("Connected", .green)
         }
         return Text(title).foregroundStyle(color)
+    }
+}
+
+/// A one-time invitation from the Hub for another device of this person.
+struct PairDeviceView: View {
+    @Environment(\.dismiss) private var dismiss
+    let pairing: HubPairing
+    @State private var invitation: LinkInvitation?
+    @State private var problem: String?
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 16) {
+                if let invitation {
+                    let url = invitation.url()
+                    if let code = invitation.qrCode() {
+                        Image(decorative: code, scale: 1)
+                            .interpolation(.none)
+                            .resizable()
+                            .frame(width: 240, height: 240)
+                            .padding(12)
+                            .background(.white, in: RoundedRectangle(cornerRadius: 12))
+                            .accessibilityLabel("Invitation QR Code")
+                    }
+                    HStack {
+                        Button("Copy Link") { UIPasteboard.general.url = url }
+                        ShareLink("Share…", item: url)
+                    }
+                    .buttonStyle(.bordered)
+                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                        if context.date < invitation.expires {
+                            Text("Expires \(invitation.expires, format: .relative(presentation: .named))")
+                                .font(.footnote).foregroundStyle(.secondary)
+                        } else {
+                            Button("New Invitation") { Task { await load() } }
+                        }
+                    }
+                } else if let problem {
+                    Label(problem, systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.orange)
+                        .multilineTextAlignment(.center)
+                    Button("Try Again") { Task { await load() } }
+                } else {
+                    ProgressView()
+                }
+            }
+            .padding(24)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .navigationTitle("Pair a Device")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+            }
+        }
+        .task { await load() }
+    }
+
+    private func load() async {
+        do {
+            invitation = try await pairing.invite()
+            problem = nil
+        } catch {
+            invitation = nil
+            problem = error.localizedDescription
+        }
     }
 }
 
