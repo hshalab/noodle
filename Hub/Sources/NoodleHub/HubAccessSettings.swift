@@ -86,7 +86,7 @@ struct HubUsersSettingsView: View {
                 .font(.caption).foregroundStyle(.secondary)
             }
             Spacer(minLength: 8)
-            Button("Remove…") { removingDevice = device }
+            Button("Remove") { removingDevice = device }
                 .buttonStyle(.link)
         }
         .padding(.leading, 32)
