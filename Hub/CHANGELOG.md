@@ -7,7 +7,7 @@
 - Settings has a Companions tab to install, open and update Noodle Computer, Browser and Applet on the Hub's Mac. Its badge shows how many have an update.
 - A plan can limit which models each harness it lends may use. Bots on a harness with limited models must use one of them.
 - The first launch opens on a welcome, as Noodle's does, that ends in pairing your first device.
-- Pair… in the menu bar menu opens a window to pair a new device: choose one of the Hub's users or name a new one, then scan its QR code or share its link.
+- Pair… in the menu bar menu opens a window to pair a new device, under the Noodle wordmark as on the welcome: choose one of the Hub's users or name a new one, then scan its QR code or share its link.
 - When the Hub's Mac is on Tailscale, the Hub lists its Tailscale name among its addresses, so devices can reach it wherever they are on your tailnet.
 
 ### Changed

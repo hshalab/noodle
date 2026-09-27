@@ -34,11 +34,13 @@ struct NoodleHubApp: App {
         .windowResizability(.contentMinSize)
         .restorationBehavior(.disabled)
         .defaultLaunchBehavior(delegate.showsWelcome ? .presented : .suppressed)
-        Window("Pair a Device", id: HubPairView.windowID) {
-            HubPairView(hub: delegate.settings.hub)
+        Window("Pair a Device", id: HubPairWindow.windowID) {
+            HubPairWindow(hub: delegate.settings.hub)
                 .preferredColorScheme(.dark)
         }
-        .windowResizability(.contentSize)
+        .windowStyle(.hiddenTitleBar)
+        .defaultSize(width: 620, height: 720)
+        .windowResizability(.contentMinSize)
         .restorationBehavior(.disabled)
         Window("Usage", id: UsageView.windowID) {
             UsageView(history: delegate.settings.hub.usage, agents: delegate.settings.agents)
@@ -211,7 +213,7 @@ struct HubMenu: View {
         Button("Pair…") {
             NSApp.unhide(nil)
             NSApp.activate(ignoringOtherApps: true)
-            openWindow(id: HubPairView.windowID)
+            openWindow(id: HubPairWindow.windowID)
         }
         Button("Usage") {
             hub.usage.agentFilter = nil
