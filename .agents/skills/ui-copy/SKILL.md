@@ -19,9 +19,10 @@ End a label with `…` (the single character, never three dots) only when the
 command needs more input before it can run: a name, a choice, a picker, a sheet
 or window that has to be filled in.
 
-- `Rename…`, `Invite…`, `Pair…`, `Edit…`, `Settings…`: yes, they ask for more.
+- `Rename…`, `Pair…`, `Edit…`, `Settings…`: yes, they ask for more.
 - `Remove`, `Delete Plan`, `Quit`: no, even though they show an "Are you sure?"
   alert. A confirmation is not more input.
+- `Invite`: no, its sheet only shows a code and link to share.
 - Links and buttons that open System Settings or a web page: no.
 - A toggle in a menu is a checkmark item, never an ellipsis.
 
