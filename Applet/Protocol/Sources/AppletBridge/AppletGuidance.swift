@@ -67,10 +67,10 @@ public enum AppletGuidance {
         switch operation {
         case .list: "Discover this caller's noodlets and live sessions. No individual registration is needed."
         case .info: "Resolve --id UUID_OR_URL, --path, or --session without starting the noodlet. Returns noodletID, url, path, title, runtime, and state. Validate an unregistered source first."
-        case .validate: "Read --path, validate noodlet.json and package bounds, and import the package."
+        case .validate: "Read --path, validate noodlet.json and package bounds, and register the package where it is."
         case .build: "Validate HTML or typecheck combined Swift sources with the installed Apple toolchain. Read logs for diagnostics."
         case .typecheck: "Typecheck Swift from --path FILE_OR_FOLDER as one module and return compiler diagnostics in text. Needs no noodlet.json or Noodlet view, imports nothing and starts no session."
-        case .open: "Import --path and start or reconnect to its single live instance; defaults to background. Changed source requires restart."
+        case .open: "Register --path and start or reconnect to its single live instance; defaults to background. Changed source requires restart."
         case .status: "Inspect the session's state and supported capabilities. Check before retrying an uncertain operation."
         case .logs: "Read durable JSON-line logs from --offset; --follow streams subsequent chunks, --text-output emits the raw log."
         case .inspect: "Return page text and CSS targets for HTML, or the local accessibility tree for native views."
@@ -112,14 +112,14 @@ public enum AppletGuidance {
         Work inside this bot's workspace. Create a folder named `Name.noodlet` with
         `noodlet.json` and ordinary source/assets. Run `./.agents/skills/applet/noodlet`.
         Noodle must be running; it quietly starts the installed Noodle Applet companion.
-        Packages are copied to the companion library. Reopen the same canonical source
-        path to update its copy; a different location creates a separate noodlet.
+        The companion runs packages where they are, in this workspace, and keeps no copy.
+        Moving or renaming the folder makes it a separate noodlet.
         Source updates preserve data. Only one instance of a library package may run.
 
         Git is supported and encouraged for applet development. Track source changes
         and commit useful checkpoints. Keep the repository root above the `.noodlet`
         folder (for example, `MyProject/.git` and `MyProject/MyApp.noodlet`) so Git
-        metadata stays out of the imported package and its 512-file / 20 MiB limits.
+        metadata stays out of the package and its 512-file / 20 MiB limits.
 
         For delivery, prefer validating the source and attaching the returned url using
         Messenger --attach "noodlet://UUID". HTML needs no build step. Validation returns

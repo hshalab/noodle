@@ -27,28 +27,38 @@ import XCTest
         XCTAssertTrue(runtime.sessions.isEmpty)
     }
 
-    /// A noodlet a bot sent says which folder it came from, so whoever links to it can tell whose
-    /// it is: Applet keeps its own copy and does not decide that itself.
-    func testANoodletSaysWhereItCameFrom() async throws {
+    /// A bot's noodlet is used where the bot keeps it, and says so, so whoever links to it can
+    /// tell whose it is. Applet keeps no copy, and no other bot can use it.
+    func testABotsNoodletIsUsedInItsOwnFolderAndOnlyByThatBot() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let suite = "AppletSource." + UUID().uuidString
         let defaults = UserDefaults(suiteName: suite)!
         defer { try? FileManager.default.removeItem(at: root); defaults.removePersistentDomain(forName: suite) }
-        let library = AppletLibrary(root: root, defaults: defaults, installExamples: false, watchChanges: false)
+        let library = botLibrary(root: root, defaults: defaults)
         let runtime = AppletRuntime(library: library, defaults: defaults)
         let current = AppletBuildIdentity.current
+        let path = try botNoodlet(htmlNoodlet("Counter"), named: "Counter", owner: "kai", root: root)
         var request = AppletRequest(.validate)
-        request.path = "/Bots/Kai/Counter." + current.fileExtension
-        request.files = ["noodlet.json": Data(#"{"title":"Counter","runtime":"html","entry":"index.html"}"#.utf8), "index.html": Data("0".utf8)]
+        request.path = path
+        request.owner = "kai"
         let validated = await runtime.handle(request, identity: current.noodleID)
         XCTAssertNil(validated.error)
         let id = try XCTUnwrap(validated.noodletID)
-        XCTAssertNotEqual(validated.path, request.path, "Applet shows its own copy, not the bot's folder")
+        XCTAssertEqual(validated.path, path)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: library.documents.appendingPathComponent("Imports").path))
         var info = AppletRequest(.info)
         info.noodletID = id
         let described = await runtime.handle(info, identity: current.noodleID)
         XCTAssertNil(described.error)
-        XCTAssertEqual(described.sourcePath, request.path)
+        XCTAssertEqual(described.sourcePath, path)
+
+        request.owner = "ada"
+        let refused = await runtime.handle(request, identity: current.noodleID)
+        XCTAssertNotNil(refused.error)
+        var list = AppletRequest(.list)
+        list.owner = "ada"
+        let listed = await runtime.handle(list, identity: current.noodleID)
+        XCTAssertEqual(listed.items?.count ?? 0, 0)
 
         // Noodle Hub may show its picture on a card, but gets no way into the package.
         info.includePreview = true

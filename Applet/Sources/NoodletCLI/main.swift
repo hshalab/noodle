@@ -129,8 +129,9 @@ import Foundation
                     decoding: FileHandle.standardInput.readDataToEndOfFile(), as: UTF8.self)
             }
         }
+        // Applet reads a package where it is, so only the path travels.
         if [.open, .build, .validate].contains(operation), let path = request.path {
-            request.files = try NoodletPackage(url: URL(fileURLWithPath: path)).files()
+            _ = try NoodletPackage(url: URL(fileURLWithPath: path))
         }
         if operation == .typecheck {
             guard let path = request.path else { throw AppletError("Provide --path to a Swift file or folder.") }

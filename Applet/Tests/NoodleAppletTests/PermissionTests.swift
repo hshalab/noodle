@@ -35,7 +35,7 @@ import XCTest
         let suite = "AppletPermissions." + UUID().uuidString
         let defaults = UserDefaults(suiteName: suite)!
         defer { try? FileManager.default.removeItem(at: root); defaults.removePersistentDomain(forName: suite) }
-        let library = AppletLibrary(root: root, defaults: defaults, installExamples: false, watchChanges: false)
+        let library = botLibrary(root: root, defaults: defaults)
         let runtime = AppletRuntime(library: library, defaults: defaults)
         var asked: [String] = []
         runtime.authorize = { package in
@@ -44,11 +44,10 @@ import XCTest
         }
         var request = AppletRequest(.open)
         request.mode = "headless"
-        request.path = "/source/Listener." + AppletBuildIdentity.current.fileExtension
-        request.files = [
+        request.path = try botNoodlet([
             "noodlet.json": Data(#"{"title":"Listener","runtime":"html","entry":"index.html","permissions":["microphone"]}"#.utf8),
             "index.html": Data("fixture".utf8),
-        ]
+        ], named: "Listener", owner: "source", root: root)
         let response = await runtime.handle(request, identity: AppletBuildIdentity.current.noodleID)
         XCTAssertEqual(asked, ["microphone"])
         XCTAssertNotEqual(response.permissions?["microphone"], "granted", "The user refused this noodlet")

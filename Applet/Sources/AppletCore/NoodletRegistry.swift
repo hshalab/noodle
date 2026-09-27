@@ -31,6 +31,17 @@ public final class NoodletRegistry {
         return entry.id
     }
 
+    /// Points the link of the package at `from` to the one at `to`, so links already shared open it.
+    public func move(_ from: URL, to: URL) throws {
+        let old = from.resolvingSymlinksInPath().standardizedFileURL.path
+        guard let index = entries.firstIndex(where: { $0.path == old }) else { return }
+        let url = to.resolvingSymlinksInPath().standardizedFileURL
+        let previous = entries
+        entries[index] = Entry(id: entries[index].id, path: url.path,
+                               bookmark: try url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil))
+        do { try persist() } catch { entries = previous; throw error }
+    }
+
     public func resolve(_ id: UUID) -> URL? {
         guard let entry = entries.first(where: { $0.id == id }) else { return nil }
         return resolved(entry)

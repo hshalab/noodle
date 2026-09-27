@@ -10,7 +10,8 @@ let required: Set<String> = ["com.apple.security.app-sandbox", "com.apple.securi
     "com.apple.security.device.camera",
     "com.apple.security.files.user-selected.read-write",
     "com.apple.security.application-groups", "com.apple.security.temporary-exception.mach-lookup.global-name",
-    "com.apple.security.temporary-exception.files.home-relative-path.read-only"]
+    "com.apple.security.temporary-exception.files.home-relative-path.read-only",
+    "com.apple.security.temporary-exception.files.home-relative-path.read-write"]
 precondition(Set(entitlements.keys) == required, "Unexpected Applet entitlement set")
 for key in required where !key.contains("application-groups") && !key.contains("temporary-exception") {
     precondition(entitlements[key] as? Bool == true, "Missing grant: \(key)")
@@ -27,6 +28,11 @@ let contentType = "com.pdparchitect.noodle." + documentExtension
 precondition(info["NoodleAppletGroup"] as? String == group)
 precondition(entitlements["com.apple.security.application-groups"] as? [String] == [group])
 if local { precondition(info["NoodleUpdatesEnabled"] as? Bool == false) }
+// Read and write only where Noodle and Noodle Hub of this environment keep their bots.
+let suffix = local ? ".local" : ""
+precondition(entitlements["com.apple.security.temporary-exception.files.home-relative-path.read-write"] as? [String] == [
+    "com.pdparchitect.noodle" + suffix, "com.pdparchitect.noodle.hub" + suffix,
+].map { "/Library/Containers/\($0)/Data/Library/Application Support/Noodle/Agents/" }, "Unexpected home-relative read-write exception")
 precondition(entitlements["com.apple.security.temporary-exception.mach-lookup.global-name"] as? [String] == ["\(bundle)-spks", "\(bundle)-spki"])
 precondition(info["CFBundleShortVersionString"] as? String == version && info["CFBundleVersion"] as? String == version)
 precondition(info["LSMinimumSystemVersion"] as? String == "15.0")
@@ -44,7 +50,7 @@ precondition((exports[0]["UTTypeTagSpecification"] as! [String: Any])["public.fi
 precondition(info["UTImportedTypeDeclarations"] == nil)
 precondition(info["SUAllowsAutomaticUpdates"] as? Bool == true)
 precondition(info["SUAutomaticallyUpdate"] as? Bool == false)
-print("Applet version, nine-key sandbox policy and opt-in automatic-install update policy verified")
+print("Applet version, ten-key sandbox policy and opt-in automatic-install update policy verified")
 let previewInfo = try plist(CommandLine.arguments[4]), previewEntitlements = try plist(CommandLine.arguments[5])
 precondition(previewInfo["CFBundleIdentifier"] as? String == bundle + ".preview")
 precondition(previewInfo["CFBundleVersion"] as? String == version)

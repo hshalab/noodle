@@ -87,6 +87,8 @@ let project = Project(
                 "APPLET_APP_BUNDLE_ID": "com.pdparchitect.noodle.applet.local",
                 "APPLET_APP_NAME": "Noodle Applet Dev",
                 "APPLET_GROUP_SUFFIX": "com.pdparchitect.noodle.applets.local",
+                "APPLET_NOODLE_BUNDLE_ID": "com.pdparchitect.noodle.local",
+                "APPLET_HUB_BUNDLE_ID": "com.pdparchitect.noodle.hub.local",
                 "APPLET_DOCUMENT_EXTENSION": "noodlet-dev",
                 "APPLET_DOCUMENT_TYPE_NAME": "Noodlet Dev",
             ]),
@@ -94,6 +96,8 @@ let project = Project(
                 "APPLET_APP_BUNDLE_ID": "com.pdparchitect.noodle.applet",
                 "APPLET_APP_NAME": "Noodle Applet",
                 "APPLET_GROUP_SUFFIX": "com.pdparchitect.noodle.applets",
+                "APPLET_NOODLE_BUNDLE_ID": "com.pdparchitect.noodle",
+                "APPLET_HUB_BUNDLE_ID": "com.pdparchitect.noodle.hub",
                 "APPLET_DOCUMENT_EXTENSION": "noodlet",
                 "APPLET_DOCUMENT_TYPE_NAME": "Noodlet",
                 // Signing adds get-task-allow for the debugger; a release carries only its own entitlements.

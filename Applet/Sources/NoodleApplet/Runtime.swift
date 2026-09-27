@@ -90,32 +90,18 @@ import AppletCore
   private var surfaceInjectors: [UUID: (view: NSView, injector: SurfaceEventInjector)] = [:]
   /// Live views of sessions. While one is watched, bots cannot drive that session.
   private var surfaceStreamers: [UUID: SurfaceStreamer] = [:]
-  private var origins: [String: String]
-  private var owners: [String: String]
   private let defaults: UserDefaults
   /// Returns why a noodlet may not use the permissions it declares. Replaced in tests.
   lazy var authorize: (NoodletPackage) async -> String? = { [defaults] in
     await AppletPermissions.authorize($0, defaults: defaults)
   }
-  /// Where Noodle Hub, sandboxed, keeps its bots' work.
-  static var hubContainer: URL {
-    // Applet is sandboxed too, so its own home is its container, not the user's.
-    let home = getpwuid(getuid()).map { String(cString: $0.pointee.pw_dir) } ?? NSHomeDirectory()
-    return URL(fileURLWithPath: home).appendingPathComponent(
-      "Library/Containers/\(AppletBuildIdentity.current.hubID)", isDirectory: true)
-  }
   /// The Hub only reaches noodlets of its own bots, so one it opens was made by them.
   private func fromHub(_ identity: String, path: String?) -> Bool {
-    identity == AppletBuildIdentity.current.hubID
-      || path.map { URL(fileURLWithPath: $0).standardizedFileURL.path.hasPrefix(Self.hubContainer.path + "/") } == true
+    identity == AppletBuildIdentity.current.hubID || path.map { library.isHub(URL(fileURLWithPath: $0)) } == true
   }
   init(library: AppletLibrary, defaults: UserDefaults = .standard) {
     self.defaults = defaults
     self.library = library
-    origins =
-      defaults.dictionary(forKey: "sourceOrigins") as? [String: String] ?? [:]
-    owners =
-      defaults.dictionary(forKey: "packageOwners") as? [String: String] ?? [:]
     for change in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
       NotificationCenter.default.addObserver(forName: change, object: nil, queue: .main) { [weak self] note in
         let key = change == NSWindow.didBecomeKeyNotification
@@ -211,8 +197,7 @@ import AppletCore
         let package: NoodletPackage
         if let session = find(request, owner: owner) { package = session.package }
         else if let path = request.path {
-          let url = URL(fileURLWithPath: origins[owner + "\0" + path] ?? path)
-            .resolvingSymlinksInPath().standardizedFileURL
+          let url = URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL
           library.scan()
           guard let entry = library.entries.first(where: { $0.package.url == url }),
                 owner == "local" || belongs(entry.package, owner: owner) else {
@@ -285,41 +270,17 @@ import AppletCore
         guard let path = request.path else {
           throw AppletError("Provide --path to a .\(AppletBuildIdentity.current.fileExtension) package.")
         }
-        let package: NoodletPackage
-        let canonical = URL(fileURLWithPath: origins[owner + "\0" + path] ?? path)
-          .resolvingSymlinksInPath().standardizedFileURL
-        if let entry = library.entries.first(where: { $0.package.url == canonical }),
-          owner == "local" || belongs(entry.package, owner: owner)
-        {
-          if let files = request.files, origins[owner + "\0" + path] != nil {
-            package = try NoodletPackage.install(files, to: canonical)
-          } else {
-            package = try NoodletPackage(url: canonical)
-          }
-        } else if let files = request.files {
-          let key = NoodletPackage.digest(Data((owner + "\0" + path).utf8))
-          let destination = library.documents.appendingPathComponent(
-            "Imports/\(ownerKey(owner))/\(key).\(AppletBuildIdentity.current.fileExtension)")
-          package = try NoodletPackage.install(files, to: destination)
-          origins[owner + "\0" + path] = package.url.path
-          defaults.set(origins, forKey: "sourceOrigins")
-        } else {
-          let canonical = URL(fileURLWithPath: origins[owner + "\0" + path] ?? path)
-            .resolvingSymlinksInPath().standardizedFileURL
-          package = try NoodletPackage(url: canonical)
-          guard library.entries.contains(where: { $0.package.url == canonical }),
-            owner == "local" || belongs(package, owner: owner)
-          else {
-            throw AppletError(
-              "Package is outside this caller's library. Send package files or open it through the app."
-            )
-          }
+        // A noodlet is used where it is and never copied: a bot's in its own workspace, anything
+        // else once the library lists it. Files an older caller still sends are not needed.
+        let canonical = URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL
+        let bot = library.owner(of: canonical)
+        guard owner == "local" ? bot != nil || library.entries.contains(where: { $0.package.url == canonical }) : bot == owner else {
+          throw AppletError(owner == "local"
+            ? "Open this noodlet in \(AppletBuildIdentity.current.appName) first."
+            : "Build and open noodlets inside your own workspace.")
         }
-        if owners[package.key] == nil {
-          owners[package.key] = owner
-          defaults.set(owners, forKey: "packageOwners")
-        }
-        if fromHub(identity, path: input.path) { library.markHub(package.key) }
+        let package = try NoodletPackage(url: canonical)
+        if fromHub(identity, path: canonical.path) { library.markHub(package.key) }
         _ = try package.files()
         _ = try library.linkID(for: package)
         library.scan()
@@ -351,7 +312,7 @@ import AppletCore
         }
         return try await launch(
           package, request: request,
-          owner: owner == "local" ? (owners[package.key] ?? owner) : owner)
+          owner: owner == "local" ? (library.owner(of: package.url) ?? owner) : owner)
       }
       guard let session = find(request, owner: owner) else {
         if let id = request.sessionID,
@@ -520,14 +481,12 @@ import AppletCore
     guard let data = try? Data(contentsOf: library.root.appendingPathComponent("Sessions/\(id.uuidString).json")) else { return nil }
     return try? JSONDecoder().decode(SessionRecord.self, from: data)
   }
-  private func ownerKey(_ owner: String) -> String { NoodletPackage.digest(Data(owner.utf8)) }
   private func packageInfo(_ package: NoodletPackage) throws -> AppletResponse {
     var response = AppletResponse()
     response.noodletID = try library.linkID(for: package)
     response.url = response.noodletID.map(NoodletLink.url)
     response.path = package.url.path
-    response.sourcePath = origins.first { $0.value == package.url.path }.map { String($0.key.split(separator: "\0", maxSplits: 1).last ?? "") }
-      ?? package.url.path
+    response.sourcePath = package.url.path
     response.title = package.manifest.title
     response.runtime = package.manifest.runtime
     response.permissions = AppletPermissions.status(package, defaults: defaults)
@@ -562,16 +521,14 @@ import AppletCore
     _ = try await native.perform(request)
   }
   private func belongs(_ package: NoodletPackage, owner: String) -> Bool {
-    package.url.path.hasPrefix(
-      library.documents.appendingPathComponent("Imports/\(ownerKey(owner))").path + "/")
+    library.owner(of: package.url) == owner
   }
   private func find(_ request: AppletRequest, owner: String) -> AppletSession? {
     if let id = request.sessionID {
       return sessions[id].flatMap { owner == "local" || $0.owner == owner ? $0 : nil }
     }
     if let path = request.path {
-      let url = URL(fileURLWithPath: origins[owner + "\0" + path] ?? path)
-        .resolvingSymlinksInPath().standardizedFileURL
+      let url = URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL
       return preferredSession(sessions.values.filter {
         (owner == "local" || $0.owner == owner) && $0.package.url == url
       })
@@ -726,7 +683,7 @@ import AppletCore
     var request = AppletRequest(.open)
     request.path = package.url.path
     request.mode = "foreground"
-    request.owner = owners[package.key] ?? "local"
+    request.owner = library.owner(of: package.url) ?? "local"
     return await handle(request, identity: AppletBuildIdentity.current.noodleID)
   }
   private func show(_ session: AppletSession) async throws {
@@ -779,11 +736,6 @@ import AppletCore
     try png.write(
       to: thumbs.appendingPathComponent("\(session.package.key).png"), options: .atomic)
     try PreviewCache.save(png, for: session.package.url)
-    for (source, destination) in origins where destination == session.package.url.path {
-      if let path = source.split(separator: "\0", maxSplits: 1).last {
-        try? PreviewCache.save(png, for: URL(fileURLWithPath: String(path)))
-      }
-    }
     objectWillChange.send()
     return url
   }

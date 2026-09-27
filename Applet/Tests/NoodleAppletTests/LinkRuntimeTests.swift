@@ -9,18 +9,16 @@ import XCTest
         let suite = "HubNoodlets." + UUID().uuidString
         let defaults = UserDefaults(suiteName: suite)!
         defer { try? FileManager.default.removeItem(at: root); defaults.removePersistentDomain(forName: suite) }
-        let library = AppletLibrary(root: root, defaults: defaults, installExamples: false, watchChanges: false)
+        let library = botLibrary(root: root, defaults: defaults)
         let runtime = AppletRuntime(library: library, defaults: defaults)
         let identity = AppletBuildIdentity.current
         func key(_ response: AppletResponse) throws -> String {
             try NoodletPackage(url: URL(fileURLWithPath: XCTUnwrap(response.path))).key
         }
         var validate = AppletRequest(.validate)
-        validate.files = ["noodlet.json": try JSONEncoder().encode(NoodletManifest(title: "A")), "index.html": Data("a".utf8)]
-        // The Hub is sandboxed, so its bots work inside its container.
-        validate.path = AppletRuntime.hubContainer.appendingPathComponent("Bots/A.noodlet").path
+        validate.path = try botNoodlet(htmlNoodlet("A"), named: "A", owner: "ada", root: root, hub: true)
         let made = try key(await runtime.handle(validate, identity: identity.cliID).checked())
-        validate.path = "/Users/someone/Own.noodlet"
+        validate.path = try botNoodlet(htmlNoodlet("Own"), named: "Own", owner: "kai", root: root)
         let own = try await runtime.handle(validate, identity: identity.cliID).checked()
         XCTAssertEqual(library.hub, [made])
         // Made before the library recorded it, and opened by the Hub since.
@@ -36,14 +34,13 @@ import XCTest
         let suite = "ArchivedSessions." + UUID().uuidString
         let defaults = UserDefaults(suiteName: suite)!
         defer { try? FileManager.default.removeItem(at: root); defaults.removePersistentDomain(forName: suite) }
-        let library = AppletLibrary(root: root, defaults: defaults, installExamples: false, watchChanges: false)
+        let library = botLibrary(root: root, defaults: defaults)
         let runtime = AppletRuntime(library: library, defaults: defaults)
         let identity = AppletBuildIdentity.current.noodleID
         var validate = AppletRequest(.validate)
-        validate.path = "/author/Archived.noodlet"; validate.owner = "author"
-        validate.files = ["noodlet.json": try JSONEncoder().encode(NoodletManifest(title: "Archived")), "index.html": Data("archived".utf8)]
+        validate.path = try botNoodlet(htmlNoodlet("Archived"), named: "Archived", owner: "author", root: root); validate.owner = "author"
         let package = try await runtime.handle(validate, identity: identity).checked()
-        validate.path = "/author/Other.noodlet"
+        validate.path = try botNoodlet(htmlNoodlet("Other"), named: "Other", owner: "author", root: root)
         let other = try await runtime.handle(validate, identity: identity).checked()
         let directory = root.appendingPathComponent("Sessions")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -116,13 +113,12 @@ import XCTest
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let suite = "SessionSelection." + UUID().uuidString
         let defaults = UserDefaults(suiteName: suite)!
-        let library = AppletLibrary(root: root, defaults: defaults, installExamples: false, watchChanges: false)
+        let library = botLibrary(root: root, defaults: defaults)
         let runtime = AppletRuntime(library: library, defaults: defaults)
         defer { runtime.shutdown(); try? FileManager.default.removeItem(at: root); defaults.removePersistentDomain(forName: suite) }
         let identity = AppletBuildIdentity.current.noodleID
         var request = AppletRequest(.validate)
-        request.path = "/author/Game.noodlet"; request.owner = "author"
-        request.files = ["noodlet.json": try JSONEncoder().encode(NoodletManifest(title: "Game")), "index.html": Data("game".utf8)]
+        request.path = try botNoodlet(htmlNoodlet("Game"), named: "Game", owner: "author", root: root); request.owner = "author"
         let registered = try await runtime.handle(request, identity: identity).checked()
         let package = try NoodletPackage(url: URL(fileURLWithPath: XCTUnwrap(registered.path)))
         func session(_ mode: String) throws -> AppletSession {
@@ -155,7 +151,7 @@ import XCTest
         status.operation = .status
         status.sessionID = UUID()
         do { let response = await runtime.handle(status, identity: identity); XCTAssertEqual(response.errorCode, "session-unavailable") }
-        request.path = "/author/Other.noodlet"
+        request.path = try botNoodlet(htmlNoodlet("Other"), named: "Other", owner: "author", root: root)
         let other = try await runtime.handle(request, identity: identity).checked()
         status.noodletID = other.noodletID; status.sessionID = old.id
         do { let response = await runtime.handle(status, identity: identity); XCTAssertEqual(response.errorCode, "session-unavailable") }
@@ -173,14 +169,12 @@ import XCTest
         let suite = "NoodletLinkTests." + UUID().uuidString
         let defaults = UserDefaults(suiteName: suite)!
         defer { try? FileManager.default.removeItem(at: root); defaults.removePersistentDomain(forName: suite) }
-        let library = AppletLibrary(root: root, defaults: defaults, installExamples: false, watchChanges: false)
+        let library = botLibrary(root: root, defaults: defaults)
         let runtime = AppletRuntime(library: library, defaults: defaults)
         let identity = AppletBuildIdentity.current.noodleID
         var validate = AppletRequest(.validate)
-        validate.path = "/workspace/Hello.noodlet"
+        validate.path = try botNoodlet(htmlNoodlet("Hello"), named: "Hello", owner: "author", root: root)
         validate.owner = "author"
-        validate.files = ["noodlet.json": try JSONEncoder().encode(NoodletManifest(title: "Hello")),
-                          "index.html": Data("<h1>Hello</h1>".utf8)]
         let result = try await runtime.handle(validate, identity: identity).checked()
         let id = try XCTUnwrap(result.noodletID)
         XCTAssertEqual(result.url, NoodletLink.url(for: id))
@@ -206,11 +200,10 @@ import XCTest
         XCTAssertTrue(runtime.sessions.isEmpty, "Loading an attachment preview must not run the creation")
         let cliDenied = await runtime.handle(info, identity: "com.pdparchitect.noodle.applet.cli")
         XCTAssertNotNil(cliDenied.error)
-        validate.files?["index.html"] = Data("updated".utf8)
+        try Data("updated".utf8).write(to: URL(fileURLWithPath: try XCTUnwrap(validate.path)).appendingPathComponent("index.html"))
         let updated = try await runtime.handle(validate, identity: identity).checked()
         XCTAssertEqual(updated.noodletID, id)
-        let recreated = AppletRuntime(library: AppletLibrary(root: root, defaults: defaults,
-            installExamples: false, watchChanges: false), defaults: defaults)
+        let recreated = AppletRuntime(library: botLibrary(root: root, defaults: defaults), defaults: defaults)
         let afterRestart = try await recreated.handle(info, identity: identity).checked()
         XCTAssertEqual(afterRestart.noodletID, id)
         try FileManager.default.removeItem(atPath: try XCTUnwrap(result.path))

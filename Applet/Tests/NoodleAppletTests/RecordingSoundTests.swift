@@ -11,7 +11,7 @@ import XCTest
         let suite = "RecordingSound." + UUID().uuidString
         let defaults = UserDefaults(suiteName: suite)!
         defer { try? FileManager.default.removeItem(at: root); defaults.removePersistentDomain(forName: suite) }
-        let library = AppletLibrary(root: root, defaults: defaults, installExamples: false, watchChanges: false)
+        let library = botLibrary(root: root, defaults: defaults)
         let runtime = AppletRuntime(library: library, defaults: defaults)
         // Web Audio for one part of the page, a media element for the other.
         let page = """
@@ -23,13 +23,12 @@ import XCTest
             </script>
             """
         var validate = AppletRequest(.validate)
-        validate.path = "/author/Tone.noodlet"
-        validate.owner = "author"
-        validate.files = [
+        validate.path = try botNoodlet([
             "noodlet.json": try JSONEncoder().encode(NoodletManifest(title: "Tone")),
             "index.html": Data(page.utf8),
             "tone.wav": Self.wave(seconds: 2),
-        ]
+        ], named: "Tone", owner: "author", root: root)
+        validate.owner = "author"
         let installed = try await runtime.handle(validate, identity: AppletBuildIdentity.current.noodleID).checked()
         let package = try library.package(for: try XCTUnwrap(installed.noodletID))
         var open = AppletRequest(.open)

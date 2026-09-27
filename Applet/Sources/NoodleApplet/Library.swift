@@ -34,9 +34,30 @@ struct LibraryEntry: Identifiable, Equatable {
   }
 }
 
+/// Where Noodle or Noodle Hub keeps its bots, each bot's own work in `<bot id>/workspace`.
+/// Applet finds the noodlets bots make there itself and uses them where they are.
+struct BotFolder: Equatable {
+  let url: URL
+  /// Noodle Hub's bots, whose noodlets are listed under Hub, apart from this Mac's own.
+  let isHub: Bool
+
+  /// Noodle's and Noodle Hub's, in their own containers, for this environment.
+  static var system: [BotFolder] {
+    // Applet is sandboxed too, so its own home is its container, not the user's.
+    let home = getpwuid(getuid()).map { String(cString: $0.pointee.pw_dir) } ?? NSHomeDirectory()
+    let identity = AppletBuildIdentity.current
+    return [(identity.noodleID, false), (identity.hubID, true)].map { app, hub in
+      // Both keep their bots in Application Support/Noodle/Agents.
+      BotFolder(url: URL(fileURLWithPath: home).appendingPathComponent(
+        "Library/Containers/\(app)/Data/Library/Application Support/Noodle/Agents", isDirectory: true), isHub: hub)
+    }
+  }
+}
+
 @MainActor final class AppletLibrary: ObservableObject {
   let root: URL
   let documents: URL
+  let botFolders: [BotFolder]
   @Published var entries: [LibraryEntry] = []
   @Published var error: String?
   @Published var recent: [String]
@@ -57,9 +78,11 @@ struct LibraryEntry: Identifiable, Equatable {
 
   init(
     root: URL? = nil, defaults: UserDefaults = .standard, installExamples: Bool = true,
-    watchChanges: Bool = true
+    watchChanges: Bool = true, botFolders: [BotFolder]? = nil, secrets: AppletSecrets = .shared
   ) {
     self.defaults = defaults
+    // A library kept elsewhere, as in a test, finds only the bots it is given.
+    self.botFolders = botFolders ?? (root == nil ? BotFolder.system : [])
     self.root =
       root
       ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -126,12 +149,106 @@ struct LibraryEntry: Identifiable, Equatable {
       } catch { continue }
     }
     persistRegistrations()
+    removeCopies(secrets: secrets)
     scan()
     if watchChanges {
       timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
         Task { @MainActor in self?.scan() }
       }
     }
+  }
+  /// The bot whose workspace holds `url`, by the name of its folder; nil for anything else.
+  func owner(of url: URL) -> String? { bot(holding: url)?.owner }
+  /// Whether `url` is in the workspace of one of Noodle Hub's bots.
+  func isHub(_ url: URL) -> Bool { bot(holding: url)?.folder.isHub == true }
+  private func bot(holding url: URL) -> (folder: BotFolder, owner: String)? {
+    let parts = Self.canonical(url).pathComponents
+    for folder in botFolders {
+      let base = Self.canonical(folder.url).pathComponents
+      guard parts.count > base.count + 2, Array(parts.prefix(base.count)) == base,
+        parts[base.count + 1] == "workspace"
+      else { continue }
+      return (folder, parts[base.count])
+    }
+    return nil
+  }
+  /// The lists of noodlet keys the library keeps, with where each is saved.
+  private static let lists: [(ReferenceWritableKeyPath<AppletLibrary, [String]>, String)] = [
+    (\.recent, "recent"), (\.pinned, "pinned"), (\.hidden, "hidden"), (\.hub, "hub"),
+  ]
+  /// Every bot's workspace in the bot folders.
+  private var workspaces: [URL] {
+    botFolders.flatMap { folder in
+      ((try? FileManager.default.contentsOfDirectory(at: folder.url, includingPropertiesForKeys: nil)) ?? [])
+        .map { $0.appendingPathComponent("workspace", isDirectory: true) }
+        .filter { FileManager.default.fileExists(atPath: $0.path) }
+    }
+  }
+  // TODO(NEXT_VERSION): remove with its call in init and
+  // LibraryTests.testCopiesFromBeforeGoAndWhatTheyKeptFollowsTheOriginal.
+  /// Applet used to keep a copy of each noodlet a bot sent, under Imports. The copies go. What
+  /// was kept for one, its link, saved data, permissions, secrets and place in lists, follows the
+  /// bot's own noodlet while that is still there, and goes with the copy when it is not.
+  private func removeCopies(secrets: AppletSecrets) {
+    let imports = documents.appendingPathComponent("Imports", isDirectory: true)
+    let origins = defaults.dictionary(forKey: "sourceOrigins") as? [String: String] ?? [:]
+    guard !origins.isEmpty || FileManager.default.fileExists(atPath: imports.path) else { return }
+    // Copies whose original is there but cannot be read now, as when macOS keeps Applet out of a
+    // bot's folder, wait for a later launch rather than be taken for ones whose original is gone.
+    var waiting: [String: String] = [:]
+    for (origin, copyPath) in origins {
+      guard let copy = try? NoodletPackage(url: URL(fileURLWithPath: copyPath)) else { continue }
+      let sourceURL = URL(fileURLWithPath: String(origin.split(separator: "\0", maxSplits: 1).last ?? ""))
+      guard let source = try? NoodletPackage(url: sourceURL) else {
+        if Self.missing(sourceURL) { forget(copy.key, secrets: secrets) } else { waiting[origin] = copyPath }
+        continue
+      }
+      try? links?.move(copy.url, to: source.url)
+      let (old, new) = (copy.key, source.key)
+      for folder in ["Data", "Homes"] {
+        let from = root.appendingPathComponent("\(folder)/\(old)"), to = root.appendingPathComponent("\(folder)/\(new)")
+        if !FileManager.default.fileExists(atPath: to.path) { try? FileManager.default.moveItem(at: from, to: to) }
+      }
+      let thumbnails = root.appendingPathComponent("Thumbnails")
+      try? FileManager.default.moveItem(
+        at: thumbnails.appendingPathComponent("\(old).png"), to: thumbnails.appendingPathComponent("\(new).png"))
+      for name in ["store.%@.user", "store.%@.test", "permissions.%@"] {
+        guard let value = defaults.object(forKey: String(format: name, old)) else { continue }
+        if defaults.object(forKey: String(format: name, new)) == nil { defaults.set(value, forKey: String(format: name, new)) }
+        defaults.removeObject(forKey: String(format: name, old))
+      }
+      for scope in ["user", "test"] {
+        let kept = (try? secrets.storage.load("\(old).\(scope)")) ?? [:]
+        if !kept.isEmpty, ((try? secrets.storage.load("\(new).\(scope)")) ?? [:]).isEmpty {
+          try? secrets.storage.save(kept, account: "\(new).\(scope)")
+        }
+        try? secrets.storage.save([:], account: "\(old).\(scope)")
+      }
+      for (list, _) in Self.lists {
+        var seen = Set<String>()
+        self[keyPath: list] = self[keyPath: list].map { $0 == old ? new : $0 }.filter { seen.insert($0).inserted }
+      }
+    }
+    for (list, name) in Self.lists { defaults.set(self[keyPath: list], forKey: name) }
+    guard waiting.isEmpty else {
+      let kept = Set(waiting.values.map { URL(fileURLWithPath: $0).standardizedFileURL.path })
+      for (_, copyPath) in origins where !kept.contains(URL(fileURLWithPath: copyPath).standardizedFileURL.path) {
+        try? FileManager.default.removeItem(atPath: copyPath)
+      }
+      defaults.set(waiting, forKey: "sourceOrigins")
+      return
+    }
+    try? FileManager.default.removeItem(at: imports)
+    defaults.removeObject(forKey: "sourceOrigins")
+    defaults.removeObject(forKey: "packageOwners")
+  }
+  /// Deletes what Applet kept for a noodlet that no longer exists, as trashing it does.
+  private func forget(_ key: String, secrets: AppletSecrets) {
+    for (list, _) in Self.lists { self[keyPath: list].removeAll { $0 == key } }
+    Task { await AppletStorage.remove(key, root: root, defaults: defaults) }
+    AppletPermissions.revoke(packageKey: key, defaults: defaults)
+    for scope in ["user", "test"] { try? secrets.storage.save([:], account: "\(key).\(scope)") }
+    try? FileManager.default.removeItem(at: root.appendingPathComponent("Thumbnails/\(key).png"))
   }
   private static func canonical(_ url: URL) -> URL {
     url.resolvingSymlinksInPath().standardizedFileURL
@@ -171,7 +288,7 @@ struct LibraryEntry: Identifiable, Equatable {
     }
     var found: [String: LibraryEntry] = [:]
     let thumbnails = root.appendingPathComponent("Thumbnails", isDirectory: true)
-    for directory in [documents] + registrations.map(\.url) {
+    for directory in [documents] + registrations.map(\.url) + workspaces {
       if AppletBuildIdentity.document(directory) == .current {
         if let package = try? NoodletPackage(url: directory) {
           let entry = LibraryEntry(package: package, thumbnails: thumbnails)
@@ -208,6 +325,7 @@ struct LibraryEntry: Identifiable, Equatable {
       return order == .orderedSame ? $0.id < $1.id : order == .orderedAscending
     }
     if entries != next { entries = next }
+    for entry in entries where isHub(entry.package.url) { markHub(entry.id) }
     for entry in entries {
       do { _ = try linkID(for: entry.package) } catch { self.error = error.localizedDescription }
     }

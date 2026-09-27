@@ -1,10 +1,121 @@
+import AppletBridge
 import AppletCore
 import Combine
 import XCTest
 
 @testable import NoodleApplet
 
+/// A test library whose bots keep their work under `root/Bots`, and the Hub's under `root/Hub Bots`.
+@MainActor func botLibrary(root: URL, defaults: UserDefaults, secrets: AppletSecrets = AppletSecrets(storage: MemorySecrets())) -> AppletLibrary {
+    AppletLibrary(root: root, defaults: defaults, installExamples: false, watchChanges: false,
+                  botFolders: [BotFolder(url: root.appendingPathComponent("Bots"), isHub: false),
+                               BotFolder(url: root.appendingPathComponent("Hub Bots"), isHub: true)],
+                  secrets: secrets)
+}
+
+/// Writes a noodlet into a bot's workspace in a `botLibrary`, as the bot would, and returns its path.
+func botNoodlet(_ files: [String: Data], named name: String, owner: String, root: URL, hub: Bool = false) throws -> String {
+    try NoodletPackage.install(files, to: root.appendingPathComponent(
+        "\(hub ? "Hub Bots" : "Bots")/\(owner)/workspace/\(name).\(AppletBuildIdentity.current.fileExtension)")).url.path
+}
+
+/// The files of a small HTML noodlet.
+func htmlNoodlet(_ title: String) throws -> [String: Data] {
+    ["noodlet.json": try JSONEncoder().encode(NoodletManifest(title: title)), "index.html": Data("<h1>\(title)</h1>".utf8)]
+}
+
 final class LibraryTests: XCTestCase {
+    @MainActor func testNoodletsBotsKeepInTheirFoldersAreFoundWhereTheyAre() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let suite = "AppletLibraryTests." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer {
+            try? FileManager.default.removeItem(at: root)
+            defaults.removePersistentDomain(forName: suite)
+        }
+        let library = botLibrary(root: root, defaults: defaults)
+        let own = try botNoodlet(htmlNoodlet("Counter"), named: "Counter", owner: "kai", root: root)
+        let hubs = try botNoodlet(htmlNoodlet("Board"), named: "Board", owner: "ada", root: root, hub: true)
+        library.scan()
+        XCTAssertEqual(Set(library.entries.map(\.package.url.path)), [own, hubs])
+        XCTAssertEqual(library.hub, [try NoodletPackage(url: URL(fileURLWithPath: hubs)).key])
+        XCTAssertEqual(library.owner(of: URL(fileURLWithPath: own)), "kai")
+        XCTAssertEqual(library.owner(of: URL(fileURLWithPath: hubs)), "ada")
+        XCTAssertNil(library.owner(of: library.documents.appendingPathComponent("Mine.noodlet")))
+    }
+
+    /// Applet used to keep a copy of each noodlet a bot sent. The copies go, and what Applet kept
+    /// for one follows the bot's own noodlet; a copy whose original is gone goes with its data.
+    // TODO(NEXT_VERSION): remove with AppletLibrary.removeCopies.
+    @MainActor func testCopiesFromBeforeGoAndWhatTheyKeptFollowsTheOriginal() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let suite = "AppletLibraryTests." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer {
+            try? FileManager.default.removeItem(at: root)
+            defaults.removePersistentDomain(forName: suite)
+        }
+        let ext = AppletBuildIdentity.current.fileExtension
+        let source = try botNoodlet(htmlNoodlet("Counter"), named: "Counter", owner: "kai", root: root)
+        let imports = root.appendingPathComponent("Noodlets/Imports/owner", isDirectory: true)
+        let copy = try NoodletPackage.install(htmlNoodlet("Counter"), to: imports.appendingPathComponent("a.\(ext)"))
+        let orphan = try NoodletPackage.install(htmlNoodlet("Gone"), to: imports.appendingPathComponent("b.\(ext)"))
+        defaults.set(["kai\0\(source)": copy.url.path, "kai\0/gone/Gone.\(ext)": orphan.url.path], forKey: "sourceOrigins")
+        defaults.set([copy.key: "kai"], forKey: "packageOwners")
+        let link = try NoodletRegistry(file: root.appendingPathComponent("NoodletLinks.json")).id(for: copy.url)
+        let saved = root.appendingPathComponent("Data/\(copy.key)/state.json")
+        try FileManager.default.createDirectory(at: saved.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("{}".utf8).write(to: saved)
+        defaults.set(["microphone"], forKey: "permissions.\(copy.key)")
+        defaults.set([copy.key, orphan.key], forKey: "pinned")
+        let secrets = MemorySecrets()
+        try secrets.save(["token": "t"], account: "\(copy.key).user")
+
+        let library = botLibrary(root: root, defaults: defaults, secrets: AppletSecrets(storage: secrets))
+        let original = try NoodletPackage(url: URL(fileURLWithPath: source))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("Noodlets/Imports").path))
+        XCTAssertEqual(library.entries.map(\.package.url), [original.url])
+        XCTAssertEqual(try library.package(for: link).url, original.url)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: root.appendingPathComponent("Data/\(original.key)/state.json").path))
+        XCTAssertEqual(defaults.stringArray(forKey: "permissions.\(original.key)"), ["microphone"])
+        XCTAssertNil(defaults.object(forKey: "permissions.\(copy.key)"))
+        XCTAssertEqual(library.pinned, [original.key])
+        XCTAssertEqual(try secrets.load("\(original.key).user"), ["token": "t"])
+        XCTAssertEqual(try secrets.load("\(copy.key).user"), [:])
+        XCTAssertNil(defaults.object(forKey: "sourceOrigins"))
+        XCTAssertNil(defaults.object(forKey: "packageOwners"))
+    }
+
+    /// A copy whose original cannot be read right now, as when macOS keeps Applet out of the bot's
+    /// folder, is not taken for one whose original is gone: it stays, with its data, for next time.
+    // TODO(NEXT_VERSION): remove with AppletLibrary.removeCopies.
+    @MainActor func testACopyWhoseOriginalCannotBeReadIsKeptForLater() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let suite = "AppletLibraryTests." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        let workspace = root.appendingPathComponent("Bots/kai/workspace")
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: workspace.path)
+            try? FileManager.default.removeItem(at: root)
+            defaults.removePersistentDomain(forName: suite)
+        }
+        let ext = AppletBuildIdentity.current.fileExtension
+        let source = try botNoodlet(htmlNoodlet("Counter"), named: "Counter", owner: "kai", root: root)
+        let copy = try NoodletPackage.install(htmlNoodlet("Counter"),
+            to: root.appendingPathComponent("Noodlets/Imports/owner/a.\(ext)"))
+        let origins = ["kai\0\(source)": copy.url.path]
+        defaults.set(origins, forKey: "sourceOrigins")
+        let saved = root.appendingPathComponent("Data/\(copy.key)/state.json")
+        try FileManager.default.createDirectory(at: saved.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("{}".utf8).write(to: saved)
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: workspace.path)
+
+        _ = botLibrary(root: root, defaults: defaults)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: copy.url.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: saved.path))
+        XCTAssertEqual(defaults.dictionary(forKey: "sourceOrigins") as? [String: String], origins)
+    }
+
     @MainActor func testIdleScansDoNotRedrawButManifestAndPreviewChangesDo() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let suite = "AppletLibraryTests." + UUID().uuidString

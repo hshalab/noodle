@@ -18,6 +18,12 @@
 	<true/>
 	<key>com.apple.security.network.client</key>
 	<true/>
+	<!-- Where Noodle and Noodle Hub keep their bots, so Applet finds and runs the noodlets bots make where they are. -->
+	<key>com.apple.security.temporary-exception.files.home-relative-path.read-write</key>
+	<array>
+		<string>/Library/Containers/$(APPLET_NOODLE_BUNDLE_ID)/Data/Library/Application Support/Noodle/Agents/</string>
+		<string>/Library/Containers/$(APPLET_HUB_BUNDLE_ID)/Data/Library/Application Support/Noodle/Agents/</string>
+	</array>
 	<key>com.apple.security.temporary-exception.files.home-relative-path.read-only</key>
 	<array>
 		<string>/Library/Application Support/com.apple.mobileAssetDesktop/</string>
