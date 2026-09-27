@@ -191,6 +191,35 @@ import XCTest
         XCTAssertEqual(c.currentURL, url("One.txt"))
     }
 
+    func testWebLinksPreviewOnlyWhenEnabledAndOnlyForWebSchemes() throws {
+        let page = try XCTUnwrap(URL(string: "https://example.com/a?b=1#c"))
+        XCTAssertEqual(WebLinkPreview.previewed(page, enabled: true), page)
+        XCTAssertNil(WebLinkPreview.previewed(page, enabled: false))
+        for other in ["mailto:someone@example.com", "file:///tmp/a.html", "noodlet://00000000-0000-0000-0000-000000000001", "https:///"] {
+            XCTAssertNil(WebLinkPreview.previewed(try XCTUnwrap(URL(string: other)), enabled: true), other)
+        }
+    }
+
+    func testWebLinkPreviewsItsBookmarkWithoutAnAttachmentToAnnotate() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        let page = try XCTUnwrap(URL(string: "https://example.com/page"))
+        let bookmark = try WebLinkPreview.bookmark(for: page, in: directory)
+        XCTAssertEqual(bookmark.pathExtension, "webloc")
+        let plist = try PropertyListSerialization.propertyList(from: Data(contentsOf: bookmark), format: nil) as? [String: String]
+        XCTAssertEqual(plist?["URL"], page.absoluteString)
+        XCTAssertEqual(try WebLinkPreview.bookmark(for: page, in: directory), bookmark)
+        XCTAssertNotEqual(try WebLinkPreview.bookmark(for: try XCTUnwrap(URL(string: "https://example.com/other")), in: directory), bookmark)
+
+        let c = controller()
+        c.stage([(source("One.txt"), URL(fileURLWithPath: "/tmp/One.txt"))], at: 0)
+        c.stageLink(bookmark, title: "example.com")
+        XCTAssertEqual(c.numberOfPreviewItems(in: nil), 1)
+        XCTAssertEqual(c.previewPanel(nil, previewItemAt: 0).previewItemTitle, "example.com")
+        XCTAssertEqual(c.currentURL, bookmark)
+        XCTAssertNil(c.attachment(at: 0))
+    }
+
     func testNativeCloseAndRepeatedCleanupEndTheSessionOnce() {
         let host = window(); var ended = 0
         let session = PreviewWindowSession(window: host) { ended += 1 }

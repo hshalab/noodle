@@ -105,6 +105,23 @@ import NoodleCore
         }
     }
 
+    func testWebLinkPreviewIsOnByDefaultAndItsChoiceReachesLinkOpening() async throws {
+        let f = try fixture()
+        XCTAssertTrue(WebLinkPreview.isEnabled(in: f.runtime.defaults))
+        let settings = host(ChatSettingsView(microphoneDevices: { [] }, systemMicrophoneID: { 0 }).defaultAppStorage(f.runtime.defaults))
+        let toggle = try await toggle("Preview web links", in: settings)
+        XCTAssertTrue(checked(toggle))
+        for expected in [false, true] {
+            flip(toggle)
+            try await wait { f.runtime.defaults.object(forKey: WebLinkPreview.defaultsKey) as? Bool == expected }
+            let defaults = try reopenedDefaults(f)
+            XCTAssertEqual(WebLinkPreview.isEnabled(in: defaults), expected)
+            let reopened = host(ChatSettingsView(microphoneDevices: { [] }, systemMicrophoneID: { 0 }).defaultAppStorage(defaults))
+            let restored = try await self.toggle("Preview web links", in: reopened)
+            XCTAssertEqual(checked(restored), expected)
+        }
+    }
+
     func testSavedDeliveryModesRestoreTheVisibleSelectionUsedByMessageRouting() async throws {
         let f = try fixture()
         for mode in MessageDeliveryMode.allCases {

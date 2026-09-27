@@ -138,6 +138,7 @@ struct GeneralSettingsView: View {
 struct ChatSettingsView: View {
     @AppStorage(ComposerNameCompletion.descriptionsDefaultsKey) private var showBotDescriptions = true
     @AppStorage(LinkPreviewSettings.timeoutKey) private var linkPreviewTimeout = LinkPreviewSettings.defaultTimeout
+    @AppStorage(WebLinkPreview.defaultsKey) private var previewsWebLinks = true
     @AppStorage(VoiceInputDevice.defaultsKey) private var microphoneUID = ""
     @AppStorage(MessageDeliveryMode.defaultsKey) private var messageDelivery = MessageDeliveryMode.automatic.rawValue
     @AppStorage(ChatAttachmentLayout.defaultsKey) private var attachmentLayout = ChatAttachmentLayout.defaultValue.rawValue
@@ -201,6 +202,10 @@ struct ChatSettingsView: View {
             Section {
                 Toggle("Keep one floating conversation", isOn: $keepsOneFloat)
                     .help("Floating another conversation replaces the open one, in the same place and size.")
+            }
+            Section {
+                Toggle("Preview web links", isOn: $previewsWebLinks)
+                    .help("Open web links in Quick Look first, with a button to continue in your browser. When off, links open in your browser.")
             }
             Section {
                 Picker("Link preview timeout", selection: $linkPreviewTimeout) {

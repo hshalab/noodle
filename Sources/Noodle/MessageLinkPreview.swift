@@ -1,4 +1,5 @@
 import AppKit
+import CryptoKit
 import MapKit
 import SwiftUI
 @preconcurrency import LinkPresentation
@@ -11,7 +12,8 @@ struct MessageLinkPreview: View {
     let url: URL
     let shouldLoad: Bool
     private let cache: LinkPreviewMetadataCache
-    private let openURL: (URL) -> Void
+    private let openURL: ((URL) -> Void)?
+    @Environment(\.openURL) private var environmentOpenURL
 
     @State private var metadata: LPLinkMetadata?
     @State private var previewImage: NSImage?
@@ -20,7 +22,7 @@ struct MessageLinkPreview: View {
     @State private var requestID = UUID()
 
     @MainActor init(url: URL, shouldLoad: Bool, cache: LinkPreviewMetadataCache? = nil,
-         openURL: @escaping (URL) -> Void = { NSWorkspace.shared.open($0) }) {
+         openURL: ((URL) -> Void)? = nil) {
         self.url = url; self.shouldLoad = shouldLoad
         let cache = cache ?? .shared
         self.cache = cache; self.openURL = openURL
@@ -33,7 +35,7 @@ struct MessageLinkPreview: View {
 
     var body: some View {
         Button {
-            openURL(url)
+            if let openURL { openURL(url) } else { environmentOpenURL(url) }
         } label: {
             VStack(alignment: .leading, spacing: 0) {
                 ZStack {
@@ -156,6 +158,30 @@ enum LinkPreviewSettings {
     static func timeout(in defaults: UserDefaults = .standard) -> TimeInterval {
         let value = defaults.object(forKey: timeoutKey) as? Int ?? defaultTimeout
         return TimeInterval(min(30, max(5, value)))
+    }
+}
+
+/// Web links open in Quick Look first, whose Open button hands them to the browser.
+enum WebLinkPreview {
+    static let defaultsKey = "Noodle.webLinks.preview"
+    static func isEnabled(in defaults: UserDefaults = .standard) -> Bool {
+        defaults.object(forKey: defaultsKey) as? Bool ?? true
+    }
+    /// The link to show in Quick Look, or nil when it goes straight to the system.
+    static func previewed(_ url: URL, enabled: Bool) -> URL? {
+        guard enabled, ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
+              url.host?.isEmpty == false else { return nil }
+        return url
+    }
+    /// Quick Look renders a web page from a .webloc bookmark, as it does for link attachments.
+    static func bookmark(for url: URL, in directory: URL = FileManager.default.temporaryDirectory
+        .appendingPathComponent("Web Links", isDirectory: true)) throws -> URL {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let name = SHA256.hash(data: Data(url.absoluteString.utf8)).prefix(16).map { String(format: "%02x", $0) }.joined()
+        let file = directory.appendingPathComponent(name + ".webloc")
+        let data = try PropertyListSerialization.data(fromPropertyList: ["URL": url.absoluteString], format: .xml, options: 0)
+        try data.write(to: file, options: .atomic)
+        return file
     }
 }
 

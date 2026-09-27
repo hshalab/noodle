@@ -174,6 +174,33 @@ private struct AttachmentPreviewMount: NSViewControllerRepresentable {
             updateCommands()
             return
         }
+        present(url, title: attachment.originalFilename, in: hostWindow) {
+            self.save = save
+            let entries = gallery.filter { $0.0.id == attachment.id || FileManager.default.isReadableFile(atPath: $0.1.path) }
+            if let start = entries.firstIndex(where: { $0.0.id == attachment.id }) { stage(entries, at: start) }
+            else { stage([(attachment, url)], at: 0) }
+        }
+    }
+    /// A web link from the conversation, through the bookmark Quick Look renders.
+    /// It has no attachment behind it, so it cannot be annotated.
+    func showLink(_ link: URL) {
+        guard let hostWindow = resolveHostWindow() else { return }
+        let bookmark: URL
+        do { bookmark = try WebLinkPreview.bookmark(for: link) } catch { reportError?(error); return }
+        trace("link requested")
+        if Self.active !== self { Self.active?.close() }
+        let title = link.host ?? link.absoluteString
+        present(bookmark, title: title, in: hostWindow) {
+            self.save = nil
+            stageLink(bookmark, title: title)
+        }
+    }
+    func stageLink(_ bookmark: URL, title: String) {
+        items = [items.first { $0.previewItemURL == bookmark && $0.previewItemTitle == title } ?? Item(url: bookmark, title: title)]
+        sources = []; startIndex = 0
+    }
+    /// `load` stages the items. It runs once this controller is the active owner.
+    private func present(_ url: URL, title: String, in hostWindow: NSWindow, load: () -> Void) {
         annotationPreview.close()
         dismissAnnotation()
         guard let preview = QLPreviewPanel.shared() else { return }
@@ -182,10 +209,7 @@ private struct AttachmentPreviewMount: NSViewControllerRepresentable {
         // QL searches the responder chain during key/main-window changes. Its
         // requested item must already exist before that search starts.
         Self.active = self
-        self.save = save
-        let entries = gallery.filter { $0.0.id == attachment.id || FileManager.default.isReadableFile(atPath: $0.1.path) }
-        if let start = entries.firstIndex(where: { $0.0.id == attachment.id }) { stage(entries, at: start) }
-        else { stage([(attachment, url)], at: 0) }
+        load()
         panel = preview
         if !reusingPreview {
             if hostWindow.firstResponder !== view { hostResponder = hostWindow.firstResponder }
@@ -218,7 +242,7 @@ private struct AttachmentPreviewMount: NSViewControllerRepresentable {
         // the first display bundle, which can abort during its teardown.
         preview.reloadData()
         preview.currentPreviewItemIndex = startIndex
-        preview.title = attachment.originalFilename
+        preview.title = title
         openedAt = Date()
         preview.makeKeyAndOrderFront(nil)
         if monitor == nil {

@@ -198,6 +198,12 @@ struct ChatView: View {
         .transaction { transaction in
             transaction.animation = nil
         }
+        .environment(\.openURL, OpenURLAction { url in
+            guard let link = WebLinkPreview.previewed(url, enabled: WebLinkPreview.isEnabled()) else { return .systemAction }
+            screenCapturePreview.close()
+            attachmentPreview.showLink(link)
+            return .handled
+        })
     }
 
     private var composer: some View {
@@ -295,6 +301,12 @@ struct ChatView: View {
                 do { try await store.openCompanion(attachment) }
                 catch { if !Task.isCancelled { store.errorMessage = error.localizedDescription } }
             }
+            return
+        }
+        if let link = attachment.url, MessageLink.publicWebURL(from: link, preservingFragment: true) != nil,
+           !WebLinkPreview.isEnabled() {
+            attachmentPreview.close()
+            NSWorkspace.shared.open(link)
             return
         }
         let edit: ((ConversationAttachment, String) throws -> ConversationAttachment)? = store.canEditAnnotation(attachment) ? { [weak store] attachment, comment in
