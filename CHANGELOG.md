@@ -6,6 +6,10 @@ All notable changes to Noodle are documented here, following
 
 ## [Unreleased]
 
+### Changed
+
+- The website writes the Noodle wordmark on as the apps do, with the swirl that rises from the bottom of the window into the word.
+
 ## [0.31.0] - 2026-09-28
 
 ### Added
