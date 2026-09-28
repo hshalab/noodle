@@ -170,6 +170,9 @@ import NoodleRuntime
         running = false
     }
 
+    /// The harnesses installed here, as the Mac's bot editor offers them.
+    public var installedProviders: [HarnessProvider] { runtime.availableInstallations.map(\.provider) }
+
     /// The models the Hub's own copy of the harness offers.
     public func models(for provider: HarnessProvider) -> [HarnessModel] { runtime.models(for: provider.rawValue) }
 

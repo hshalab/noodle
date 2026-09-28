@@ -607,7 +607,17 @@ import os
     private func status(for device: HubDevice) -> LinkStatus {
         let user = access.users.first { $0.id == device.user }
         let plan = access.plans.first { $0.id == user?.plan }
-        let harnesses = (plan?.harnesses ?? []).compactMap { harness -> LinkHarness? in
+        let lent: [HubHarness]
+        if access.isPersonal, let bots {
+            // What the Mac's bot editor offers: each installed harness, with or without one of its profiles.
+            lent = bots.installedProviders.flatMap { provider in
+                [HubHarness(provider: provider, profile: nil)]
+                    + profiles.profiles(for: provider).map { HubHarness(provider: provider, profile: $0.id) }
+            }
+        } else {
+            lent = Array(plan?.harnesses ?? [])
+        }
+        let harnesses = lent.compactMap { harness -> LinkHarness? in
             var profileName: String?
             if let id = harness.profile {
                 // A profile deleted outside the plan editor lends nothing.

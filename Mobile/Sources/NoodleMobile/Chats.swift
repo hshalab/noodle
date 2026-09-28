@@ -1185,7 +1185,9 @@ struct AgentEditor: View {
     private var harnesses: [LinkHarness] {
         var lent = chats.pairing.status?.harnesses ?? []
         if let agent, !lent.contains(where: { $0.provider == agent.draft.provider && $0.profile == agent.draft.profile }) {
-            lent.insert(LinkHarness(provider: agent.draft.provider, providerName: agent.draft.provider,
+            // Named as the Hub names it, when it still lends the harness under another profile.
+            let name = lent.first { $0.provider == agent.draft.provider }?.providerName ?? agent.draft.provider
+            lent.insert(LinkHarness(provider: agent.draft.provider, providerName: name,
                                     profile: agent.draft.profile, profileName: nil), at: 0)
         }
         return lent

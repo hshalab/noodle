@@ -6,6 +6,10 @@ All notable changes to Noodle are documented here, following
 
 ## [Unreleased]
 
+### Fixed
+
+- A phone paired with this Mac is offered the same harnesses, profiles and models as the Mac's bot editor. It was offered only the bot's current harness and model.
+
 ## [0.31.0] - 2026-09-28
 
 ### Added

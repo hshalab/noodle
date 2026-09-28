@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### What to Test
+
+- With a phone paired to a Mac, create or edit a bot: Harness lists the harnesses installed on the Mac and their profiles, by name, and Model lists all of the chosen harness's models. Needs the Mac on the next Noodle update.
+
+### Fixed
+
+- A bot's harness shows its name rather than its internal identifier when the Hub no longer lends it under the same profile.
+
 ## [0.5.0] - 2026-09-28
 
 ### What to Test
