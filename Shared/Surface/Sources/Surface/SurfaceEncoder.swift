@@ -5,14 +5,20 @@ import Foundation
 import VideoToolbox
 
 /// Encodes pictures of a surface as H.264 with the Mac's video encoder, tuned for a live view:
-/// no frame reordering, a key frame every two seconds, and one frame out for each frame in.
-/// Scaling and colour conversion happen on the GPU, so a frame costs the CPU little more than a copy.
+/// no frame reordering, a key frame every two seconds, and one frame out for each frame in until
+/// the picture stops changing. Scaling and colour conversion happen on the GPU, so a frame costs the CPU little more than a copy.
 public final class SurfaceEncoder {
     private var session: VTCompressionSession?
     private var transfer: VTPixelTransferSession?
     private var pool: CVPixelBufferPool?
     private var pixels: (width: Int, height: Int) = (0, 0)
     private var frame: Int64 = 0
+    /// The last picture at its own size, and for how many frames it has stayed the same.
+    private var last: CVPixelBuffer?
+    private var unchanged = 0
+    /// Frames still sent once the picture stops changing, so the encoder can sharpen what it
+    /// sent while the picture moved before video goes quiet.
+    private static let settle = 6
     private let maxPixelSize: Int
     private let fps: Int32
 
@@ -35,7 +41,8 @@ public final class SurfaceEncoder {
     /// The encoded frame, with the parameter sets when it is a key frame. `size` is the surface's
     /// size in points. `keyFrame` asks for one now, as when a new viewer arrives. `fitting` is the
     /// most pixels a viewer shows, rounded up in steps of 128 so resizing a window does not
-    /// restart the encoder at every pixel; a new size starts at a key frame.
+    /// restart the encoder at every pixel; a new size starts at a key frame. Nothing comes back
+    /// once the picture has settled, unless `keyFrame` asks for one.
     public func encode(_ image: CGImage, size: CGSize, keyFrame: Bool = false,
                        fitting: CGSize? = nil) throws -> (sample: Data, parameterSets: [Data], keyFrame: Bool)? {
         var scale = min(1, Double(maxPixelSize) / Double(max(image.width, image.height)))
@@ -46,7 +53,11 @@ public final class SurfaceEncoder {
         // H.264 wants even dimensions.
         let width = max(2, Int(Double(image.width) * scale) & ~1), height = max(2, Int(Double(image.height) * scale) & ~1)
         if session == nil || pixels != (width, height) { try start(width: width, height: height) }
-        guard let session, let buffer = scaled(image) else { return nil }
+        guard let session, let source = Self.pixelBuffer(image) else { return nil }
+        unchanged = last.map { Self.same(source, $0) } == true ? unchanged + 1 : 0
+        last = source
+        if unchanged > Self.settle, !keyFrame, frame > 0 { return nil }
+        guard let buffer = scaled(source) else { return nil }
         var result: (Data, [Data], Bool)?
         let properties = (keyFrame || frame == 0 ? [kVTEncodeFrameOptionKey_ForceKeyFrame: true] : [:]) as CFDictionary
         let time = CMTime(value: frame, timescale: fps)
@@ -111,8 +122,8 @@ public final class SurfaceEncoder {
     }
 
     /// The picture at the encoder's size, in the encoder's own format.
-    private func scaled(_ image: CGImage) -> CVPixelBuffer? {
-        guard let transfer, let pool, let source = Self.pixelBuffer(image) else { return nil }
+    private func scaled(_ source: CVPixelBuffer) -> CVPixelBuffer? {
+        guard let transfer, let pool else { return nil }
         var buffer: CVPixelBuffer?
         guard CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer) == kCVReturnSuccess, let buffer,
               VTPixelTransferSessionTransferImage(transfer, from: source, to: buffer) == noErr else { return nil }
@@ -146,6 +157,20 @@ public final class SurfaceEncoder {
                                       bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue) else { return nil }
         context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
         return buffer
+    }
+
+    private static func same(_ one: CVPixelBuffer, _ other: CVPixelBuffer) -> Bool {
+        let width = CVPixelBufferGetWidth(one), height = CVPixelBufferGetHeight(one)
+        guard width == CVPixelBufferGetWidth(other), height == CVPixelBufferGetHeight(other) else { return false }
+        CVPixelBufferLockBaseAddress(one, .readOnly)
+        CVPixelBufferLockBaseAddress(other, .readOnly)
+        defer {
+            CVPixelBufferUnlockBaseAddress(one, .readOnly)
+            CVPixelBufferUnlockBaseAddress(other, .readOnly)
+        }
+        guard let a = CVPixelBufferGetBaseAddress(one), let b = CVPixelBufferGetBaseAddress(other) else { return false }
+        let aRow = CVPixelBufferGetBytesPerRow(one), bRow = CVPixelBufferGetBytesPerRow(other)
+        return (0..<height).allSatisfy { memcmp(a.advanced(by: $0 * aRow), b.advanced(by: $0 * bRow), width * 4) == 0 }
     }
 
     private static func unpack(_ sample: CMSampleBuffer) -> (Data, [Data], Bool)? {

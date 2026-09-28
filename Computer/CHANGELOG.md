@@ -4,7 +4,7 @@
 
 ### Changed
 
-- Watching the computer live from Noodle Hub costs this Mac less for each frame, so the picture keeps up better.
+- Watching the computer live from Noodle Hub costs this Mac less for each frame and sends nothing while the picture stays still, so the picture keeps up better.
 
 ## [0.16.0] - 2026-09-28
 

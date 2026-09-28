@@ -193,6 +193,36 @@ final class SurfaceTests: XCTestCase {
         XCTAssertFalse(streamer.isWatched, "the view stayed watched after its viewer left")
     }
 
+    /// A surface that stops changing settles in a few frames and then sends nothing, until it
+    /// changes again or a viewer asks for a key frame.
+    @MainActor func testAStillSurfaceStopsSendingUntilItChanges() async throws {
+        let still = image(width: 800, height: 500, gray: 0.5), changed = image(width: 800, height: 500, gray: 0.8)
+        var picture = still
+        let streamer = SurfaceStreamer(fps: 60, maxPixelSize: 800, capture: { (picture, CGSize(width: 800, height: 500)) }, apply: { _ in })
+        defer { streamer.stop() }
+        let (companion, hub) = try pair()
+        streamer.attach(companion)
+        // One reader for the whole test: a quiet stream must stay open to show what comes later.
+        var received: [SurfacePacket] = []
+        let reader = Task { @MainActor in for await frame in hub.frames { received += SurfacePacket.decode(frame) ?? [] } }
+        defer { reader.cancel() }
+        func wait(_ label: String, until done: () -> Bool) async throws {
+            for _ in 0..<250 where !done() { try await Task.sleep(for: .milliseconds(20)) }
+            XCTAssertTrue(done(), label)
+        }
+        try await Task.sleep(for: .seconds(1))
+        XCTAssertEqual(received.first?.keyFrame, true)
+        XCTAssertLessThan(received.count, 15, "a still surface sent \(received.count) frames in a second")
+
+        let quiet = received.count
+        picture = changed
+        try await wait("a change was not sent") { received.count > quiet }
+        try await Task.sleep(for: .milliseconds(500))
+        let settled = received.count
+        hub.send(SurfaceControl.keyFrame.encoded)
+        try await wait("a key frame asked for on a still surface never came") { received.dropFirst(settled).contains(where: \.keyFrame) }
+    }
+
     /// A viewer that falls behind misses frames rather than getting old ones late, and always
     /// picks up again at a key frame, since the frames between depend on the ones before.
     @MainActor func testASlowViewerSkipsToTheNextKeyFrame() async throws {
