@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### What to Test
+
+- Open a conversation: its latest message sits just above the message field, with no gap under it, and the conversation does not sit shifted to the side before you first scroll.
+
+### Fixed
+
+- A conversation no longer opens scrolled past its end and slightly to the side.
+
 ## [0.4.0] - 2026-09-28
 
 ### What to Test

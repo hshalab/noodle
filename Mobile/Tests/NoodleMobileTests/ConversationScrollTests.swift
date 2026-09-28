@@ -27,6 +27,46 @@ import Testing
         #expect(ConversationScroll.isAtBottom(contentOffset: -50, contentHeight: 200, viewportHeight: 600, bottomInset: 100))
     }
 
+    /// Opened, a conversation shows its end just above the composer, not past it, and does not sit
+    /// shifted sideways until it is first scrolled.
+    @MainActor @Test func aConversationOpensAtItsEnd() async throws {
+        let messages = (0..<40).map { index in
+            LinkMessage(id: UUID(), conversationID: UUID(), author: index.isMultiple(of: 2) ? .you : .bot(UUID()),
+                        body: String(repeating: "Line of a message. ", count: 1 + index % 5), createdAt: Date(), delivered: true)
+        }
+        let conversation = NavigationStack {
+            ScrollView {
+                LazyVStack(spacing: 6) {
+                    ForEach(messages) { message in
+                        Text(message.body).padding(8).frame(maxWidth: .infinity, alignment: .leading).id(message.id)
+                    }
+                }
+                .scrollTargetLayout()
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+            }
+            .modifier(ConversationScrolling(latest: messages.last))
+            .safeAreaInset(edge: .bottom) { Color.clear.frame(height: 56) }
+            .navigationBarTitleDisplayMode(.inline)
+        }
+        let scene = try #require(UIApplication.shared.connectedScenes.lazy.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.rootViewController = UIHostingController(rootView: conversation)
+        window.isHidden = false
+        defer { window.isHidden = true }
+        try await Task.sleep(for: .seconds(1))
+
+        let scrollView = try #require(Self.scrollView(in: window))
+        let end = scrollView.contentSize.height + scrollView.adjustedContentInset.bottom - scrollView.bounds.height
+        #expect(scrollView.contentOffset.x == -scrollView.adjustedContentInset.left)
+        #expect(abs(scrollView.contentOffset.y - end) <= 1)
+    }
+
+    private static func scrollView(in view: UIView) -> UIScrollView? {
+        if let scrollView = view as? UIScrollView { return scrollView }
+        return view.subviews.lazy.compactMap(scrollView(in:)).first
+    }
+
     @Test func aPictureOfKnownSizeHoldsItsPlaceBeforeItLoads() {
         // Without a size, as from an older Hub, the placeholder stands in until the picture arrives.
         #expect(AttachmentView.pictureFrame(for: nil) == nil)
