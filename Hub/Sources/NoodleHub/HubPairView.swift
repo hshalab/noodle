@@ -33,13 +33,17 @@ struct HubPairWindow: View {
     static let windowID = "pair"
 
     let hub: Hub
+    /// The window scene keeps its state when closed, so each opening starts the steps afresh.
+    @State private var opening = UUID()
 
     var body: some View {
         WordmarkWelcome(lifted: true, gap: 64) {
             HubPairView(hub: hub)
+                .id(opening)
         }
         .frame(minWidth: 560, minHeight: 680)
         .background(Color(nsColor: .windowBackgroundColor))
+        .onDisappear { opening = UUID() }
     }
 }
 

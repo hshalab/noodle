@@ -12,6 +12,10 @@
 - Settings opens on Network, now its first tab. Bots comes after Plans, next to the Heartbeat and Sandbox tabs.
 - Each bot on the Hub records who it belongs to, so Noodle Applet on the Hub's Mac can list their noodlets under that person. Existing bots are updated when the Hub opens.
 
+### Fixed
+
+- Pair… starts from the first step again after the window was closed, instead of reopening on the last one.
+
 ## [0.5.0] - 2026-09-28
 
 ### Added
