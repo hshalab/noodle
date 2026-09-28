@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- The file browser says when a folder is empty, holds only hidden files or has nothing matching the search, instead of showing a blank area.
+
 ## [0.17.0] - 2026-09-28
 
 ### Changed

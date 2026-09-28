@@ -36,7 +36,20 @@ import Foundation
     convenience init(runtime: ContainerComputer, computerID: UUID) { self.init(service: GuestFiles(runtime: runtime), computerID: computerID) }
     var selected: GuestFile? { files.first { $0.name == selection } }
     var visible: [GuestFile] { files.filter { (showHidden || !$0.name.hasPrefix(".")) && (filter.isEmpty || $0.name.localizedCaseInsensitiveContains(filter)) } }
+    var emptyFolder: EmptyFolder? { loading ? nil : EmptyFolder(files: files, showHidden: showHidden, filter: filter) }
     var parent: String { folder == "/" ? "/" : (folder as NSString).deletingLastPathComponent }
+
+    /// Why the listing shows nothing, so the view can say so instead of looking blank.
+    enum EmptyFolder: Equatable {
+        case empty, hiddenOnly, noMatches
+        init?(files: [GuestFile], showHidden: Bool, filter: String) {
+            let shown = files.filter { showHidden || !$0.name.hasPrefix(".") }
+            if files.isEmpty { self = .empty }
+            else if shown.isEmpty { self = .hiddenOnly }
+            else if !filter.isEmpty, !shown.contains(where: { $0.name.localizedCaseInsensitiveContains(filter) }) { self = .noMatches }
+            else { return nil }
+        }
+    }
 
     func navigate(_ path: String, record: Bool = true, selecting: String? = nil, clearStatus: Bool = true) {
         let destination: String

@@ -11,6 +11,16 @@ final class FileBrowserTests: XCTestCase {
         XCTAssertThrowsError(try GuestFile.normalize("~/Documents"))
     }
 
+    func testEmptyFolderExplainsWhyNothingIsShown() {
+        func file(_ name: String) -> GuestFile { GuestFile(name: name, kind: "file", size: 0, modified: 0, version: "") }
+        XCTAssertEqual(ComputerFilesModel.EmptyFolder(files: [], showHidden: false, filter: ""), .empty)
+        XCTAssertEqual(ComputerFilesModel.EmptyFolder(files: [], showHidden: true, filter: ""), .empty)
+        XCTAssertEqual(ComputerFilesModel.EmptyFolder(files: [file(".profile")], showHidden: false, filter: ""), .hiddenOnly)
+        XCTAssertNil(ComputerFilesModel.EmptyFolder(files: [file(".profile")], showHidden: true, filter: ""))
+        XCTAssertEqual(ComputerFilesModel.EmptyFolder(files: [file("notes.txt")], showHidden: false, filter: "zzz"), .noMatches)
+        XCTAssertNil(ComputerFilesModel.EmptyFolder(files: [file("notes.txt")], showHidden: false, filter: "NOTES"))
+    }
+
     func testOutputEnforcesActualBytesAndExactLength() throws {
         let output = try FileOutput(limit: 4)
         try output.write(Data([0, 1, 2, 3]))

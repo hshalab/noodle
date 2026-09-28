@@ -57,6 +57,7 @@ struct ComputerFilesView: View {
                         if model.iconView || model.previewEnabled { GuestFileGrid(model: model, quickLook: requestQuickLook, keyAction: keyboardAction, focusRequest: fileFocusRequest) }
                         else { GuestFileTable(model: model, quickLook: requestQuickLook, keyAction: keyboardAction, focusRequest: fileFocusRequest) }
                     }
+                        .overlay { if let empty = model.emptyFolder { emptyFolderNotice(empty).allowsHitTesting(false) } }
                         .contextMenu {
                             Button("New Folder…") { name = "Untitled Folder"; naming = "New Folder" }.disabled(model.busy)
                             Button("Import Files or Folders…") { model.importPanel() }.disabled(model.busy)
@@ -73,6 +74,16 @@ struct ComputerFilesView: View {
 
             }
             if model.busy || !model.status.isEmpty { transferStatus }
+        }
+    }
+    @ViewBuilder private func emptyFolderNotice(_ empty: ComputerFilesModel.EmptyFolder) -> some View {
+        switch empty {
+        case .empty:
+            ContentUnavailableView("No Files", systemImage: "folder", description: Text("This folder is empty."))
+        case .hiddenOnly:
+            ContentUnavailableView("No Visible Files", systemImage: "eye.slash", description: Text("This folder only contains hidden files."))
+        case .noMatches:
+            ContentUnavailableView.search(text: model.filter)
         }
     }
     private var transferStatus: some View {
