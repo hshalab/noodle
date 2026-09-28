@@ -303,6 +303,21 @@ import XCTest
         XCTAssertEqual(processes().count, 2)
     }
 
+    /// As Edit Bot in Noodle: a model or effort changed on the phone is what the running bot uses next.
+    func testAPhoneEditingABotRestartsItWithTheNewSettings() async throws {
+        let (runtime, processes) = try fakeRuntime()
+        let (f, _) = try await fixture(bots: [], runtime: runtime)
+        let (agent, first) = try startedBot(f, in: runtime, processes)
+
+        let draft = LinkBotDraft(name: "Kai", provider: "codex", model: "gpt-5.5", reasoningEffort: "high")
+        _ = try await f.device.request(.updateBot(id: agent.id, draft))
+
+        XCTAssertEqual(first.stops, 1, "The bot kept running with its old settings")
+        let running = try XCTUnwrap(processes().last)
+        XCTAssertEqual(running.configuration.modelIdentifier, "gpt-5.5")
+        XCTAssertEqual(running.configuration.reasoningEffort, "high")
+    }
+
     /// Copies of bots the owner keeps on another Hub are that Hub's, not this Mac's.
     func testBotsOfAnotherHubStayHidden() async throws {
         let (f, made) = try await fixture(bots: ["Kai", "Mirrored"])

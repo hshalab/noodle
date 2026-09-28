@@ -9,6 +9,7 @@
 - In a conversation, tap the … button at the top right: New Session asks first, then starts the bot with a fresh context. When the bot has failed, Kick is there too and starts it again, asking first when the Mac or Hub would. Try it with a bot on your Mac and one on a Noodle Hub.
 - With a phone paired to a Mac, create or edit a bot: Harness lists the harnesses installed on the Mac and their profiles, by name, and Model lists all of the chosen harness's models. Needs the Mac on the next Noodle update.
 - Paired with a Mac serving your devices (Settings > Hub in Noodle): create a computer and a browser, add a tool and sign it in, then give them to a bot. They appear in Noodle on the Mac too, and the bot can use them.
+- Paired with a Mac serving your devices, edit a bot and change its model or effort: the bot restarts, and its next reply comes from the new model. Needs the Mac on the next Noodle update.
 
 ### Added
 
