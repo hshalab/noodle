@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-09-28
+
 ### Changed
 
 - Hub is now the first category in the sidebar instead of a section of its own, and lists the people on Noodle Hub beneath it. Choose someone to see only the noodlets their bots made. Needs the latest Noodle Hub.
@@ -16,7 +18,6 @@
 ### Fixed
 
 - Native noodlets can use the on-device Apple Intelligence model again. It reported that the model was not ready.
-
 - Applet no longer crashes on launch while it deletes what a noodlet that is gone had saved, as it could right after updating.
 
 ## [0.12.0] - 2026-09-28

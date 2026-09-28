@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-28
+
 ### Added
 
 - Settings has Heartbeat and Sandbox tabs, as in Noodle: choose how often idle bots on the Hub wake to check for work, and give each bot unrestricted access or account apps.

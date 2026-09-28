@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-09-28
+
 ### Changed
 
 - Under Hub in the sidebar, computers Noodle Hub keeps are grouped under the people they are for. Needs the latest Noodle Hub.
