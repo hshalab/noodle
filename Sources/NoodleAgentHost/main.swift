@@ -611,6 +611,12 @@ private final class HostSession: NSObject, AgentHostService {
                                          environment: account.environment, name: account.provider.displayName,
                                          challenge: nil, status: account.status, reply: reply)
                 }
+                if account.provider == .fx {
+                    // FX signs in with Vercel, as the system profile does.
+                    return self.runLogin(executable: account.executable, arguments: ["login"], environment: account.environment,
+                                         name: account.provider.displayName, challenge: FxProtocol.loginChallenge,
+                                         status: account.status, reply: reply)
+                }
                 guard let arguments = HarnessProfileLogin.arguments(account.provider) else {
                     throw HostError("This harness does not support this sign-in flow.")
                 }
@@ -663,11 +669,11 @@ private final class HostSession: NSObject, AgentHostService {
         let profiles = HostPaths.profiles
         let profile = try profiles.validated(id)
         let provider = profile.provider
-        guard HarnessProfileLogin.arguments(provider) != nil || provider == .antigravity || provider == .claudeCode else {
+        guard HarnessProfileLogin.arguments(provider) != nil || provider == .antigravity || provider == .claudeCode || provider == .fx else {
             throw HostError("This harness does not support this sign-in flow.")
         }
         let executable = try HostPaths.executable(executablePath, provider: provider)
-        let environment = accountEnvironment.merging(profiles.environment(profile)) { _, profile in profile }
+        let environment = profiles.environment(profile, over: accountEnvironment)
         return ProfileAccount(provider: provider, executable: executable, environment: environment) {
             switch provider {
             case .grokBuild:
@@ -682,6 +688,8 @@ private final class HostSession: NSObject, AgentHostService {
                 return try AntigravityInspection.authenticated(executable: executable, environment: environment)
             case .claudeCode:
                 return try self.claudeAuthenticationStatus(executable, environment: environment)
+            case .fx:
+                return try FxInspection.status(executable: executable, environment: environment).authenticated
             default: throw HostError("This harness does not support this sign-in flow.")
             }
         }

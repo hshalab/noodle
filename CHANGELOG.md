@@ -6,6 +6,10 @@ All notable changes to Noodle are documented here, following
 
 ## [Unreleased]
 
+### Added
+
+- Sign FX in to more than one account. Profiles under FX in Settings > Harness adds a profile that signs in with Vercel, and Edit Bot > Harness chooses which one a bot uses. Each profile keeps its login in Noodle's storage, apart from the one in your home folder.
+
 ## [0.30.0] - 2026-09-28
 
 ### Added
