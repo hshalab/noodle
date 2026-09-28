@@ -238,13 +238,16 @@ final class NoodleStore {
         try? toolProviders.register(ReminderToolProvider(store: reminderStore))
         applets = AppletController(repository: self.repository)
         harnessProfiles = HarnessProfilesController(store: self.repository.harnessProfiles)
-        thisMac = ThisMacHub(repository: self.repository, runtime: self.runtime, applets: applets, profiles: harnessProfiles)
+        thisMac = ThisMacHub(repository: self.repository, runtime: self.runtime, applets: applets, profiles: harnessProfiles,
+                             service: mcp.service)
         // Before any bot starts, so bots on a Hub never run here.
         refreshHubMirrors()
         reload()
         // A device made, changed or deleted one of this Mac's bots.
         thisMac.onBotsEdited = { [weak self] in self?.reload() }
         thisMac.onRead = { [weak self] in self?.readElsewhere($0, upTo: $1) }
+        // A device changed this Mac's tools, computers or browsers, in the files these controllers keep.
+        thisMac.onToolsEdited = { [weak self] in self?.reloadToolsEditedElsewhere() }
         Self.active = self
     }
 
@@ -976,6 +979,16 @@ final class NoodleStore {
             Task { await mirror.markRead(conversation: conversationID) }
         } else {
             thisMac.hub?.markRead(conversation: conversationID)
+        }
+    }
+
+    private func reloadToolsEditedElsewhere() {
+        do { try mcp.reloadAssignments(); try computers.reloadAssignments(); try browsers.reloadAssignments() }
+        catch { errorMessage = error.localizedDescription }
+        Task {
+            await mcp.readSignIns()
+            await computers.refresh()
+            await browsers.refresh()
         }
     }
 

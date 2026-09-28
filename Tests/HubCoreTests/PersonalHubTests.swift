@@ -6,6 +6,7 @@ import HubLink
 import NoodleCore
 import NoodleRuntime
 import XCTest
+@testable import NoodleMCP
 
 /// Noodle serving its own owner's devices: the bots already on the Mac, with nobody else to share them.
 @MainActor final class PersonalHubTests: XCTestCase {
@@ -13,6 +14,9 @@ import XCTest
         let personal: PersonalHub
         let repository: WorkspaceRepository
         let device: HubPairing
+        let computer: HubComputersTests.FakeComputer
+        let browser: HubBrowsersTests.FakeBrowser
+        let hubDirectory: URL
     }
 
     /// Only the harnesses in `installed` are on this Mac, whatever the machine running the test has.
@@ -39,11 +43,13 @@ import XCTest
             runtime.refreshCapabilities()
             return runtime
         }()
+        let computer = HubComputersTests.FakeComputer(), browser = HubBrowsersTests.FakeBrowser()
         let profiles = HarnessProfilesController(store: repository.harnessProfiles)
         for (provider, name) in named { _ = try profiles.create(provider: provider, named: name) }
         let personal = PersonalHub(name: "Studio", directory: root.appendingPathComponent("Remote"), repository: repository,
                                    runtime: runtime, applets: AppletController(repository: repository),
-                                   profiles: profiles, port: 0,
+                                   profiles: profiles, service: Self.service(),
+                                   computer: { try computer.call($0) }, browser: { try browser.call($0) }, port: 0,
                                    localEndpoints: { [LinkEndpoint(host: "::1", port: $0)] })
         await personal.start()
         addTeardownBlock { await MainActor.run { personal.stop() } }
@@ -51,7 +57,13 @@ import XCTest
         let device = HubPairing(directory: root.appendingPathComponent("Phone"), deviceName: "iPhone")
         await device.join(personal.link.invite(personal.owner).url().absoluteString)
         XCTAssertNil(device.error)
-        return (Fixture(personal: personal, repository: repository, device: device), made)
+        return (Fixture(personal: personal, repository: repository, device: device, computer: computer, browser: browser,
+                        hubDirectory: root.appendingPathComponent("Remote")), made)
+    }
+
+    /// Noodle's own tool service, with a Keychain that holds no sign-ins.
+    private static func service() -> MCPService {
+        MCPService(credentials: NoPersonalCredentials(), oauth: MCPOAuth(), httpConfiguration: { .ephemeral })
     }
 
     func testAPhoneSeesTheBotsAlreadyOnTheMacAndTalksToThem() async throws {
@@ -304,19 +316,71 @@ import XCTest
         } catch {}
     }
 
-    /// Tools, computers and browsers on the Mac belong to Noodle's own settings; a device does
-    /// not make or change them there yet, so none is made where Noodle would not see it.
-    func testToolsComputersAndBrowsersAreManagedOnTheMac() async throws {
-        let (f, _) = try await fixture(bots: [])
-        for request: LinkRequest in [.createBrowser(LinkBrowserDraft(name: "Work")), .deleteComputer(id: UUID()),
-                                     .saveConnection(LinkConnectionDraft(name: "Notes", endpoint: URL(string: "https://example.com/mcp")!))] {
-            do {
-                _ = try await f.device.request(request)
-                XCTFail("\(request) was taken")
-            } catch {
-                XCTAssertEqual(error.localizedDescription, "Manage tools, computers and browsers in Noodle on the Mac.")
-            }
+    /// The phone makes, changes, assigns and deletes the Mac's own tools, computers and browsers:
+    /// the ones Noodle keeps beside its bots, not a copy only devices see.
+    func testAPhoneManagesTheMacsOwnToolsComputersAndBrowsers() async throws {
+        let (f, made) = try await fixture(bots: ["Kai"])
+        let kai = made[0].id, root = f.repository.rootURL
+        var edits = 0
+        f.personal.onToolsEdited = { edits += 1 }
+
+        let notes = LinkConnectionDraft(name: "Notes", endpoint: URL(string: "https://example.com/mcp")!)
+        _ = try await f.device.request(.saveConnection(notes))
+        _ = try await f.device.request(.assignConnections(botID: kai, connectionIDs: [notes.id]))
+        XCTAssertEqual(try MCPRegistry.load(root: root).assigned(to: kai).map(\.name), ["Notes"])
+
+        guard case .browser(let work) = try await f.device.request(.createBrowser(LinkBrowserDraft(name: "Work"))) else {
+            return XCTFail("no browser")
         }
+        _ = try await f.device.request(.assignBrowsers(botID: kai, browserIDs: [work.id]))
+        guard case .browsers(let browsers) = try await f.device.request(.browsers) else { return XCTFail("no browsers") }
+        XCTAssertEqual(browsers.map(\.botIDs), [[kai]])
+
+        // Made in Noodle Computer on the Mac, then given to Kai from the phone.
+        var create = ComputerRequest(.create)
+        create.computer = ComputerDraft(template: "ubuntu", name: "Bench")
+        let bench = try XCTUnwrap(try f.computer.call(create).computers?.first)
+        guard case .computers(let listed) = try await f.device.request(.computers) else { return XCTFail("no computers") }
+        XCTAssertEqual(listed.map(\.id), [bench.id])
+        _ = try await f.device.request(.assignComputers(botID: kai, computerIDs: [bench.id]))
+        _ = try await f.device.request(.updateComputer(id: bench.id, LinkComputerDraft(template: "ubuntu", name: "Workbench")))
+        guard case .computers(let computers) = try await f.device.request(.computers) else { return XCTFail("no computers") }
+        XCTAssertEqual(computers.map(\.name), ["Workbench"])
+        XCTAssertEqual(computers.map(\.botIDs), [[kai]])
+        _ = try await f.device.request(.deleteBrowser(id: work.id))
+        guard case .browsers(let left) = try await f.device.request(.browsers) else { return XCTFail("no browsers") }
+        XCTAssertTrue(left.isEmpty)
+
+        // Kept in Noodle's own files, beside its bots, where its Settings and tool broker read them.
+        // (Their contents are not read back: this macOS refuses to reopen protected files in tests.)
+        for file in ["MCP/connections.json", "browsers.json", "computers.json"] {
+            XCTAssertTrue(FileManager.default.fileExists(atPath: root.appendingPathComponent(file).path), file)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: f.hubDirectory.appendingPathComponent(file).path), file)
+        }
+        XCTAssertGreaterThan(edits, 0, "Noodle was not told to read its tools again")
+    }
+
+    /// What Noodle changed on the Mac after the phone joined is what the phone sees and changes,
+    /// and a change from the phone keeps it.
+    func testThePhoneWorksOnWhatNoodleChangedMeanwhile() async throws {
+        let (f, made) = try await fixture(bots: ["Kai"])
+        let kai = made[0].id, root = f.repository.rootURL
+        // Saved in Noodle's Settings, as its tool controller does.
+        var registry = try MCPRegistry.load(root: root)
+        let notes = try MCPConnectionRecord(name: "Notes", endpoint: URL(string: "https://example.com/notes")!)
+        registry.connections.append(notes)
+        try registry.assign([notes.id], to: kai)
+        try registry.save(root: root)
+
+        guard case .connections(let listed) = try await f.device.request(.connections) else { return XCTFail("no connections") }
+        XCTAssertEqual(listed.map(\.id), [notes.id])
+        XCTAssertEqual(listed.first?.botIDs, [kai])
+
+        let calendar = LinkConnectionDraft(name: "Calendar", endpoint: URL(string: "https://example.com/calendar")!)
+        _ = try await f.device.request(.saveConnection(calendar))
+        let saved = try MCPRegistry.load(root: root)
+        XCTAssertEqual(Set(saved.connections.map(\.name)), ["Notes", "Calendar"])
+        XCTAssertEqual(saved.assigned(to: kai).map(\.id), [notes.id])
     }
 
     /// It is the owner's own Mac: there is nobody else to add.
@@ -336,7 +400,7 @@ import XCTest
         let runtime = AgentRuntimeCoordinator(discovery: HarnessDiscovery(managedHarnesses: repository.managedHarnesses))
         let personal = PersonalHub(name: "Studio", directory: root.appendingPathComponent("Remote"), repository: repository,
                                    runtime: runtime, applets: AppletController(repository: repository),
-                                   profiles: HarnessProfilesController(store: repository.harnessProfiles), port: 0)
+                                   profiles: HarnessProfilesController(store: repository.harnessProfiles), service: Self.service(), port: 0)
         personal.bots.synchronizeOwners()
         try personal.access.rename(personal.owner, to: "Someone Else")
         personal.bots.synchronizeOwners()
@@ -353,4 +417,11 @@ import XCTest
         XCTAssertNil(computer.owner(of: madeComputer.id))
         XCTAssertNil(browser.owner(of: madeBrowser.id))
     }
+}
+
+/// A Keychain with no sign-ins, that takes none.
+private final class NoPersonalCredentials: MCPCredentialStorage, @unchecked Sendable {
+    func load(_ id: UUID) throws -> MCPCredentials? { nil }
+    func save(_ credentials: MCPCredentials, id: UUID) { XCTFail("These tests must never authorize an account") }
+    func remove(_ id: UUID) throws {}
 }

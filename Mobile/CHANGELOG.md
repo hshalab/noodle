@@ -8,6 +8,7 @@
 - Touch and hold a bot in the list: a menu offers Pin and Edit Bot…. On a pinned circle it offers Unpin and Edit Bot….
 - In a conversation, tap the … button at the top right: New Session asks first, then starts the bot with a fresh context. When the bot has failed, Kick is there too and starts it again, asking first when the Mac or Hub would. Try it with a bot on your Mac and one on a Noodle Hub.
 - With a phone paired to a Mac, create or edit a bot: Harness lists the harnesses installed on the Mac and their profiles, by name, and Model lists all of the chosen harness's models. Needs the Mac on the next Noodle update.
+- Paired with a Mac serving your devices (Settings > Hub in Noodle): create a computer and a browser, add a tool and sign it in, then give them to a bot. They appear in Noodle on the Mac too, and the bot can use them.
 
 ### Added
 
@@ -20,6 +21,7 @@
 - Noodle Hub is tried again for a few seconds when it is starting up or the network is settling, instead of failing at once.
 - A bot's harness shows its name rather than its internal identifier when the Hub no longer lends it under the same profile.
 - Switching a new computer between Shell and Desktop changes its name to match, unless you typed your own.
+- On a Mac serving your devices, creating or changing tools, computers and browsers no longer fails with "Manage tools, computers and browsers in Noodle on the Mac." The phone works on the Mac's own ones.
 
 ## [0.5.0] - 2026-09-28
 

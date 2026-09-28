@@ -143,6 +143,11 @@ import NoodleCore
         }
     }
 
+    /// Reads the browsers and grants again, after Noodle changed them in the same files on its owner's Mac.
+    public func reloadAssignments() {
+        if let saved = try? BrowserAssignments.load(root: root) { registry = saved }
+    }
+
     /// Reads names and states from Noodle Browser; browsers deleted there are dropped here.
     public func refresh() async {
         await reload()

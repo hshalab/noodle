@@ -12,7 +12,8 @@ public final class MCPController {
     public private(set) var errors: [UUID: String] = [:]
     var errorMessage: String?
     @ObservationIgnored private let repository: WorkspaceRepository
-    @ObservationIgnored private let service: MCPService
+    /// Keeps the connections' sign-ins; This Mac as a Hub signs tools in through it too.
+    @ObservationIgnored public let service: MCPService
     @ObservationIgnored private var loginTask: Task<Void, Never>?
     @ObservationIgnored private var agents: [AgentRecord] = []
     @ObservationIgnored private var started = false
@@ -52,10 +53,14 @@ public final class MCPController {
             Task { [weak self] in
                 guard let self else { return }
                 await deleteRemovedSignIns()
-                for connection in registry.connections {
-                    if await service.hasCredentials(connection.id) { connected.insert(connection.id) }
-                }
+                await readSignIns()
             }
+        }
+    }
+    /// Reads which connections are signed in, after something besides Settings signed one in or out.
+    public func readSignIns() async {
+        for connection in registry.connections {
+            if await service.hasCredentials(connection.id) { connected.insert(connection.id) } else { connected.remove(connection.id) }
         }
     }
     func save(_ record: MCPConnectionRecord) throws {
