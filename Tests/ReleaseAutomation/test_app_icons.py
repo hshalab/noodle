@@ -50,6 +50,51 @@ class AppIconTests(unittest.TestCase):
         # unchanged because it has no preceding pixel or row.
         self.assertEqual(zlib.decompress(compressed)[4], 0, 'opaque exterior corner')
 
+    def pixel(self, path, x, y):
+        data = path.read_bytes()
+        width, height, _, colour = struct.unpack('>IIBB', data[16:26])
+        channels = {2: 3, 6: 4}[colour]
+        compressed = bytearray()
+        offset = 8
+        while offset < len(data):
+            length = struct.unpack('>I', data[offset:offset + 4])[0]
+            if data[offset + 4:offset + 8] == b'IDAT':
+                compressed.extend(data[offset + 8:offset + 8 + length])
+            offset += length + 12
+        raw, stride, previous = zlib.decompress(compressed), width * channels, bytearray(width * channels)
+        for row in range(y + 1):
+            kind, line = raw[row * (stride + 1)], bytearray(raw[row * (stride + 1) + 1:(row + 1) * (stride + 1)])
+            for i in range(stride):
+                left = line[i - channels] if i >= channels else 0
+                up, corner = previous[i], previous[i - channels] if i >= channels else 0
+                if kind == 1: line[i] = (line[i] + left) & 255
+                elif kind == 2: line[i] = (line[i] + up) & 255
+                elif kind == 3: line[i] = (line[i] + (left + up) // 2) & 255
+                elif kind == 4:
+                    p = left + up - corner
+                    pa, pb, pc = abs(p - left), abs(p - up), abs(p - corner)
+                    line[i] = (line[i] + (left if pa <= pb and pa <= pc else up if pb <= pc else corner)) & 255
+            previous = line
+        return tuple(previous[x * channels:x * channels + 3])
+
+    def test_every_app_icon_tile_is_system_blue(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            for name, support, platform in [('Noodle', 'Support', 'macos'), ('Computer', 'Computer/Support', 'macos'),
+                                            ('Applet', 'Applet/Support', 'macos'), ('Browser', 'Browser/Support', 'macos'),
+                                            ('Hub', 'Hub/Support', 'macos'), ('Mobile', 'Mobile/Support', 'ios')]:
+                with self.subTest(app=name):
+                    root = Path(temporary) / name
+                    root.mkdir()
+                    shutil.copyfile(ROOT / support / 'AppSymbol.svg', root / 'AppSymbol.svg')
+                    result = subprocess.run(['/bin/zsh', str(ROOT / 'scripts/generate-icon.sh'),
+                                             str(root / 'AppSymbol.svg'), str(root / 'App.iconset'), platform],
+                                            capture_output=True, text=True)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    # Inside every tile, clear of the symbol; Mobile's corner is also the full-bleed fill.
+                    self.assertEqual(self.pixel(root / 'AppIcon.png', 100, 512), (0x00, 0x88, 0xff))
+                    if platform == 'ios':
+                        self.assertEqual(self.pixel(root / 'AppIcon.png', 0, 0), (0x00, 0x88, 0xff))
+
     def test_every_app_symbol_composes_a_standalone_icon_and_complete_iconset(self):
         with tempfile.TemporaryDirectory() as temporary:
             for name, support in [('Noodle', 'Support'), ('Computer', 'Computer/Support'),

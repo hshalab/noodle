@@ -10,8 +10,8 @@
   --bg-alt: #f5f5f7;
   --ink: #1d1d1f;
   --gray: #6e6e73;
-  --blue: #2148d8;
-  --blue-hover: #1a3bb8;
+  --blue: #0088ff;
+  --blue-hover: #0077e0;
   --display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", sans-serif;
   --text: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
   --wrap: 1080px;
@@ -22,8 +22,6 @@
     --bg-alt: #161617;
     --ink: #f5f5f7;
     --gray: #a1a1a6;
-    --blue: #4d7cff;
-    --blue-hover: #6b92ff;
   }
 }
 

@@ -5,6 +5,11 @@
 ### What to Test
 
 - Open a conversation: its latest message sits just above the message field, with no gap under it, and the conversation does not sit shifted to the side before you first scroll.
+- The app icon on the Home Screen is Apple's system blue, matching the Mac apps.
+
+### Changed
+
+- The app icon uses Apple's system blue, the same flat blue as the Noodle Mac apps.
 
 ### Fixed
 

@@ -5,6 +5,7 @@
 ### Changed
 
 - Hub is now the first category in the sidebar instead of a section of its own, and lists the people on Noodle Hub beneath it. Choose someone to see only the noodlets their bots made. Needs the latest Noodle Hub.
+- The app icon uses Apple's system blue, the same flat blue as the other Noodle apps.
 
 ### Security
 
