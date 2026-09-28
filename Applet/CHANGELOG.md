@@ -2,15 +2,12 @@
 
 ## [Unreleased]
 
-### Changed
-
-- Watching the noodlet live from Noodle Hub runs at up to 60 frames a second instead of 30, costs this Mac less for each frame and, while the picture stays still, sends nothing and checks it only a few times a second, so the picture keeps up better.
-- A native noodlet watched live hands over each frame about twice as fast, without making a picture file of it first, so what you click shows sooner. Its screenshots are quicker too.
-
 ## [0.12.0] - 2026-09-28
 
 ### Changed
 
+- Watching the noodlet live from Noodle Hub runs at up to 60 frames a second instead of 30, costs this Mac less for each frame and, while the picture stays still, sends nothing and checks it only a few times a second, so the picture keeps up better.
+- A native noodlet watched live hands over each frame about twice as fast, without making a picture file of it first, so what you click shows sooner. Its screenshots are quicker too.
 - Noodlets your bots make, in Noodle or on Noodle Hub on this Mac, stay in the bot's own folder. Applet finds them there and runs them where they are, instead of keeping its own copy. The copies it kept before are deleted when Applet updates; what a noodlet saved, its permissions and its links move to the bot's own noodlet.
 - Settings > Permissions and Storage show where each noodlet lives, so noodlets with the same name can be told apart.
 - Noodlets made by Noodle Hub's bots are listed under Hub in the sidebar, not in All, Recent, the categories or the menu bar's recent list.

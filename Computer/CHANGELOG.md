@@ -2,14 +2,11 @@
 
 ## [Unreleased]
 
-### Changed
-
-- Watching the computer live from Noodle Hub runs at up to 60 frames a second instead of 30, costs this Mac less for each frame and, while the picture stays still, sends nothing and checks it only a few times a second, so the picture keeps up better.
-
 ## [0.16.0] - 2026-09-28
 
 ### Changed
 
+- Watching the computer live from Noodle Hub runs at up to 60 frames a second instead of 30, costs this Mac less for each frame and, while the picture stays still, sends nothing and checks it only a few times a second, so the picture keeps up better.
 - Computers Noodle Hub keeps for its bots are listed under Hub in the sidebar, apart from your own.
 - Computer follows the system's light or dark appearance instead of always being dark.
 - Delete, Delete Computer, Clean Caches and Restart, Enable Account Helper and the New Container, New from Container Image and New Local Mac commands no longer end in an ellipsis.

@@ -2,14 +2,11 @@
 
 ## [Unreleased]
 
-### Changed
-
-- Watching the browser live from Noodle Hub runs at up to 60 frames a second instead of 30, costs this Mac less for each frame and, while the picture stays still, sends nothing and checks it only a few times a second, so the picture keeps up with the page better.
-
 ## [0.7.0] - 2026-09-28
 
 ### Changed
 
+- Watching the browser live from Noodle Hub runs at up to 60 frames a second instead of 30, costs this Mac less for each frame and, while the picture stays still, sends nothing and checks it only a few times a second, so the picture keeps up with the page better.
 - Browsers Noodle Hub keeps for its bots are listed under Hub in the sidebar, apart from your own.
 - Browser follows the system's light or dark appearance instead of always being dark. A browser with a background picture or colour stays dark behind it.
 - Delete and Delete Browser no longer end in an ellipsis, since they only ask to confirm. Add for bookmarks now does, since it opens the bookmark form.
