@@ -181,6 +181,7 @@ final class RestrictedHarnessStorageTests: XCTestCase {
         XCTAssertEqual(try b.read("auth.json", limit: 100), Data("refreshed".utf8))
     }
 
+    // TODO(0.31.0): remove with RestrictedHarnessStorage.SharedLogin.legacyTag. Milestone: 0.28.0.
     func testALegacyStampStillHandsBackTheBotsRefresh() throws {
         let (home, workspace, _) = try fixture()
         try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)

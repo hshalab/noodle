@@ -202,8 +202,9 @@ public enum RestrictedHarnessStorage {
 
         private func stamp(_ name: String) -> String { "auth-seed-\(provider.rawValue)-\(name).sha256" }
 
-        // TODO(NEXT_VERSION): remove with its use in exchange(_:from:destination:runtime:) and
-        // testALegacyStampStillHandsBackTheBotsRefresh. Earlier versions stamped the bare digest.
+        // TODO(0.31.0): remove with its use in exchange(_:from:destination:runtime:) and
+        // testALegacyStampStillHandsBackTheBotsRefresh. Milestone: 0.28.0. Earlier versions stamped the
+        // bare digest; a bot's next start restamps it, so only bots kept stopped since then still hold one.
         private static func legacyTag(_ data: Data) -> Data {
             Data(SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined().utf8)
         }

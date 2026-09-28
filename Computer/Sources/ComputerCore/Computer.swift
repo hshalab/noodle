@@ -3,17 +3,6 @@ import Foundation
 public enum ComputerKind: String, Codable, CaseIterable, Sendable {
     case macOS, linux, container, localMac
 
-    // TODO(0.15.0): Remove this decoder and testOmarchyRecordsLoadAsLinux. The Omarchy
-    // preset ran the same EFI machine as Linux, so its records load as Linux.
-    public init(from decoder: Decoder) throws {
-        let value = try decoder.singleValueContainer().decode(String.self)
-        guard let kind = ComputerKind(rawValue: value == "omarchy" ? "linux" : value) else {
-            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath,
-                debugDescription: "Unknown computer kind \(value)"))
-        }
-        self = kind
-    }
-
     public var title: String {
         switch self {
         case .macOS: "macOS"

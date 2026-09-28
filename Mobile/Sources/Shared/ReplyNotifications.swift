@@ -12,15 +12,6 @@ enum AppGroup {
         identifier.flatMap { FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: $0) }?
             .appendingPathComponent("Library/Application Support/Hubs", isDirectory: true)
     }
-
-    // TODO(NEXT_VERSION): remove, with its call in NoodleMobileApp.init and AppBundleTests.hubsJoinedEarlierMoveToTheGroup.
-    /// Brings Hubs joined before the extension into the group, unless the group already has some.
-    static func moveHubs(from old: URL, to new: URL) {
-        let files = FileManager.default
-        guard files.fileExists(atPath: old.path), !files.fileExists(atPath: new.path) else { return }
-        try? files.createDirectory(at: new.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? files.moveItem(at: old, to: new)
-    }
 }
 
 /// The conversation a notification is about, on the Hub whose topic it came under.

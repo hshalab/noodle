@@ -87,24 +87,6 @@ import UserNotifications
         #expect(logged.contains("12"))
     }
 
-    // TODO(NEXT_VERSION): remove with AppGroup.moveHubs and its call in NoodleMobileApp.init.
-    /// Hubs joined before the extension move to the shared group once, with everything in their folders.
-    @Test func hubsJoinedEarlierMoveToTheGroup() throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        let old = root.appendingPathComponent("Old/Hubs"), new = root.appendingPathComponent("Group/Hubs")
-        try FileManager.default.createDirectory(at: old.appendingPathComponent("hub"), withIntermediateDirectories: true)
-        try Data("key".utf8).write(to: old.appendingPathComponent("hub/device.key"))
-
-        AppGroup.moveHubs(from: old, to: new)
-        #expect(try Data(contentsOf: new.appendingPathComponent("hub/device.key")) == Data("key".utf8))
-        #expect(!FileManager.default.fileExists(atPath: old.path))
-
-        // Never over Hubs already in the group.
-        try FileManager.default.createDirectory(at: old.appendingPathComponent("other"), withIntermediateDirectories: true)
-        AppGroup.moveHubs(from: old, to: new)
-        #expect(!FileManager.default.fileExists(atPath: new.appendingPathComponent("other").path))
-    }
-
     /// iOS refuses the camera and the Hub's local address to an app that does not say why it needs them.
     @Test func permissionsSayWhyTheyAreNeeded() {
         for key in ["NSCameraUsageDescription", "NSLocalNetworkUsageDescription", "NSMicrophoneUsageDescription"] {

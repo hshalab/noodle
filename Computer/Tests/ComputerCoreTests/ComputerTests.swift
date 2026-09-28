@@ -81,16 +81,6 @@ final class ComputerTests: XCTestCase {
         }
     }
 
-    // TODO(0.15.0): Remove with the omarchy decoding in ComputerKind.init(from:).
-    func testOmarchyRecordsLoadAsLinux() throws {
-        let computer = Computer(name: "Existing Omarchy", kind: .linux)
-        var record = try JSONSerialization.jsonObject(with: JSONEncoder().encode(computer)) as! [String: Any]
-        record["kind"] = "omarchy"
-        let decoded = try JSONDecoder().decode(Computer.self,
-            from: JSONSerialization.data(withJSONObject: record))
-        XCTAssertEqual(decoded, computer)
-    }
-
     func testDesktopTemplateAndLegacyWorkspaceRemainDistinct() throws {
         let legacy = Computer(name: "Existing workspace", kind: .container)
         XCTAssertFalse(legacy.hasDesktop)

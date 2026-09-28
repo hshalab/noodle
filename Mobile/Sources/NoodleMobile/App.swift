@@ -12,9 +12,7 @@ struct NoodleMobileApp: App {
     @AppStorage(CurrentHub.togetherKey) private var together = false
 
     init() {
-        let own = URL.applicationSupportDirectory.appendingPathComponent("Hubs", isDirectory: true)
-        let shared = AppGroup.hubs ?? own
-        AppGroup.moveHubs(from: own, to: shared)
+        let shared = AppGroup.hubs ?? URL.applicationSupportDirectory.appendingPathComponent("Hubs", isDirectory: true)
         _hubs = State(initialValue: HubMemberships(directory: shared, deviceName: UIDevice.current.name))
     }
 
