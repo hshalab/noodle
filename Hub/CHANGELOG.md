@@ -37,6 +37,7 @@
 ### Security
 
 - A bot on the Hub reaches only its own noodlets and those shared with its conversations, once Noodle Applet on the Hub's Mac is updated. Before, it could list and use every noodlet on the Mac, other people's included.
+- Invitations show the Hub's key. Devices show the same key before they join, so the person joining can check it is this Hub.
 
 ## [0.4.1] - 2026-09-27
 

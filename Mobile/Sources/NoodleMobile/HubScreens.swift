@@ -338,6 +338,9 @@ struct ProfileView: View {
                 if let endpoint = pairing.endpoint {
                     LabeledContent("Address", value: endpoint.description)
                 }
+                if let key = pairing.hub?.key {
+                    LabeledContent("Hub Key", value: key.fingerprint)
+                }
                 if let fingerprint = pairing.keyFingerprint {
                     LabeledContent("Device Key", value: fingerprint)
                 }
@@ -401,6 +404,8 @@ struct PairDeviceView: View {
                             .background(.white, in: RoundedRectangle(cornerRadius: 12))
                             .accessibilityLabel("Invitation QR Code")
                     }
+                    Text("Hub key \(invitation.hubKey.fingerprint)")
+                        .font(.footnote.monospaced()).foregroundStyle(.secondary)
                     HStack {
                         Button("Copy Link") { UIPasteboard.general.url = url }
                         ShareLink("Share…", item: url)

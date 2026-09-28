@@ -212,6 +212,10 @@ private struct HubRow: View {
                      + (pairing.status.map { " · \($0.planName) plan" } ?? ""))
                     .font(.caption).foregroundStyle(.secondary)
                     .textSelection(.enabled)
+                if let key = pairing.hub?.key {
+                    Text("Hub key \(key.fingerprint)")
+                        .font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
+                }
                 HStack(alignment: .firstTextBaseline) {
                     details
                         .font(.caption).foregroundStyle(.secondary)
@@ -273,6 +277,10 @@ struct HubJoinSheet: View {
                 TextField("Invitation", text: $invitation, prompt: Text("noodle://join-hub?…"))
                     .textFieldStyle(.roundedBorder)
                     .onSubmit(join)
+                if let parsed = try? LinkInvitation(text: invitation) {
+                    Text("Hub key \(parsed.hubKey.fingerprint)")
+                        .font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
+                }
                 HStack {
                     Button("Paste", action: paste)
                     Button("Choose Image…", action: chooseImage)

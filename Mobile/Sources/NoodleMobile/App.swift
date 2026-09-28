@@ -30,7 +30,14 @@ struct NoodleMobileApp: App {
             }
             .environment(hubs)
             // An invitation link opened from Messages, Mail or a QR code in the Camera app.
-            .onOpenURL { url in Task { await hubs.join(url.absoluteString) } }
+            .onOpenURL { url in hubs.offer(url.absoluteString) }
+            .alert("Join this Hub?", isPresented: Binding(get: { hubs.offered != nil }, set: { if !$0 { hubs.declineOffered() } }),
+                   presenting: hubs.offered) { invitation in
+                Button("Cancel", role: .cancel) {}
+                Button("Join") { Task { await hubs.join(invitation.url().absoluteString) } }
+            } message: { invitation in
+                Text("Hub key \(invitation.hubKey.fingerprint)")
+            }
             .onChange(of: hubs.hubs.map(CurrentHub.name)) { before, after in
                 if let joined = CurrentHub.joined(before: before, after: after) { current = joined }
             }

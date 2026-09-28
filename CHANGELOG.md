@@ -37,6 +37,7 @@ All notable changes to Noodle are documented here, following
 ### Security
 
 - A Noodle Hub can no longer make this Mac open a page, app or link on its own. Noodle opens a sign-in page from a Hub only for a sign-in you started, and only if it is a web page.
+- Joining a Noodle Hub shows its key once the invitation is entered, and each joined Hub in Settings > Hub shows its key. Add a Device, when this Mac is your Hub, shows the same key, so you can check you are joining the right one.
 
 ## [0.29.1] - 2026-09-27
 

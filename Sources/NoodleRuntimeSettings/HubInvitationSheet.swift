@@ -80,6 +80,10 @@ public struct HubInvitationView: View {
                 .truncationMode(.middle)
                 .textSelection(.enabled)
                 .foregroundStyle(.secondary)
+            Text("Hub key \(invitation.hubKey.fingerprint)")
+                .font(.caption.monospaced())
+                .textSelection(.enabled)
+                .foregroundStyle(.secondary)
             HStack {
                 Button("Copy Link") {
                     NSPasteboard.general.clearContents()

@@ -6,6 +6,8 @@
 
 ### What to Test
 
+- Open an invitation link on the phone: it asks Join this Hub? with the Hub's key before joining. Compare the key with the one under the invitation on the Hub; Cancel joins nothing.
+- In a Hub's profile, Hub Key matches the key under its invitations.
 - Create or edit a bot: after choosing a harness, choose its model. With a plan that limits models, only those are offered.
 - In your profile, tap Pair Another Device: scan its QR code with another phone or iPad, or copy or share the link. Once it expires, tap New Invitation.
 - On the Hub, in Settings > Users, turn off Can Pair for your user: Pair Another Device no longer shows after you pull to refresh your profile.
@@ -19,6 +21,8 @@
 ### Security
 
 - A Noodle Hub can no longer show a sign-in page on its own. The app shows one only for a sign-in you started, and only if it is a web page.
+- An invitation link opened on the phone, from a web page, message or the Camera app, asks before joining and shows the Hub's key. Scanning or pasting an invitation in Noodle still joins straight away.
+- A Hub's profile and Pair Another Device show the Hub's key.
 
 ## [0.3.2] - 2026-09-27
 

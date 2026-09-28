@@ -174,6 +174,10 @@ plans lend. Its bots are restricted bots, with the same limits and the same gaps
   code first joins as the person it was made for, from anywhere the Hub can be
   reached. Send it only to that person, and remove a device you do not
   recognise in Users.
+- **Check the Hub key before joining.** Any web page or app can open an
+  invitation link, so Noodle asks before joining from one. The Hub key it shows
+  is the Hub's own and cannot be faked; the Hub's name can. Compare the key with
+  the one the Hub shows under its invitation.
 - **Pairing with your own Mac is like sitting at it.** When this Mac is your
   Hub, a device paired with it can use every bot, browser, computer and noodlet
   on it. Remove a lost device in **Settings → Hub**.

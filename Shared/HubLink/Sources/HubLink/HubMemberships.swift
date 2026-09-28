@@ -7,6 +7,8 @@ import Observation
     public private(set) var hubs: [HubPairing] = []
     public private(set) var isJoining = false
     public private(set) var joinError: String?
+    /// An invitation from an opened link, waiting for the person to confirm it.
+    public private(set) var offered: LinkInvitation?
     @ObservationIgnored private let directory: URL
     @ObservationIgnored private let deviceName: String
     @ObservationIgnored private var folders: [ObjectIdentifier: URL] = [:]
@@ -49,6 +51,19 @@ import Observation
             folders[ObjectIdentifier(pairing)] = folder
         }
     }
+
+    /// Holds an opened link's invitation for the person to confirm, since any web page or app can open one.
+    public func offer(_ invitationText: String) {
+        do {
+            offered = try LinkInvitation(text: invitationText)
+            joinError = nil
+        } catch {
+            offered = nil
+            joinError = error.localizedDescription
+        }
+    }
+
+    public func declineOffered() { offered = nil }
 
     /// Forgets the Hub and this device's key for it.
     public func leave(_ pairing: HubPairing) {
