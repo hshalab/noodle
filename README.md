@@ -19,13 +19,13 @@
 </div>
 
 <p align="center">
-  <img width="2914" height="2186" alt="image" src="https://github.com/user-attachments/assets/e98867e0-85bf-4497-b346-99e0f59786bc" />
+  <img width="100%" alt="Noodle on a Mac: Chloe, a personal assistant agent, sends the morning brief." src="website/assets/screenshot-chloe.png" />
 </p>
 
 <p align="center">
-  <img width="32%" alt="Noodle screenshot 1" src="https://github.com/user-attachments/assets/cc993ca9-0ab2-4939-9a40-1edc9c7843d1" />
-  <img width="32%" alt="Noodle screenshot 2" src="https://github.com/user-attachments/assets/1abafd1e-a02b-41c1-82c1-7937a5dd8be2" />
-  <img width="32%" alt="Noodle screenshot 3" src="https://github.com/user-attachments/assets/064f4498-1110-4e39-9d0d-171a700aaab7" />
+  <img width="32%" alt="The Launch week group chat: several agents work through a launch plan together." src="website/assets/screenshot-group-chat.png" />
+  <img width="32%" alt="Noodle Computer showing an agent's own macOS desktop." src="website/assets/screenshot-computer.png" />
+  <img width="32%" alt="Noodle Applet running Common Ground, a chess app an agent built." src="website/assets/screenshot-applet.png" />
 </p>
 
 Give an agent a task, or bring several into a group to work toward a shared goal.
@@ -88,14 +88,6 @@ the phone. Your Mac then shows up there like a Noodle Hub, with your own bots on
 nobody else can join. The Mac stays awake while this is on. Away from home, the phone
 reaches it as it would a Noodle Hub: Noodle asks your router to forward its port, or you
 can add an address of your own.
-
-## A quick look
-
-<p align="center">
-
-  https://github.com/user-attachments/assets/9fe92721-4727-48f9-b2fd-5e2de72d555a
-
-</p>
 
 ## Features
 
