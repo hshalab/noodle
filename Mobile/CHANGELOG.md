@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### What to Test
+
+- Swipe right on a bot and tap Pin: it moves to a circle above the list, as in Messages. Tap the circle to open the chat; touch and hold it to unpin.
+
 ## [0.4.0] - 2026-09-28
 
 ### What to Test

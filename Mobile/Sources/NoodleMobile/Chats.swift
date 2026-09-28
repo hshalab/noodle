@@ -468,21 +468,38 @@ struct AgentsView: View {
     var body: some View {
         let rows = rows
         NavigationStack(path: $path) {
-            List(rows) { row in
-                NavigationLink(value: row.id) {
-                    AgentRow(agent: row.agent, latest: row.chats.latestMessage(of: row.agent), pinned: row.chats.isPinned(row.agent),
-                             unread: row.chats.isUnread(row.agent), hub: chats.count > 1 ? row.chats.pairing.hubName : nil)
-                }
-                // As in Messages: dividers between rows, none above the first.
-                .listRowSeparator(row.id == rows.first?.id ? .hidden : .visible, edges: .top)
-                // Room for the unread dot, as far from the edge as from the picture.
-                .listRowInsets(.leading, AgentRow.dotGap * 2 + AgentRow.dotSize)
-                .swipeActions(edge: .leading) {
-                    let pinned = row.chats.isPinned(row.agent)
-                    Button { row.chats.togglePin(row.agent) } label: {
-                        Label(pinned ? "Unpin" : "Pin", systemImage: pinned ? "pin.slash.fill" : "pin.fill")
+            // As in Messages: pinned bots in circles above the rest.
+            let pinned = rows.filter { $0.chats.isPinned($0.agent) }
+            let others = rows.filter { !$0.chats.isPinned($0.agent) }
+            List {
+                if !pinned.isEmpty {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 3), spacing: 16) {
+                        ForEach(pinned) { row in
+                            Button { path = [row.id] } label: {
+                                PinnedAgent(agent: row.agent, unread: row.chats.isUnread(row.agent))
+                            }
+                            .buttonStyle(.plain)
+                            .contextMenu {
+                                Button { row.chats.togglePin(row.agent) } label: { Label("Unpin", systemImage: "pin.slash.fill") }
+                            }
+                        }
                     }
-                    .tint(.orange)
+                    .padding(.vertical, 8)
+                    .listRowSeparator(.hidden)
+                }
+                ForEach(others) { row in
+                    NavigationLink(value: row.id) {
+                        AgentRow(agent: row.agent, latest: row.chats.latestMessage(of: row.agent),
+                                 unread: row.chats.isUnread(row.agent), hub: chats.count > 1 ? row.chats.pairing.hubName : nil)
+                    }
+                    // As in Messages: dividers between rows, none above the first.
+                    .listRowSeparator(row.id == others.first?.id ? .hidden : .visible, edges: .top)
+                    // Room for the unread dot, as far from the edge as from the picture.
+                    .listRowInsets(.leading, AgentRow.dotGap * 2 + AgentRow.dotSize)
+                    .swipeActions(edge: .leading) {
+                        Button { row.chats.togglePin(row.agent) } label: { Label("Pin", systemImage: "pin.fill") }
+                            .tint(.orange)
+                    }
                 }
             }
             .listStyle(.plain)
@@ -596,7 +613,6 @@ struct MoreSheet: View {
 private struct AgentRow: View {
     let agent: LinkBot
     let latest: LinkMessage?
-    let pinned: Bool
     let unread: Bool
     /// The bot's Hub, when several are shown together.
     var hub: String?
@@ -619,9 +635,6 @@ private struct AgentRow: View {
                         Text(hub).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     }
                     Spacer()
-                    if pinned {
-                        Image(systemName: "pin.fill").font(.caption).foregroundStyle(.orange).accessibilityLabel("Pinned")
-                    }
                     if let latest {
                         Text(latest.createdAt, format: .relative(presentation: .numeric, unitsStyle: .abbreviated))
                             .font(.subheadline).foregroundStyle(.secondary)
@@ -633,6 +646,28 @@ private struct AgentRow: View {
             }
         }
         .padding(.vertical, 4)
+    }
+}
+
+/// A pinned bot: a large picture with its name beneath, as Messages shows pinned conversations.
+private struct PinnedAgent: View {
+    let agent: LinkBot
+    let unread: Bool
+
+    var body: some View {
+        VStack(spacing: 6) {
+            AgentAvatar(draft: agent.draft, size: 76, phase: agent.phase)
+                .overlay(alignment: .topLeading) {
+                    if unread {
+                        Circle().fill(.tint).frame(width: 14, height: 14)
+                            .overlay { Circle().strokeBorder(Color(.systemBackground), lineWidth: 2) }
+                            .accessibilityLabel("Unread")
+                    }
+                }
+            Text(agent.draft.name).font(.caption).lineLimit(1)
+        }
+        .frame(maxWidth: .infinity)
+        .contentShape(Rectangle())
     }
 }
 
