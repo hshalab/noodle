@@ -17,6 +17,7 @@ All notable changes to Noodle are documented here, following
 ### Fixed
 
 - Noodle Hub is tried again for a few seconds when it is starting up or the network is settling, instead of failing at once.
+- A phone paired with this Mac is offered the same harnesses, profiles and models as the Mac's bot editor. It was offered only the bot's current harness and model.
 
 ## [0.31.0] - 2026-09-28
 

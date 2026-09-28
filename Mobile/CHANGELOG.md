@@ -7,6 +7,7 @@
 - Pull down on the bots list and type in Search: only bots whose name, description or conversation match are listed, in one list without the pinned circles. Accents and capitals do not matter.
 - Touch and hold a bot in the list: a menu offers Pin and Edit Bot…. On a pinned circle it offers Unpin and Edit Bot….
 - In a conversation, tap the … button at the top right: New Session asks first, then starts the bot with a fresh context. When the bot has failed, Kick is there too and starts it again, asking first when the Mac or Hub would. Try it with a bot on your Mac and one on a Noodle Hub.
+- With a phone paired to a Mac, create or edit a bot: Harness lists the harnesses installed on the Mac and their profiles, by name, and Model lists all of the chosen harness's models. Needs the Mac on the next Noodle update.
 
 ### Added
 
@@ -17,6 +18,7 @@
 ### Fixed
 
 - Noodle Hub is tried again for a few seconds when it is starting up or the network is settling, instead of failing at once.
+- A bot's harness shows its name rather than its internal identifier when the Hub no longer lends it under the same profile.
 
 ## [0.5.0] - 2026-09-28
 

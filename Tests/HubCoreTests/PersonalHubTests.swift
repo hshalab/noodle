@@ -15,17 +15,35 @@ import XCTest
         let device: HubPairing
     }
 
-    private func fixture(bots names: [String], runtime: AgentRuntimeCoordinator? = nil) async throws -> (Fixture, [AgentRecord]) {
+    /// Only the harnesses in `installed` are on this Mac, whatever the machine running the test has.
+    private func fixture(bots names: [String], runtime: AgentRuntimeCoordinator? = nil, installed: [String] = [],
+                         models: [HarnessProvider: [HarnessModel]] = [:],
+                         profiles named: [(HarnessProvider, String)] = []) async throws -> (Fixture, [AgentRecord]) {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("noodle-personal-hub-\(UUID())")
         addTeardownBlock { try? FileManager.default.removeItem(at: root) }
         let repository = WorkspaceRepository(rootURL: root.appendingPathComponent("Noodle"))
         try repository.prepare()
         // Bots made in Noodle before it served anyone.
         let made = try names.map { try repository.createAgent(named: $0).agent }
-        let runtime = runtime ?? AgentRuntimeCoordinator(discovery: HarnessDiscovery(managedHarnesses: repository.managedHarnesses))
+        let home = root.appendingPathComponent("Home")
+        for path in installed {
+            let url = home.appendingPathComponent(path)
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            FileManager.default.createFile(atPath: url.path, contents: Data("#!/bin/sh\n".utf8), attributes: [.posixPermissions: 0o755])
+        }
+        let runtime = runtime ?? {
+            let runtime = AgentRuntimeCoordinator(discovery: HarnessDiscovery(homeDirectory: home, applicationsDirectory: home,
+                executableSearchDirectories: [], applicationBundleURL: home, managedHarnesses: repository.managedHarnesses))
+            // Scripted, so no harness is ever run to ask for its models.
+            runtime.scriptedModels = models
+            runtime.refreshCapabilities()
+            return runtime
+        }()
+        let profiles = HarnessProfilesController(store: repository.harnessProfiles)
+        for (provider, name) in named { _ = try profiles.create(provider: provider, named: name) }
         let personal = PersonalHub(name: "Studio", directory: root.appendingPathComponent("Remote"), repository: repository,
                                    runtime: runtime, applets: AppletController(repository: repository),
-                                   profiles: HarnessProfilesController(store: repository.harnessProfiles), port: 0,
+                                   profiles: profiles, port: 0,
                                    localEndpoints: { [LinkEndpoint(host: "::1", port: $0)] })
         await personal.start()
         addTeardownBlock { await MainActor.run { personal.stop() } }
@@ -49,6 +67,23 @@ import XCTest
         let later = try f.repository.createAgent(named: "Cass").agent
         guard case .bots(let now) = try await f.device.request(.bots) else { return XCTFail("no bots") }
         XCTAssertTrue(now.contains { $0.id == later.id })
+    }
+
+    /// The owner's phone is offered what the Mac's bot editor offers: the installed harnesses, each
+    /// with its profiles, and all of their models.
+    func testAPhoneIsOfferedTheMacsHarnessesProfilesAndModels() async throws {
+        let codex = ["gpt-5.5", "gpt-5.5-mini", "gpt-5.5-codex"].map {
+            HarnessModel(id: $0, displayName: $0.uppercased(), description: "", supportedEfforts: [], defaultEffort: "", isDefault: false)
+        }
+        let (f, _) = try await fixture(bots: [], installed: [".codex/packages/standalone/current/bin/codex", ".local/bin/fx"],
+                                       models: [.codex: codex], profiles: [(.fx, "Work"), (.openCode, "Side")])
+        guard case .status(let status) = try await f.device.request(.status) else { return XCTFail("no status") }
+        XCTAssertEqual(status.harnesses.map { [$0.providerName, $0.profileName ?? ""] },
+                       [["Codex", ""], ["FX", ""], ["FX", "Work"]])
+        XCTAssertEqual(status.harnesses.map(\.provider), ["codex", "fx", "fx"])
+        XCTAssertFalse(status.harnesses.contains(where: \.restrictsModels))
+        let lent = try XCTUnwrap(status.harnesses.first { $0.provider == HarnessProvider.codex.rawValue })
+        XCTAssertEqual(lent.models, codex.map { LinkModel(id: $0.id, name: $0.displayName) })
     }
 
     /// A phone joining later reads the conversations as they already are.
