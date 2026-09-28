@@ -5,7 +5,7 @@ import NoodleCore
 @testable import NoodleAppleRuntime
 
 final class AppleCLISessionTests: XCTestCase {
-    func testThreeToolsRemainAvailableAcrossResumedConversationAndImageTurns() async throws {
+    func testToolsRemainAvailableAcrossResumedSessionAndImageTurns() async throws {
         guard #available(macOS 27, *) else { return }
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("apple-cli-session-\(UUID())")
         defer { try? FileManager.default.removeItem(at: root) }
@@ -22,22 +22,20 @@ final class AppleCLISessionTests: XCTestCase {
         for (index, prompt) in prompts.enumerated() {
             let session = AppleTurnProfile.session(model: CLIModel(state: state),
                 tools: AppleModel.workspaceTools(context: context, onEvent: { await activity.append($0) }, onActivity: {}),
-                instructions: MessengerDocumentation.appleConversationInstructions, history: history)
+                instructions: "Use your tools.", history: history)
             _ = try await session.respond(to: Prompt {
                 prompt
                 if index == 2 { Attachment(imageURL: image).label("square.png") }
             })
-            let saved = AppleConversationSession(transcript: AppleConversationSession.persistable(session.transcript),
-                messageIDs: [UUID()], reply: "done")
-            try saved.save(in: workspace, conversationID: bot.conversation.id)
-            let restored = try JSONDecoder().decode(AppleConversationSession.self,
-                from: Data(contentsOf: AppleConversationSession.file(in: workspace, conversationID: bot.conversation.id)))
+            let file = AppleConversationSession.file(in: workspace)
+            try AppleConversationSession(transcript: AppleConversationSession.persistable(session.transcript)).save(to: file)
+            let restored = try XCTUnwrap(AppleConversationSession.load(from: file))
             history = restored.transcript.filter { if case .instructions = $0 { return false }; return true }
         }
         let requests = await state.requests
         XCTAssertEqual(requests.count, 6, "One tool call and one answer per turn; no classifier")
         for request in requests {
-            XCTAssertEqual(Set(request.enabledToolDefinitions.map(\.name)), ["bash", "read", "write"])
+            XCTAssertEqual(Set(request.enabledToolDefinitions.map(\.name)), ["bash", "read", "write", "edit"])
             XCTAssertEqual(request.generationOptions.toolCallingMode, .allowed)
         }
         XCTAssertTrue(requests[2].transcript.map(\.description).joined().contains(prompts[0]))

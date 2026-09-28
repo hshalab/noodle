@@ -200,14 +200,6 @@ final class AppleLiveTests: XCTestCase {
             XCTAssertFalse(replies.isEmpty)
         }
     }
-    func testSandboxedCompletedReplyDoesNotRepeatItsCommand() throws {
-        try exercise(tasks: [["Use bash to run: printf repeated > should-not-run.txt"]],
-                     completedReply: "The operation finished before the interruption.") { workspace, replies in
-            XCTAssertEqual(replies[0].body, "The operation finished before the interruption.")
-            XCTAssertFalse(FileManager.default.fileExists(atPath: workspace.appendingPathComponent("should-not-run.txt").path))
-        }
-    }
-
     func testSandboxedAgentReadsWritesExecutesAndReplies() throws {
         try exercise(tasks: [
             ["Use write to create result.txt with this content:\na small apple"],
@@ -267,8 +259,6 @@ final class AppleLiveTests: XCTestCase {
             XCTAssertTrue(replies[1].body.lowercased().contains("avocado"), "Lost remembered word: \(replies[1].body)")
             XCTAssertTrue(replies[3].body.lowercased().contains("marigold"), "Ignored the update: \(replies[3].body)")
             XCTAssertFalse(replies[3].body.lowercased().contains("avocado"), "Repeated the old word: \(replies[3].body)")
-            let sessions = try FileManager.default.contentsOfDirectory(atPath: workspace.appendingPathComponent(".noodle/apple/conversations").path)
-            XCTAssertEqual(sessions.count, 1)
         }
     }
 
@@ -290,7 +280,7 @@ final class AppleLiveTests: XCTestCase {
         }
     }
 
-    private func exercise(named name: String = "Apple test", history: [(Bool, String)] = [], tasks: [[String]], completedReply: String? = nil, modelDirectory: URL? = nil, image: URL? = nil, nativeHistory: Bool = false,
+    private func exercise(named name: String = "Apple test", history: [(Bool, String)] = [], tasks: [[String]], modelDirectory: URL? = nil, image: URL? = nil, nativeHistory: Bool = false,
                           promptTimeout: TimeInterval = 180, assignedComputer: UUID? = nil,
                           configure: (URL) throws -> Void = { _ in },
                           verifyActivity: (Int, [[String: Any]]) throws -> Void = { _, _ in },
@@ -331,8 +321,8 @@ final class AppleLiveTests: XCTestCase {
                 isAssistant ? .response(.init(assetIDs: [], segments: [.text(.init(content: text))]))
                     : .prompt(.init(segments: [.text(.init(content: text))]))
             }
-            try AppleConversationSession(transcript: Transcript(entries: entries), messageIDs: [], reply: "",
-                modelIdentifier: local?.id ?? "default").save(in: workspace, conversationID: bot.conversation.id)
+            try AppleConversationSession(transcript: Transcript(entries: entries), modelIdentifier: local?.id ?? "default")
+                .save(to: AppleConversationSession.file(in: workspace))
         }
         try FileManager.default.createDirectory(at: workspace.appendingPathComponent(".noodle/tmp"), withIntermediateDirectories: true)
         try Data("a crisp pear".utf8).write(to: workspace.appendingPathComponent("seed.txt"))
@@ -382,18 +372,9 @@ final class AppleLiveTests: XCTestCase {
         let session = try XCTUnwrap(request(2, "session/new", ["cwd": workspace.path, "mcpServers": []])["sessionId"] as? String)
         _ = try request(3, "session/set_model", ["sessionId": session, "modelId": local?.id ?? "default"])
         for (index, messages) in tasks.enumerated() {
-            var messageIDs: Set<UUID> = []
             for body in messages {
                 let attachmentIDs = try image.map { [try repository.importAttachment(from: $0, into: bot.conversation.id, mediaType: "image/png").id] } ?? []
-                messageIDs.insert(try repository.sendUserMessage(conversationID: bot.conversation.id, body: body, attachmentIDs: attachmentIDs).id)
-            }
-            if #available(macOS 26, *), let completedReply {
-                // Simulate a helper stopping after generation was saved but
-                // before Messenger delivery. The command must not run on retry.
-                let transcript = Transcript(entries: [Transcript.Entry.response(.init(assetIDs: [],
-                    segments: [.text(.init(content: completedReply))]))])
-                try AppleConversationSession(transcript: transcript, messageIDs: messageIDs, reply: completedReply)
-                    .save(in: workspace, conversationID: bot.conversation.id)
+                _ = try repository.sendUserMessage(conversationID: bot.conversation.id, body: body, attachmentIDs: attachmentIDs)
             }
             let result = try request(4 + index, "session/prompt", ["sessionId": session,
                 "prompt": [["type": "text", "text": AgentWakeReason.inboxChanged.eventText]]])
@@ -403,15 +384,9 @@ final class AppleLiveTests: XCTestCase {
                 print("Synthetic Apple transcript: \(trace)")
             }
             XCTAssertEqual(result["stopReason"] as? String, "end_turn")
-            if #available(macOS 26, *), completedReply == nil {
-                let saved = try JSONDecoder().decode(AppleConversationSession.self,
-                    from: Data(contentsOf: AppleConversationSession.file(in: workspace, conversationID: bot.conversation.id)))
-                XCTAssertEqual(saved.messageIDs, messageIDs)
-                if index > 0 {
-                    let transcript = saved.transcript.map(\.description).joined(separator: "\n")
-                    XCTAssertTrue(transcript.contains(tasks[index - 1].last!) || transcript.contains("Summary of the conversation so far:"),
-                                  "The follow-up must resume or summarize the saved session")
-                }
+            if #available(macOS 26, *) {
+                let saved = try XCTUnwrap(AppleConversationSession.load(from: AppleConversationSession.file(in: workspace)))
+                XCTAssertFalse(saved.transcript.isEmpty, "Every wake resumes the bot's one saved session")
             }
             print("Synthetic Apple completed turn \(index + 1)/\(tasks.count)")
             fflush(stdout)

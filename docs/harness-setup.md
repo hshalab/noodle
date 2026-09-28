@@ -164,8 +164,9 @@ earlier details, or fail tool tasks. Apple chooses and updates the model; on
 macOS 27 the model picker shows the installed model and what it can do.
 Private Cloud Compute is not available in Noodle.
 
-Apple models that support images receive image attachments, up to four images
-per message, 20 MiB each and 40 MiB in total. Local models accept text only.
+Apple models that support images can look at image attachments and other
+images in the bot's workspace, up to 20 MiB each. Local models work with text
+only.
 
 ### Import a local model
 

@@ -30,7 +30,7 @@ final class AppleHistoryProfileTests: XCTestCase {
         } catch is AppleContextLimit {}
         let calls = await state.calls
         XCTAssertEqual(calls, 1)
-        let receipt = AppleConversationSession(transcript: session.transcript, messageIDs: [], reply: "")
+        let receipt = AppleConversationSession(transcript: session.transcript)
         let restored = try JSONDecoder().decode(AppleConversationSession.self, from: JSONEncoder().encode(receipt))
         XCTAssertTrue(restored.transcript.contains { if case .toolCalls = $0 { return true }; return false })
         XCTAssertTrue(restored.transcript.contains { if case .toolOutput(let output) = $0 {
@@ -67,10 +67,8 @@ final class AppleHistoryProfileTests: XCTestCase {
         XCTAssertTrue(answer.transcript.map(\.description).joined(separator: "\n").contains("Verify output.txt now."))
         XCTAssertEqual(session.transcript.filter { if case .prompt = $0 { return true }; return false }.count, 1)
 
-        let receipt = AppleConversationSession(transcript: session.transcript, messageIDs: [UUID()], reply: "done", modelIdentifier: "default")
+        let receipt = AppleConversationSession(transcript: session.transcript, modelIdentifier: "default")
         let restored = try JSONDecoder().decode(AppleConversationSession.self, from: JSONEncoder().encode(receipt))
-        XCTAssertEqual(restored.messageIDs, receipt.messageIDs)
-        XCTAssertEqual(restored.reply, receipt.reply)
         let next = AppleTurnProfile.session(model: model(state), instructions: "Updated bot instructions.",
             history: restored.transcript.filter { if case .instructions = $0 { return false }; return true })
         _ = try await next.respond(to: "Continue verifying.")

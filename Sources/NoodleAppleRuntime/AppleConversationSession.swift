@@ -2,22 +2,15 @@ import Foundation
 import FoundationModels
 import NoodleCore
 
-/// Only actual Foundation Models turns are resumed. Visible chat can include
-/// other harnesses, grouped deliveries and failed replies; it is a source for
-/// history retrieval, not a native model transcript.
+/// The bot's one native session, resumed on every wake like a Codex thread.
+/// Visible chat lives in Messenger; this is the model's own transcript.
 @available(macOS 26, *)
 struct AppleConversationSession: Codable {
     let transcript: Transcript
-    let messageIDs: Set<UUID>
-    let reply: String
     var modelIdentifier: String? = nil
 
-    var hasCompletedReply: Bool {
-        !messageIDs.isEmpty && !reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    static func file(in workspace: URL, conversationID: UUID) -> URL {
-        workspace.appendingPathComponent(".noodle/apple/conversations/\(conversationID.uuidString.lowercased()).json")
+    static func file(in workspace: URL) -> URL {
+        workspace.appendingPathComponent(".noodle/apple/transcript.json")
     }
 
     static func load(from file: URL) throws -> Self? {
@@ -25,18 +18,13 @@ struct AppleConversationSession: Codable {
         return try JSONDecoder().decode(Self.self, from: Data(contentsOf: file))
     }
 
-    func save(in workspace: URL, conversationID: UUID) throws {
-        try save(to: Self.file(in: workspace, conversationID: conversationID))
-    }
-
     func save(to file: URL) throws {
         try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
         try AtomicFile.write(JSONEncoder().encode(self), to: file)
     }
 
-    /// Original images stay in Noodle's attachment store. Keep a textual
-    /// reference in the resumable transcript rather than serializing pixels or
-    /// retaining process-local image objects in the completion receipt.
+    /// Images stay in their files. Keep a textual reference in the resumable
+    /// transcript rather than serializing pixels or process-local image objects.
     static func persistable(_ transcript: Transcript) -> Transcript {
         #if canImport(FoundationModels, _version: 2)
         if #available(macOS 27, *) {
@@ -44,7 +32,7 @@ struct AppleConversationSession: Codable {
                 guard case .prompt(var prompt) = entry else { return entry }
                 prompt.segments = prompt.segments.map { segment in
                     guard case .attachment(let attachment) = segment else { return segment }
-                    return .text(.init(id: attachment.id, content: "[Image attachment: \(attachment.label ?? "image"). The original message retains the image; these saved bytes contain no image data.]"))
+                    return .text(.init(id: attachment.id, content: "[Image attachment: \(attachment.label ?? "image"). The original file retains the image; these saved bytes contain no image data.]"))
                 }
                 return .prompt(prompt)
             })

@@ -50,7 +50,7 @@ enum AppleToolActivity {
             let text = error is CancellationError ? "Cancelled." : "Tool failed: \(error.localizedDescription)"
             await onEvent(.toolFinished(id: id, name: name, input: input, output: text, failed: true,
                 seconds: ProcessInfo.processInfo.systemUptime - started))
-            if error is CancellationError || error is AppleToolLimit { throw error }
+            if error is CancellationError { throw error }
             return text
         }
     }

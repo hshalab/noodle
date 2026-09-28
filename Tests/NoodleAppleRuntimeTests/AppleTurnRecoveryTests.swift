@@ -58,14 +58,13 @@ final class AppleTurnRecoveryTests: XCTestCase {
         let saved = AppleConversationSession(transcript: Transcript(entries: [
             .prompt(.init(segments: [.text(.init(content: "Continue the task"))])),
             .response(.init(metadata: ["incompleteOutput": true], segments: []))
-        ]), messageIDs: [], reply: "", modelIdentifier: "local")
-        let control = AppleTurnControl(resuming: saved)
+        ]), modelIdentifier: "local")
+        let control = AppleTurnControl(resuming: true)
         let prepared = try await control.prepare(request(Array(saved.transcript)), canDisableReasoning: true)
         XCTAssertEqual(prepared.contextOptions.reasoningLevel, .custom("no_think"))
         XCTAssertNil(prepared.generationOptions.maximumResponseTokens, "Recovery retains the full requested answer allowance")
 
-        let completed = AppleConversationSession(transcript: saved.transcript, messageIDs: [UUID()], reply: "Done")
-        let fresh = AppleTurnControl(resuming: completed)
+        let fresh = AppleTurnControl()
         let ordinary = try await fresh.prepare(request(Array(saved.transcript)), canDisableReasoning: true)
         XCTAssertNil(ordinary.contextOptions.reasoningLevel)
     }
@@ -252,14 +251,13 @@ final class AppleTurnRecoveryTests: XCTestCase {
         let state = RecoveryFixture([.call("once"), .failure])
         let control = AppleTurnControl()
         let current = session(state, control: control) { transcript in
-            try AppleConversationSession(transcript: transcript, messageIDs: [], reply: "").save(to: file)
+            try AppleConversationSession(transcript: transcript).save(to: file)
         }
         do {
             _ = try await AppleResponseRecovery.respond(session: current, prompt: Prompt("Operate once."), responseTokens: 256, control: control)
             XCTFail("Expected model failure")
         } catch {}
         let saved = try XCTUnwrap(AppleConversationSession.load(from: file))
-        XCTAssertFalse(saved.hasCompletedReply)
         XCTAssertTrue(saved.transcript.contains { if case .toolOutput = $0 { return true }; return false })
     }
 
@@ -282,15 +280,6 @@ final class AppleTurnRecoveryTests: XCTestCase {
             (["a", "b", "a", "b", "a", "b"], 3), (["a", "a", "a", "b"], 1),
             (["a", "b", "c", "a", "b", "c", "a", "b", "c"], 3)]
         for (values, expected) in corpus { XCTAssertEqual(AppleTurnControl.repeatedSuffix(values), expected, "\(values)") }
-    }
-
-    func testOldEmptyCompletionReceiptIsNotReusable() throws {
-        guard #available(macOS 26, *) else { return }
-        for reply in ["", " \n"] {
-            let saved = AppleConversationSession(transcript: Transcript(entries: []), messageIDs: [UUID()], reply: reply)
-            XCTAssertFalse(saved.hasCompletedReply)
-        }
-        XCTAssertTrue(AppleConversationSession(transcript: Transcript(entries: []), messageIDs: [UUID()], reply: "Done").hasCompletedReply)
     }
 
     func testEarlierTruncationDoesNotInvalidateFinalAnswer() {
@@ -335,6 +324,18 @@ final class AppleTurnRecoveryTests: XCTestCase {
                 }
             }
         }
+    }
+
+    func testUsedUpToolBudgetEndsInAnAnswerInsteadOfAFailure() async throws {
+        guard #available(macOS 27, *) else { return }
+        let control = AppleTurnControl()
+        var history: [Transcript.Entry] = [.instructions(.init(segments: [.text(.init(content: "Instructions"))], toolDefinitions: [])),
+            .prompt(.init(segments: [.text(.init(content: "Operate"))]))]
+        _ = try await control.prepare(request(history), canDisableReasoning: false)
+        for index in 0..<32 { history += try exchange("call-\(index)", arguments: #"{"value":"\#(index)"}"#, result: "Step \(index)") }
+        let prepared = try await control.prepare(request(history), canDisableReasoning: false)
+        XCTAssertEqual(prepared.generationOptions.toolCallingMode, .disallowed)
+        XCTAssertTrue(prepared.transcript.map(\.description).joined().contains("No more tools are available"))
     }
 
     func testCheckpointFailureStopsBeforeModelOrToolExecution() async throws {

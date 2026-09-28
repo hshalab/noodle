@@ -49,13 +49,17 @@ extension AppleTurnControl {
         }
         let repeats = Self.repeatedSuffix(recentExchanges)
         var notice: String?
-        if generations == maximumGenerations || repeats >= 4 {
+        // A used-up budget ends in an answer from the results so far, never
+        // in a failed turn that discards them.
+        if generations == maximumGenerations || repeats >= 4 || toolCalls >= maximumToolCalls {
             finishing = true
             request.enabledToolDefinitions = []
             request.generationOptions.toolCallingMode = .disallowed
             notice = repeats >= 4
                 ? "Repeated tool requests are returning the same results. No more tools are available this turn. Give a concise account of observed results and the unresolved blocker. Do not claim unfinished work is complete."
-                : "This is the last generation available this turn. No more tools are available. Report verified results and clearly identify any unfinished work."
+                : generations == maximumGenerations
+                ? "This is the last generation available this turn. No more tools are available. Report verified results and clearly identify any unfinished work."
+                : "This turn's tool calls are used up. No more tools are available. Report verified results and clearly identify any unfinished work."
         } else if repeats >= 3 {
             notice = "The same tool requests and results are repeating. Use a materially different approach or explain the blocker. Do not repeat the same completed actions."
         } else if generations >= max(2, maximumGenerations * 9 / 10) {
@@ -92,6 +96,7 @@ extension AppleTurnControl {
             guard case .toolOutput(let output) = entry, !seenCalls.contains(output.id),
                   let call = byID[output.id], call.toolName == output.toolName else { continue }
             seenCalls.insert(output.id)
+            toolCalls += 1
             let arguments = call.arguments.jsonString
             let canonical = (try? JSONSerialization.jsonObject(with: Data(arguments.utf8)))
                 .flatMap { try? JSONSerialization.data(withJSONObject: $0, options: [.sortedKeys, .fragmentsAllowed]) }

@@ -125,8 +125,8 @@ import NoodleAppleRuntime
                 guard let id, let prompt = params["prompt"] as? [[String: Any]],
                       prompt.count == 1, prompt[0]["type"] as? String == "text",
                       let wake = prompt[0]["text"] as? String,
-                      AgentWakeReason.allCases.contains(where: { $0.eventText == wake }) else {
-                    throw HarnessSetupError("Expected a Noodle wake event.")
+                      !wake.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    throw HarnessSetupError("Expected a text prompt.")
                 }
                 let session = sessionID!, writer = output, workspace = workspace, model = modelIdentifier
                 let token = UUID()
