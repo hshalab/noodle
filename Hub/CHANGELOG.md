@@ -15,6 +15,7 @@
 ### Fixed
 
 - Pair… starts from the first step again after the window was closed, instead of reopening on the last one.
+- In Settings > Bots, a bot's status now lines up with Show Folder and Activity.
 
 ## [0.5.0] - 2026-09-28
 

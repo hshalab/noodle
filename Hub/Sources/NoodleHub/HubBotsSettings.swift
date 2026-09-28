@@ -41,17 +41,20 @@ struct HubBotsSettingsView: View {
                     .font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 8)
-            SettingsStatusLabel(title: snapshot.phase.title, systemImage: "circle.fill", color: snapshot.phase.color)
-                .help(snapshot.detail)
-            Button("Show Folder") {
-                NSWorkspace.shared.activateFileViewerSelecting([host.repository.directory(for: agent)])
+            // The status is caption-sized, so it sits on the links' baseline rather than centred on them.
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                SettingsStatusLabel(title: snapshot.phase.title, systemImage: "circle.fill", color: snapshot.phase.color)
+                    .help(snapshot.detail)
+                Button("Show Folder") {
+                    NSWorkspace.shared.activateFileViewerSelecting([host.repository.directory(for: agent)])
+                }
+                .buttonStyle(.link)
+                Button("Activity") {
+                    NSApp.activate(ignoringOtherApps: true)
+                    host.activityWindows.show(agent: agent, log: host.runtime.activity.log(for: agent.id))
+                }
+                .buttonStyle(.link)
             }
-            .buttonStyle(.link)
-            Button("Activity") {
-                NSApp.activate(ignoringOtherApps: true)
-                host.activityWindows.show(agent: agent, log: host.runtime.activity.log(for: agent.id))
-            }
-            .buttonStyle(.link)
         }
     }
 }
