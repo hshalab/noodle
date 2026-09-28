@@ -145,6 +145,31 @@ final class LinkProtocolTests: XCTestCase {
         XCTAssertEqual(try LinkIdentity.loadOrCreate(at: url).publicKey, first.publicKey)
         XCTAssertEqual(try FileManager.default.attributesOfItem(atPath: url.path)[.posixPermissions] as? Int, 0o600)
     }
+
+    /// As on the Mac, a bot keeps its effort only while its model offers it, and otherwise takes the model's default.
+    func testChangingTheModelResetsAnEffortTheModelDoesNotOffer() {
+        let efforts = ["low", "high", "xhigh"].map { LinkEffort(id: $0, name: $0) }
+        let codex = LinkHarness(provider: "codex", providerName: "Codex", profileName: nil, models: [
+            LinkModel(id: "big", name: "Big", efforts: efforts, defaultEffort: "high"),
+            LinkModel(id: "small", name: "Small", efforts: Array(efforts.prefix(2)), defaultEffort: "low"),
+            LinkModel(id: "plain", name: "Plain"),
+        ])
+        var draft = LinkBotDraft(name: "Alfred", provider: "codex", model: "big", reasoningEffort: "high")
+        draft.setModel("small", on: codex)
+        XCTAssertEqual(draft.model, "small")
+        XCTAssertEqual(draft.reasoningEffort, "high", "offered by both models")
+        draft.reasoningEffort = nil
+        draft.setModel("big", on: codex)
+        XCTAssertNil(draft.reasoningEffort, "Default stays Default")
+        draft.reasoningEffort = "xhigh"
+        draft.setModel("small", on: codex)
+        XCTAssertEqual(draft.reasoningEffort, "low")
+        draft.setModel("plain", on: codex)
+        XCTAssertNil(draft.reasoningEffort)
+        draft.reasoningEffort = "xhigh"
+        draft.setModel(nil, on: codex)
+        XCTAssertNil(draft.reasoningEffort, "the harness default model")
+    }
 }
 
 /// A picture's size travels with it, so devices hold its place before the file arrives.

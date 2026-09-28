@@ -8,6 +8,7 @@
 - Touch and hold a bot in the list: a menu offers Pin and Edit Bot…. On a pinned circle it offers Unpin and Edit Bot….
 - In a conversation, tap the … button at the top right: New Session asks first, then starts the bot with a fresh context. When the bot has failed, Kick is there too and starts it again, asking first when the Mac or Hub would. Try it with a bot on your Mac and one on a Noodle Hub.
 - With a phone paired to a Mac, create or edit a bot: Harness lists the harnesses installed on the Mac and their profiles, by name, and Model lists all of the chosen harness's models. Needs the Mac on the next Noodle update.
+- Create or edit a bot and choose a model with reasoning efforts, such as a Codex model: Effort appears under Model and offers Default and the model's efforts. Switching to a model without the chosen effort resets it. Needs the Mac or Hub on the next update.
 - Paired with a Mac serving your devices (Settings > Hub in Noodle): create a computer and a browser, add a tool and sign it in, then give them to a bot. They appear in Noodle on the Mac too, and the bot can use them.
 
 ### Added
@@ -16,6 +17,7 @@
 - Touching and holding a bot shows a menu with Pin or Unpin and Edit Bot….
 - Kick and New Session, in a conversation's … menu, start a stuck bot again or give it a fresh context, as on the Mac.
 - New Tool lists the services your Hub offers, with search, and adds the one you tap and signs it in. Your own MCP server is under Custom MCP Server at the end of the list.
+- Effort, in the bot editor, sets how hard the bot's model reasons, when the model offers a choice.
 
 ### Fixed
 

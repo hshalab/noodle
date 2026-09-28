@@ -557,6 +557,33 @@ public struct LinkHarness: Codable, Hashable, Sendable {
 public struct LinkModel: Codable, Hashable, Identifiable, Sendable {
     public var id: String
     public var name: String
+    /// The reasoning efforts a bot on it may choose; empty when it has none, or from a Hub that does not say.
+    public var efforts: [LinkEffort]
+    /// The effort the model uses when the bot leaves it on Default.
+    public var defaultEffort: String?
+
+    public init(id: String, name: String, efforts: [LinkEffort] = [], defaultEffort: String? = nil) {
+        self.id = id
+        self.name = name
+        self.efforts = efforts
+        self.defaultEffort = defaultEffort
+    }
+
+    private enum CodingKeys: String, CodingKey { case id, name, efforts, defaultEffort }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        efforts = try c.decode(.efforts, or: [])
+        defaultEffort = try c.decodeIfPresent(String.self, forKey: .defaultEffort)
+    }
+}
+
+/// A reasoning effort a model offers.
+public struct LinkEffort: Codable, Hashable, Identifiable, Sendable {
+    public var id: String
+    public var name: String
 
     public init(id: String, name: String) {
         self.id = id
@@ -612,6 +639,17 @@ public struct LinkBotDraft: Codable, Equatable, Sendable {
         avatarColorIndex = try c.decode(.avatarColorIndex, or: 0)
         avatarImageData = try c.decodeIfPresent(Data.self, forKey: .avatarImageData)
         avatarImageDigest = try c.decodeIfPresent(String.self, forKey: .avatarImageDigest)
+    }
+
+    /// Puts the bot on `model` of `harness`. Its effort stays while that model offers it; otherwise it
+    /// becomes the model's default, or Default when the model offers none, as in the Mac's bot editor.
+    public mutating func setModel(_ model: String?, on harness: LinkHarness?) {
+        self.model = model
+        guard let reasoningEffort else { return }
+        let chosen = harness?.models.first { $0.id == model }
+        if chosen?.efforts.contains(where: { $0.id == reasoningEffort }) != true {
+            self.reasoningEffort = chosen?.defaultEffort
+        }
     }
 
     /// Whether the bot shows a picture, fetched yet or not.

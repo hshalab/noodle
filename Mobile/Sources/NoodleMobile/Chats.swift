@@ -1300,9 +1300,22 @@ struct AgentEditor: View {
         } set: { harness in
             draft.provider = harness?.provider ?? ""
             draft.profile = harness?.profile
-            draft.model = harness?.initialModel
             draft.reasoningEffort = nil
+            draft.setModel(harness?.initialModel, on: harness)
         }
+    }
+
+    private var model: Binding<String?> {
+        Binding { draft.model } set: { draft.setModel($0, on: harness.wrappedValue) }
+    }
+
+    /// The efforts the chosen model offers, plus the agent's current one if the model no longer offers it.
+    private var efforts: [LinkEffort] {
+        var efforts = models.first { $0.id == draft.model }?.efforts ?? []
+        if let effort = draft.reasoningEffort, !efforts.isEmpty, !efforts.contains(where: { $0.id == effort }) {
+            efforts.insert(LinkEffort(id: effort, name: effort.capitalized), at: 0)
+        }
+        return efforts
     }
 
     /// The models the chosen harness offers, plus the agent's current one if the plan no longer lends it.
@@ -1353,11 +1366,17 @@ struct AgentEditor: View {
                             }
                         }
                         if let lent = harness.wrappedValue, !models.isEmpty {
-                            Picker("Model", selection: $draft.model) {
+                            Picker("Model", selection: model) {
                                 if !lent.restrictsModels || draft.model == nil {
                                     Text(lent.restrictsModels ? "Choose" : "Default").tag(String?.none)
                                 }
                                 ForEach(models) { Text($0.name).tag(String?.some($0.id)) }
+                            }
+                        }
+                        if !efforts.isEmpty {
+                            Picker("Effort", selection: $draft.reasoningEffort) {
+                                Text("Default").tag(String?.none)
+                                ForEach(efforts) { Text($0.name).tag(String?.some($0.id)) }
                             }
                         }
                     }
