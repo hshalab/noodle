@@ -227,7 +227,8 @@ import NoodleRuntime
             avatarImageData: draft.avatarImageData ?? (draft.avatarImageDigest == nil ? nil : agent.avatarImageData))
         try repository.updateAgentBackstory(updated, backstory: draft.backstory)
         try repository.updateAgentHarnessProfile(updated, profile: draft.profile)
-        if running { runtime.restart(agent: updated, repository: repository) }
+        // As Edit Bot does in Noodle, whose runtime runs the bot when this only watches.
+        if running || watching { runtime.restart(agent: updated, repository: repository) }
         onChange?(user.id, .botsChanged)
         onBotsEdited?()
         return try bot(updated, conversations: try repository.loadConversations()) ?? {
