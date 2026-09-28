@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- New Tool lists the services your Hub offers, with search, and adds the one you tap and signs it in. Your own MCP server is under Custom MCP Server at the end of the list.
+
 ## [0.5.0] - 2026-09-28
 
 ### What to Test

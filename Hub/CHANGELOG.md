@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Noodle for iPhone lists the tool services the Hub offers when adding a tool, as Noodle's New Tool does.
+
 ## [0.6.0] - 2026-09-28
 
 ### Added

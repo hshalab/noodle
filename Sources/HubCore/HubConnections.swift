@@ -1,5 +1,6 @@
 import Foundation
 import HubLink
+import ImageIO
 import NoodleCore
 import NoodleMCP
 
@@ -210,5 +211,27 @@ import NoodleMCP
             UUID(uuidString: key).map { ($0, Set(ids.map(\.uuidString))) }
         }))
         onAssignmentsChange?()
+    }
+}
+
+extension HubConnections {
+    /// The catalogue's services as devices show them, icons as PNG from the app's `ToolIcons`.
+    public static let catalogue: [LinkToolPreset] = ToolCatalog.matching("").compactMap { tool in
+        guard case .mcp(let configuration) = tool.configuration else { return nil }
+        return LinkToolPreset(id: tool.id, name: tool.name, summary: tool.summary, instructions: tool.defaultInstructions,
+                              endpoint: configuration.endpoint, badge: tool.maturity.badge, icon: icon(named: tool.iconName))
+    }
+
+    /// The largest picture in an icon file, as PNG, which every device reads.
+    private static func icon(named name: String) -> Data? {
+        guard let url = Bundle.main.url(forResource: name, withExtension: "icon", subdirectory: "ToolIcons"),
+              let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        let largest = (0..<CGImageSourceGetCount(source)).compactMap { CGImageSourceCreateImageAtIndex(source, $0, nil) }
+            .max { $0.width < $1.width }
+        guard let largest else { return nil }
+        let png = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(png, "public.png" as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImage(destination, largest, nil)
+        return CGImageDestinationFinalize(destination) ? png as Data : nil
     }
 }

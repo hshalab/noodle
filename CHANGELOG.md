@@ -6,6 +6,10 @@ All notable changes to Noodle are documented here, following
 
 ## [Unreleased]
 
+### Added
+
+- Noodle for iPhone lists the tool services this Mac offers as a Hub when adding a tool, as the Mac's New Tool does.
+
 ## [0.31.0] - 2026-09-28
 
 ### Added

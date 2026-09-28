@@ -118,6 +118,8 @@ public enum LinkRequest: Codable, Equatable, Sendable {
     case connections
     /// Adds a connection, or changes one of this user's. It reaches no bot until assigned.
     case saveConnection(LinkConnectionDraft)
+    /// The services the Hub offers ready to connect, in the order to show them.
+    case toolCatalog
     /// Deletes one of this user's connections and its sign-in.
     case deleteConnection(id: UUID)
     /// Replaces which of this user's connections one of their bots may use.
@@ -259,6 +261,7 @@ public enum LinkResponse: Codable, Equatable, Sendable {
     case message(LinkMessage)
     case connections([LinkConnection])
     case connection(LinkConnection)
+    case toolCatalog([LinkToolPreset])
     case computers([LinkComputer])
     case computer(LinkComputer)
     case computerTemplates([LinkComputerTemplate])
@@ -418,6 +421,29 @@ public struct LinkConnectionDraft: Codable, Equatable, Sendable {
         self.endpoint = endpoint
         self.description = description
         self.instructions = instructions
+    }
+}
+
+/// A service the Hub offers ready to connect. Saving it takes `name` and `endpoint`, with
+/// `summary` as the description and `instructions` as they are.
+public struct LinkToolPreset: Codable, Equatable, Identifiable, Sendable {
+    public var id: String
+    public var name: String
+    public var summary: String
+    public var instructions: String
+    public var endpoint: URL
+    /// Shown beside the name, as "Experimental".
+    public var badge: String?
+    public var icon: Data?
+
+    public init(id: String, name: String, summary: String, instructions: String, endpoint: URL, badge: String? = nil, icon: Data? = nil) {
+        self.id = id
+        self.name = name
+        self.summary = summary
+        self.instructions = instructions
+        self.endpoint = endpoint
+        self.badge = badge
+        self.icon = icon
     }
 }
 
