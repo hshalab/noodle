@@ -5,7 +5,9 @@ import Foundation
 /// steady beat, encodes each picture away from the main thread while the next is captured, and
 /// pushes it to every viewer at once. A beat that comes while the encoder is still busy is skipped. A viewer that falls
 /// behind misses frames instead of getting old ones late, and picks up again at the next key
-/// frame. What viewers do comes back on their sockets and reaches the surface in order.
+/// frame. What viewers do comes back on their sockets and reaches the surface in order. Once
+/// the picture settles it is looked at only a few times a second, until it changes or a viewer
+/// does something.
 @MainActor public final class SurfaceStreamer {
     private struct Viewer {
         let socket: SurfaceSocket
@@ -28,8 +30,16 @@ import Foundation
     private var loop: Task<Void, Never>?
     private var wantsKeyFrame = false
     private var encoding = false
+    /// The picture had stayed the same long enough that the encoder sent nothing for it.
+    private var settled = false
+    private var lastCapture: ContinuousClock.Instant?
+    /// Full pace until then, as after a viewer arrives or acts: what they did takes a few frames to show.
+    private var busyUntil = ContinuousClock.now
+    /// How often a settled picture is looked at, and how long full pace lasts after a viewer acts.
+    private static let settledInterval = Duration.milliseconds(100)
+    private static let busyAfterAction = Duration.seconds(1)
 
-    public init(fps: Int = 30, maxPixelSize: Int = 1600,
+    public init(fps: Int = 60, maxPixelSize: Int = 1600,
                 capture: @escaping @MainActor () async throws -> (image: CGImage, size: CGSize)?,
                 apply: @escaping @MainActor (SurfaceInput) async throws -> Void) {
         self.capture = capture
@@ -50,6 +60,7 @@ import Foundation
         let first = viewers.isEmpty
         viewers[id] = Viewer(socket: socket)
         wantsKeyFrame = true
+        wake()
         if first { watchingChanged?(true) }
         if loop == nil { start() }
         Task { [weak self] in
@@ -79,12 +90,14 @@ import Foundation
     private func handle(_ control: SurfaceControl, from id: ObjectIdentifier) async {
         switch control {
         case .input(let input):
+            wake()
             try? await apply(input)
         case .view(let width, let height):
             viewers[id]?.fit = CGSize(width: width, height: height)
         case .keyFrame:
             viewers[id]?.waiting = true
             wantsKeyFrame = true
+            wake()
         case .rate(let bitsPerSecond):
             viewers[id]?.rate = bitsPerSecond
             encoder.setBitRate(rate)
@@ -114,14 +127,24 @@ import Foundation
     /// One encoding serves every viewer, so it goes at the pace of the slowest link.
     private var rate: Double? { viewers.values.compactMap(\.rate).min() }
 
+    private func wake() {
+        settled = false
+        busyUntil = .now + Self.busyAfterAction
+    }
+
     private func step() async {
-        guard !encoding, let picture = try? await capture() else { return }
+        let now = ContinuousClock.now
+        if settled, !wantsKeyFrame, now >= busyUntil, let lastCapture, now - lastCapture < Self.settledInterval { return }
+        guard !encoding else { return }
+        lastCapture = now
+        guard let picture = try? await capture() else { return }
         let keyFrame = wantsKeyFrame
         wantsKeyFrame = false
         encoding = true
         Task {
-            let encoded = await encoder.encode(picture.image, size: picture.size, keyFrame: keyFrame, fitting: fit)
+            let (encoded, settled) = await encoder.encode(picture.image, size: picture.size, keyFrame: keyFrame, fitting: fit)
             encoding = false
+            self.settled = settled
             if let encoded { send(encoded, size: picture.size) } else if keyFrame { wantsKeyFrame = true }
         }
     }
@@ -152,11 +175,14 @@ private final class EncoderQueue: @unchecked Sendable {
 
     init(_ encoder: SurfaceEncoder) { self.encoder = encoder }
 
+    /// The frame, if any, and whether the picture has settled. A frame can also be missing because
+    /// the encoder dropped it to keep to the rate, which says nothing about the picture.
     func encode(_ image: CGImage, size: CGSize, keyFrame: Bool,
-                fitting: CGSize?) async -> (sample: Data, parameterSets: [Data], keyFrame: Bool)? {
+                fitting: CGSize?) async -> (frame: (sample: Data, parameterSets: [Data], keyFrame: Bool)?, settled: Bool) {
         await withCheckedContinuation { done in
             queue.async { [self] in
-                done.resume(returning: try? encoder.encode(image, size: size, keyFrame: keyFrame, fitting: fitting))
+                let frame = try? encoder.encode(image, size: size, keyFrame: keyFrame, fitting: fitting)
+                done.resume(returning: (frame ?? nil, encoder.isSettled))
             }
         }
     }

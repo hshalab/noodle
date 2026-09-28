@@ -223,6 +223,55 @@ final class SurfaceTests: XCTestCase {
         try await wait("a key frame asked for on a still surface never came") { received.dropFirst(settled).contains(where: \.keyFrame) }
     }
 
+    /// A settled surface is looked at only now and then, and at full pace again as soon as the
+    /// viewer does something, since that is when it is about to change.
+    @MainActor func testAStillSurfaceIsCapturedLessUntilTheViewerActs() async throws {
+        let picture = image(width: 800, height: 500, gray: 0.5)
+        var captures = 0
+        let streamer = SurfaceStreamer(fps: 60, maxPixelSize: 800, capture: {
+            captures += 1
+            return (picture, CGSize(width: 800, height: 500))
+        }, apply: { _ in })
+        defer { streamer.stop() }
+        let (companion, hub) = try pair()
+        streamer.attach(companion)
+        let reader = Task { for await _ in hub.frames {} }
+        defer { reader.cancel() }
+        func captured(over interval: Duration) async throws -> Int {
+            let before = captures
+            try await Task.sleep(for: interval)
+            return captures - before
+        }
+        // The attach itself counts as the viewer acting.
+        try await Task.sleep(for: .seconds(1.5))
+        let still = try await captured(over: .seconds(1))
+        XCTAssertLessThan(still, 20, "a still surface was captured \(still) times a second")
+
+        hub.send(SurfaceControl.input(.pointer(.move, x: 1, y: 1)).encoded)
+        let acting = try await captured(over: .milliseconds(500))
+        XCTAssertGreaterThan(acting, still, "input did not bring back the full pace")
+    }
+
+    /// A surface that keeps changing, as a noodlet does while someone clicks through it, is shown
+    /// at 60 frames a second, so what the viewer does shows up within a frame or two.
+    @MainActor func testAChangingSurfaceIsShownAtSixtyFramesASecond() async throws {
+        let pictures = (0..<8).map { image(width: 64, height: 40, gray: CGFloat($0) / 8) }
+        var captures = 0
+        let streamer = SurfaceStreamer(capture: {
+            captures += 1
+            return (pictures[captures % pictures.count], CGSize(width: 64, height: 40))
+        }, apply: { _ in })
+        defer { streamer.stop() }
+        let (companion, hub) = try pair()
+        streamer.attach(companion)
+        let reader = Task { for await _ in hub.frames {} }
+        defer { reader.cancel() }
+        try await Task.sleep(for: .milliseconds(500))
+        let before = captures
+        try await Task.sleep(for: .seconds(1))
+        XCTAssertGreaterThan(captures - before, 45, "a changing surface was captured \(captures - before) times a second")
+    }
+
     /// A viewer that falls behind misses frames rather than getting old ones late, and always
     /// picks up again at a key frame, since the frames between depend on the ones before.
     @MainActor func testASlowViewerSkipsToTheNextKeyFrame() async throws {

@@ -4,7 +4,7 @@
 
 ### Changed
 
-- Watching the computer live from Noodle Hub costs this Mac less for each frame and sends nothing while the picture stays still, so the picture keeps up better.
+- Watching the computer live from Noodle Hub runs at up to 60 frames a second instead of 30, costs this Mac less for each frame and, while the picture stays still, sends nothing and checks it only a few times a second, so the picture keeps up better.
 
 ## [0.16.0] - 2026-09-28
 

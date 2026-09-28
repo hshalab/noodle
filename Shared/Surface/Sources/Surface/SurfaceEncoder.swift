@@ -19,6 +19,9 @@ public final class SurfaceEncoder {
     /// Frames still sent once the picture stops changing, so the encoder can sharpen what it
     /// sent while the picture moved before video goes quiet.
     private static let settle = 6
+
+    /// The picture has stayed the same long enough that nothing more is sent for it.
+    public var isSettled: Bool { unchanged > Self.settle }
     private let maxPixelSize: Int
     private let fps: Int32
 
@@ -56,7 +59,7 @@ public final class SurfaceEncoder {
         guard let session, let source = Self.pixelBuffer(image) else { return nil }
         unchanged = last.map { Self.same(source, $0) } == true ? unchanged + 1 : 0
         last = source
-        if unchanged > Self.settle, !keyFrame, frame > 0 { return nil }
+        if isSettled, !keyFrame, frame > 0 { return nil }
         guard let buffer = scaled(source) else { return nil }
         var result: (Data, [Data], Bool)?
         let properties = (keyFrame || frame == 0 ? [kVTEncodeFrameOptionKey_ForceKeyFrame: true] : [:]) as CFDictionary
