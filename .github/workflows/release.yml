@@ -179,6 +179,69 @@ jobs:
       - name: Test Applet
         run: swift test --disable-sandbox --package-path Applet --scratch-path .build/applet
 
+  # Live views and animation only show in a team-signed app, so the release's rendering check also
+  # runs on every change to Applet or the shared code it uses, not only when its version changes.
+  test-applet-rendering:
+    needs: [versions]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          lfs: true
+          fetch-depth: 0
+      - name: Look for changes to Applet
+        id: changed
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if git cat-file -e "$BEFORE^{commit}" 2>/dev/null && git diff --quiet "$BEFORE" HEAD -- Applet Shared; then
+            echo "applet=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "applet=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Prepare signing credentials
+        if: steps.changed.outputs.applet == 'true'
+        env:
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        shell: zsh {0}
+        run: |
+          set -euo pipefail
+          : "${MACOS_CERTIFICATE_P12:?Missing certificate}"
+          : "${MACOS_CERTIFICATE_PASSWORD:?Missing certificate password}"
+          umask 077
+          keychain="$RUNNER_TEMP/applet-signing.keychain-db"
+          password="$(openssl rand -base64 32)"
+          print -rn -- "$MACOS_CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/applet-signing.p12"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security import "$RUNNER_TEMP/applet-signing.p12" -k "$keychain" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security list-keychains -d user -s "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain"
+          identity="$(security find-identity -v -p codesigning "$keychain" | awk -F '"' '/Developer ID Application:/ { print $2; exit }')"
+          [[ -n "$identity" ]]
+          print "NOODLE_SIGNING_IDENTITY=$identity" >> "$GITHUB_ENV"
+      - name: Build a team-signed Applet
+        if: steps.changed.outputs.applet == 'true'
+        shell: zsh {0}
+        run: |
+          set -euo pipefail
+          team="${${NOODLE_SIGNING_IDENTITY##*\(}%\)}"
+          tuist="$(zsh scripts/install-tuist.sh)"
+          (cd Applet && "$tuist" generate --no-open)
+          xcodebuild -workspace Applet/NoodleApplet.xcworkspace -scheme NoodleApplet -configuration Release \
+            -derivedDataPath .build/DerivedData/Applet -destination 'platform=macOS' \
+            -skipPackagePluginValidation -skipMacroValidation \
+            ARCHS=arm64 CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="$NOODLE_SIGNING_IDENTITY" DEVELOPMENT_TEAM="$team" build
+          ditto ".build/DerivedData/Applet/Build/Products/Release/Noodle Applet.app" ".build/Noodle Applet.app"
+      - name: Verify noodlet rendering and live views
+        if: steps.changed.outputs.applet == 'true'
+        timeout-minutes: 5
+        run: zsh Applet/scripts/test-rendering.sh ".build/Noodle Applet.app"
+
   test-bridge:
     needs: [versions]
     runs-on: macos-26
