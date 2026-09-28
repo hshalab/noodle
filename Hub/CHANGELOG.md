@@ -12,6 +12,7 @@
 - Settings opens on Network, now its first tab. Bots comes after Plans, next to the Heartbeat and Sandbox tabs.
 - Each bot on the Hub records who it belongs to, so Noodle Applet on the Hub's Mac can list their noodlets under that person. Existing bots are updated when the Hub opens.
 - Noodle Computer and Noodle Browser on the Hub's Mac are told whom each computer and browser is for, and group them under those people. Existing ones are updated the next time a device lists them.
+- The app icon uses Apple's system blue, the same flat blue as the other Noodle apps.
 
 ### Fixed
 

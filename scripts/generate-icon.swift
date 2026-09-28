@@ -48,10 +48,10 @@ do {
             .elements(forName: "g").first(where: { $0.attribute(forName: "id")?.stringValue == backgroundID }) else {
         fail("symbol must have the template's viewBox and a valid data-icon-background")
     }
-    // The tile's first gradient stop fills the corners an iOS icon may not leave transparent.
-    let fill = (try? background.nodes(forXPath: ".//*[local-name()='stop']/@stop-color"))?.first?.stringValue
+    // The tile's colour fills the corners an iOS icon may not leave transparent.
+    let fill = (try? background.nodes(forXPath: ".//*[local-name()='path']/@fill"))?.first?.stringValue
         .flatMap(color)
-    guard !ios || fill != nil else { fail("background \(backgroundID) has no gradient colour for an opaque icon") }
+    guard !ios || fill != nil else { fail("background \(backgroundID) has no fill colour for an opaque icon") }
     root.removeAttribute(forName: "data-icon-background")
     root.insertChild(background.copy() as! XMLNode, at: 0)
     root.insertChild(XMLNode.comment(withStringValue:

@@ -5,6 +5,7 @@
 ### Changed
 
 - Under Hub in the sidebar, computers Noodle Hub keeps are grouped under the people they are for. Needs the latest Noodle Hub.
+- The app icon uses Apple's system blue, the same flat blue as the other Noodle apps.
 
 ## [0.16.0] - 2026-09-28
 

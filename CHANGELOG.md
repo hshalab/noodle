@@ -10,6 +10,11 @@ All notable changes to Noodle are documented here, following
 
 - Local Models offers Qwen3.5 9B, gpt-oss 20B, Qwen3.8 27B, Qwen3.6 35B-A3B and Qwen3 Coder Next for Macs with 16 GB to 64 GB of memory, and Import Model accepts Qwen3.5, Qwen3-Next and gpt-oss models. Qwen3.5 models are used for text only.
 
+### Changed
+
+- The app icon uses Apple's system blue, the same flat blue as the other Noodle apps.
+- The website's buttons, links and icon use the same system blue as the apps, in light and dark appearance.
+
 ## [0.30.0] - 2026-09-28
 
 ### Added
