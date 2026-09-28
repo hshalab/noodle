@@ -6,6 +6,7 @@
 
 - Open a conversation: its latest message sits just above the message field, with no gap under it, and the conversation does not sit shifted to the side before you first scroll.
 - The app icon on the Home Screen is Apple's system blue, matching the Mac apps.
+- Swipe right on a bot and tap Pin: it moves to a circle above the list, as in Messages. Tap the circle to open the chat; touch and hold it to unpin.
 
 ### Changed
 
