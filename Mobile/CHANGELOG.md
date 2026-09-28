@@ -14,6 +14,7 @@
 - Create or edit a bot and open Harness: a harness lent under a profile shows its name with the profile on a second line; check that a long profile, such as an email address, reads cleanly. Once chosen, it reads on one line, such as Codex · you@example.com.
 - Open a conversation: the Message field and the + beside it are as tall as Search on the bots list.
 - Close a game noodlet's window on the Mac, such as a canvas game, then watch it from the phone: it plays and moves, rather than showing only its background. Needs the Mac on the next Noodle Applet update.
+- Send a message with a web link: in your blue bubble the link reads in white and underlined.
 
 ### Added
 
@@ -30,6 +31,7 @@
 ### Fixed
 
 - The Message field in a conversation is as tall as Search on the bots list.
+- A link in your own message is no longer lost against the blue of its bubble.
 - Noodle Hub is tried again for a few seconds when it is starting up or the network is settling, instead of failing at once.
 - A bot's harness shows its name rather than its internal identifier when the Hub no longer lends it under the same profile.
 - Switching a new computer between Shell and Desktop changes its name to match, unless you typed your own.

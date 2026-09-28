@@ -26,7 +26,7 @@ struct MessageText: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(Self.markdown(text))
+            Text(Self.markdown(text, onTint: onTint))
                 .lineLimit(folded ? MessageFolding.foldedLines : nil)
             if folded {
                 Button("Read more", action: expand)
@@ -36,17 +36,24 @@ struct MessageText: View {
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
         .foregroundStyle(foreground)
+        .tint(onTint ? foreground : .accentColor)
         .background(background, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
+    /// Your bubble is the tint, so its links take the text's colour.
+    private var onTint: Bool { background == .accentColor }
+
     /// Inline markdown, with only web and mail links left tappable, as on the Mac.
-    static func markdown(_ body: String) -> AttributedString {
+    /// On a tinted bubble links are underlined, since they share the text's colour.
+    static func markdown(_ body: String, onTint: Bool = false) -> AttributedString {
         guard var text = try? AttributedString(markdown: body, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) else {
             return AttributedString(body)
         }
         for run in text.runs {
             if let link = run.link, !["http", "https", "mailto"].contains(link.scheme?.lowercased() ?? "") {
                 text[run.range].link = nil
+            } else if onTint, run.link != nil {
+                text[run.range].underlineStyle = .single
             }
         }
         return text
