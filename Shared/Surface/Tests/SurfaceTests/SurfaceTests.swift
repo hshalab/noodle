@@ -67,6 +67,56 @@ final class SurfaceTests: XCTestCase {
         XCTAssertEqual(decoded.map(CVPixelBufferGetWidth), 640)
     }
 
+    /// A red square top left on white, in the layout WebKit snapshots come in or in another.
+    private func marked(width: Int, height: Int, webKitLayout: Bool) -> CGImage {
+        let info = webKitLayout ? CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
+                                : CGImageAlphaInfo.premultipliedLast.rawValue
+        let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                                space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: info)!
+        context.setFillColor(red: 1, green: 1, blue: 1, alpha: 1)
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        context.setFillColor(red: 1, green: 0, blue: 0, alpha: 1)
+        // Core Graphics counts rows from the bottom.
+        context.fill(CGRect(x: 0, y: height / 2, width: width / 2, height: height / 2))
+        return context.makeImage()!
+    }
+
+    /// The colour at a point of a decoded frame, as the display would show it.
+    private func decodedColour(_ encoded: (sample: Data, parameterSets: [Data], keyFrame: Bool),
+                               at point: (x: Double, y: Double)) throws -> (red: Int, green: Int, blue: Int) {
+        let packet = SurfacePacket(sequence: 1, keyFrame: true, width: 1, height: 1, parameterSets: encoded.parameterSets, sample: encoded.sample)
+        let format = try XCTUnwrap(SurfaceSamples.format(packet))
+        let sample = try XCTUnwrap(SurfaceSamples.sample(packet, format: format))
+        var session: VTDecompressionSession?
+        let attributes = [kCVPixelBufferPixelFormatTypeKey: kCVPixelFormatType_32BGRA] as CFDictionary
+        XCTAssertEqual(VTDecompressionSessionCreate(allocator: nil, formatDescription: format, decoderSpecification: nil,
+                                                    imageBufferAttributes: attributes, outputCallback: nil, decompressionSessionOut: &session), noErr)
+        var decoded: CVImageBuffer?
+        VTDecompressionSessionDecodeFrame(try XCTUnwrap(session), sampleBuffer: sample, flags: [], infoFlagsOut: nil) { _, _, buffer, _, _ in
+            decoded = buffer
+        }
+        VTDecompressionSessionWaitForAsynchronousFrames(session!)
+        let buffer = try XCTUnwrap(decoded)
+        CVPixelBufferLockBaseAddress(buffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
+        let x = Int(point.x * Double(CVPixelBufferGetWidth(buffer))), y = Int(point.y * Double(CVPixelBufferGetHeight(buffer)))
+        let pixel = CVPixelBufferGetBaseAddress(buffer)!.advanced(by: y * CVPixelBufferGetBytesPerRow(buffer) + x * 4)
+            .assumingMemoryBound(to: UInt8.self)
+        return (Int(pixel[2]), Int(pixel[1]), Int(pixel[0]))
+    }
+
+    /// Scaled down, the picture keeps its colours and which way up it is, whichever layout it came in.
+    func testEncodedFramesShowThePicture() throws {
+        for webKitLayout in [true, false] {
+            let encoder = SurfaceEncoder(maxPixelSize: 640, fps: 30)
+            let encoded = try XCTUnwrap(try encoder.encode(marked(width: 1280, height: 800, webKitLayout: webKitLayout),
+                                                           size: CGSize(width: 640, height: 400)))
+            let red = try decodedColour(encoded, at: (0.25, 0.25)), white = try decodedColour(encoded, at: (0.75, 0.75))
+            XCTAssert(red.red > 200 && red.green < 60 && red.blue < 60, "top left \(red), WebKit layout \(webKitLayout)")
+            XCTAssert(white.red > 220 && white.green > 220 && white.blue > 220, "bottom right \(white), WebKit layout \(webKitLayout)")
+        }
+    }
+
     /// Two ends of a live view's connection, as a companion and the Hub hold them.
     private func pair() throws -> (SurfaceSocket, SurfaceSocket) {
         var fds: [Int32] = [0, 0]

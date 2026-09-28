@@ -6,8 +6,11 @@ import VideoToolbox
 
 /// Encodes pictures of a surface as H.264 with the Mac's video encoder, tuned for a live view:
 /// no frame reordering, a key frame every two seconds, and one frame out for each frame in.
+/// Scaling and colour conversion happen on the GPU, so a frame costs the CPU little more than a copy.
 public final class SurfaceEncoder {
     private var session: VTCompressionSession?
+    private var transfer: VTPixelTransferSession?
+    private var pool: CVPixelBufferPool?
     private var pixels: (width: Int, height: Int) = (0, 0)
     private var frame: Int64 = 0
     private let maxPixelSize: Int
@@ -18,7 +21,10 @@ public final class SurfaceEncoder {
         self.fps = fps
     }
 
-    deinit { if let session { VTCompressionSessionInvalidate(session) } }
+    deinit {
+        if let session { VTCompressionSessionInvalidate(session) }
+        if let transfer { VTPixelTransferSessionInvalidate(transfer) }
+    }
 
     /// The most bits per second a viewer's link takes, when one has said. Video never goes above
     /// what the picture size calls for, and follows a change from the next frame on.
@@ -40,7 +46,7 @@ public final class SurfaceEncoder {
         // H.264 wants even dimensions.
         let width = max(2, Int(Double(image.width) * scale) & ~1), height = max(2, Int(Double(image.height) * scale) & ~1)
         if session == nil || pixels != (width, height) { try start(width: width, height: height) }
-        guard let session, let buffer = Self.pixelBuffer(image, width: width, height: height) else { return nil }
+        guard let session, let buffer = scaled(image) else { return nil }
         var result: (Data, [Data], Bool)?
         let properties = (keyFrame || frame == 0 ? [kVTEncodeFrameOptionKey_ForceKeyFrame: true] : [:]) as CFDictionary
         let time = CMTime(value: frame, timescale: fps)
@@ -65,6 +71,27 @@ public final class SurfaceEncoder {
                                                 imageBufferAttributes: nil, compressedDataAllocator: nil, outputCallback: nil,
                                                 refcon: nil, compressionSessionOut: &created)
         guard status == noErr, let created else { throw SurfaceEncoderError(status: status) }
+        if transfer == nil {
+            var made: VTPixelTransferSession?
+            guard VTPixelTransferSessionCreate(allocator: nil, pixelTransferSessionOut: &made) == noErr, let made else {
+                VTCompressionSessionInvalidate(created)
+                throw SurfaceEncoderError(status: kVTAllocationFailedErr)
+            }
+            // Averaging keeps small text legible where dropping pixels would break its strokes.
+            VTSessionSetProperty(made, key: kVTPixelTransferPropertyKey_DownsamplingMode, value: kVTDownsamplingMode_Average)
+            VTSessionSetProperty(made, key: kVTPixelTransferPropertyKey_DestinationYCbCrMatrix, value: kCVImageBufferYCbCrMatrix_ITU_R_709_2)
+            VTSessionSetProperty(made, key: kVTPixelTransferPropertyKey_DestinationColorPrimaries, value: kCVImageBufferColorPrimaries_ITU_R_709_2)
+            VTSessionSetProperty(made, key: kVTPixelTransferPropertyKey_DestinationTransferFunction, value: kCVImageBufferTransferFunction_ITU_R_709_2)
+            transfer = made
+        }
+        pool = nil
+        let attributes = [kCVPixelBufferWidthKey: width, kCVPixelBufferHeightKey: height,
+                          kCVPixelBufferPixelFormatTypeKey: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
+                          kCVPixelBufferIOSurfacePropertiesKey: [:]] as CFDictionary
+        guard CVPixelBufferPoolCreate(nil, nil, attributes, &pool) == kCVReturnSuccess else {
+            VTCompressionSessionInvalidate(created)
+            throw SurfaceEncoderError(status: kVTAllocationFailedErr)
+        }
         VTSessionSetProperty(created, key: kVTCompressionPropertyKey_RealTime, value: kCFBooleanTrue)
         VTSessionSetProperty(created, key: kVTCompressionPropertyKey_AllowFrameReordering, value: kCFBooleanFalse)
         VTSessionSetProperty(created, key: kVTCompressionPropertyKey_ProfileLevel, value: kVTProfileLevel_H264_High_AutoLevel)
@@ -83,18 +110,41 @@ public final class SurfaceEncoder {
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_AverageBitRate, value: Int(min(full, cap ?? full)) as CFNumber)
     }
 
-    private static func pixelBuffer(_ image: CGImage, width: Int, height: Int) -> CVPixelBuffer? {
+    /// The picture at the encoder's size, in the encoder's own format.
+    private func scaled(_ image: CGImage) -> CVPixelBuffer? {
+        guard let transfer, let pool, let source = Self.pixelBuffer(image) else { return nil }
+        var buffer: CVPixelBuffer?
+        guard CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer) == kCVReturnSuccess, let buffer,
+              VTPixelTransferSessionTransferImage(transfer, from: source, to: buffer) == noErr else { return nil }
+        return buffer
+    }
+
+    /// The picture at its own size, as the GPU can take it. A picture laid out as the Mac's
+    /// screen is, as WebKit's snapshots are, is copied as it is; any other is drawn first.
+    private static func pixelBuffer(_ image: CGImage) -> CVPixelBuffer? {
         var buffer: CVPixelBuffer?
         let attributes = [kCVPixelBufferIOSurfacePropertiesKey: [:]] as CFDictionary
-        guard CVPixelBufferCreate(nil, width, height, kCVPixelFormatType_32BGRA, attributes, &buffer) == kCVReturnSuccess,
+        guard CVPixelBufferCreate(nil, image.width, image.height, kCVPixelFormatType_32BGRA, attributes, &buffer) == kCVReturnSuccess,
               let buffer else { return nil }
+        CVBufferSetAttachment(buffer, kCVImageBufferCGColorSpaceKey, image.colorSpace ?? CGColorSpace(name: CGColorSpace.sRGB)!, .shouldPropagate)
         CVPixelBufferLockBaseAddress(buffer, [])
         defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
-        guard let context = CGContext(data: CVPixelBufferGetBaseAddress(buffer), width: width, height: height, bitsPerComponent: 8,
-                                      bytesPerRow: CVPixelBufferGetBytesPerRow(buffer), space: CGColorSpaceCreateDeviceRGB(),
+        guard let base = CVPixelBufferGetBaseAddress(buffer) else { return nil }
+        let rowBytes = CVPixelBufferGetBytesPerRow(buffer)
+        let alpha = image.alphaInfo
+        if image.bitsPerPixel == 32, image.bitsPerComponent == 8, image.bitmapInfo.contains(.byteOrder32Little),
+           alpha == .premultipliedFirst || alpha == .noneSkipFirst, image.colorSpace?.model == .rgb,
+           let data = image.dataProvider?.data, CFDataGetLength(data) >= image.bytesPerRow * image.height,
+           let bytes = CFDataGetBytePtr(data) {
+            for row in 0..<image.height {
+                memcpy(base.advanced(by: row * rowBytes), bytes.advanced(by: row * image.bytesPerRow), image.width * 4)
+            }
+            return buffer
+        }
+        guard let context = CGContext(data: base, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: rowBytes,
+                                      space: image.colorSpace ?? CGColorSpace(name: CGColorSpace.sRGB)!,
                                       bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue) else { return nil }
-        context.interpolationQuality = .high
-        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
         return buffer
     }
 

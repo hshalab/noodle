@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Watching the browser live from Noodle Hub costs this Mac less for each frame, so the picture keeps up with the page better.
+
 ## [0.7.0] - 2026-09-28
 
 ### Changed
