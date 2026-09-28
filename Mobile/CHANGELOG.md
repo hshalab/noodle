@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### What to Test
+
+- Pull down on the bots list and type in Search: only bots whose name, description or conversation match are listed, in one list without the pinned circles. Accents and capitals do not matter.
+
+### Added
+
+- Search the bots list by name, description or what was said, as on the Mac.
+
 ### Fixed
 
 - Noodle Hub is tried again for a few seconds when it is starting up or the network is settling, instead of failing at once.

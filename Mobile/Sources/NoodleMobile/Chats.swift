@@ -152,6 +152,15 @@ import SwiftUI
         }
     }
 
+    /// As the Mac sidebar searches: the name, the description or anything said that this phone holds,
+    /// ignoring case and accents. A blank search matches every bot.
+    func matches(_ agent: LinkBot, search: String) -> Bool {
+        let term = search.trimmingCharacters(in: .whitespacesAndNewlines)
+        return term.isEmpty || agent.draft.name.localizedStandardContains(term)
+            || agent.draft.publicDescription.localizedStandardContains(term)
+            || messages(of: agent).contains { $0.body.localizedStandardContains(term) }
+    }
+
     /// When the conversation last moved, or the bot was made.
     private func recency(of agent: LinkBot) -> Date { latestMessage(of: agent)?.createdAt ?? agent.createdAt }
 
@@ -452,6 +461,7 @@ struct AgentsView: View {
     @State private var chosen: MoreChoice?
     @State private var showingProfile = false
     @State private var creating = false
+    @State private var search = ""
 
     private struct Row: Identifiable {
         let chats: HubChats
@@ -468,9 +478,11 @@ struct AgentsView: View {
     var body: some View {
         let rows = rows
         NavigationStack(path: $path) {
-            // As in Messages: pinned bots in circles above the rest.
-            let pinned = rows.filter { $0.chats.isPinned($0.agent) }
-            let others = rows.filter { !$0.chats.isPinned($0.agent) }
+            // As in Messages: pinned bots in circles above the rest, and one plain list of matches while searching.
+            let searching = !search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            let found = rows.filter { $0.chats.matches($0.agent, search: search) }
+            let pinned = searching ? [] : found.filter { $0.chats.isPinned($0.agent) }
+            let others = searching ? found : found.filter { !$0.chats.isPinned($0.agent) }
             List {
                 if !pinned.isEmpty {
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 3), spacing: 16) {
@@ -503,8 +515,11 @@ struct AgentsView: View {
                 }
             }
             .listStyle(.plain)
+            .searchable(text: $search, prompt: "Search")
             .overlay {
-                if rows.isEmpty {
+                if searching && found.isEmpty && !rows.isEmpty {
+                    ContentUnavailableView.search(text: search)
+                } else if rows.isEmpty {
                     if chats.isEmpty || chats.contains(where: { !$0.isLoaded && $0.error == nil }) {
                         ProgressView()
                     } else if let error = chats.lazy.compactMap(\.error).first {

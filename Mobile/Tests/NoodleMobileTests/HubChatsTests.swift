@@ -261,6 +261,25 @@ private actor RecordedSubscriptions: PushSubscriptions {
         #expect(relaunched.isPinned(scout))
     }
 
+    /// As in the Mac sidebar: by name, description or what was said, ignoring case and accents.
+    @Test func searchFindsAgentsByNameDescriptionAndMessages() async throws {
+        let hub = FakeHub()
+        let (chats, server) = try await paired(to: hub)
+        defer { server.stop() }
+        try await chats.reload()
+        let scout = try #require(chats.agents.first)
+        var draft = LinkBotDraft(name: "Zoë", provider: "codex")
+        draft.publicDescription = "Keeps the garden"
+        let zoe = try await chats.create(draft)
+        let cases: [(String, [UUID])] = [
+            ("zoe", [zoe.id]), ("SCOUT", [scout.id]), ("  garden ", [zoe.id]), ("hello", [scout.id]),
+            ("nobody", []), (" \n ", [zoe.id, scout.id])
+        ]
+        for (query, expected) in cases {
+            #expect(chats.sortedAgents.filter { chats.matches($0, search: query) }.map(\.id) == expected, "\(query)")
+        }
+    }
+
     @Test func anEditedAgentShowsItsNewDetails() async throws {
         let hub = FakeHub()
         let (chats, server) = try await paired(to: hub)
