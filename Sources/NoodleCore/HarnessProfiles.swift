@@ -109,6 +109,13 @@ public struct HarnessProfileStore: Sendable {
         // user's Keychain out of reach, so the CLI keeps this login in a file here.
         case .antigravity: ["HOME": loginHome(profile).path]
         case .claudeCode: ["CLAUDE_CONFIG_DIR": accountHome(profile).path]
+        // The login is in the data folder, but the background service it talks
+        // to is found through the state folder, so every folder moves.
+        case .openCode:
+            ["XDG_CONFIG_HOME": loginHome(profile).appendingPathComponent(".config", isDirectory: true).path,
+             "XDG_DATA_HOME": loginHome(profile).appendingPathComponent(".local/share", isDirectory: true).path,
+             "XDG_STATE_HOME": loginHome(profile).appendingPathComponent(".local/state", isDirectory: true).path,
+             "XDG_CACHE_HOME": loginHome(profile).appendingPathComponent(".cache", isDirectory: true).path]
         default: [:]
         }
     }
@@ -162,12 +169,18 @@ public struct HarnessProfileStore: Sendable {
         return meta["storage"] as? String == "keychain"
     }
 
+    /// OpenCode keeps a profile's login as rows in the profile's own database.
+    public func openCodeSignedIn(_ profile: HarnessProfile) throws -> Bool {
+        try !OpenCodeStorage.credentials(home: loginHome(profile)).isEmpty
+    }
+
     private static func accountPath(_ provider: HarnessProvider) -> String {
         switch provider {
         case .grokBuild: ".grok"
         case .muse: ".config/muse"
         case .antigravity: ".gemini/antigravity-cli"
         case .claudeCode: ".claude"
+        case .openCode: ".local/share/opencode"
         default: ".codex"
         }
     }

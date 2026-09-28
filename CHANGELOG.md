@@ -6,6 +6,10 @@ All notable changes to Noodle are documented here, following
 
 ## [Unreleased]
 
+### Added
+
+- Sign OpenCode in to more than one account. Profiles under OpenCode in Settings > Harness adds a profile, and Sign In gives the Terminal command that signs in to it. Each profile keeps its own login, settings and conversations, apart from the ones in your home folder.
+
 ## [0.30.0] - 2026-09-28
 
 ### Added

@@ -31,7 +31,7 @@ public enum OpenCodeStorage {
             "OPENCODE_CONFIG": workspace.appendingPathComponent("opencode.json").path]
     }
 
-    static func credentials(home: URL) throws -> [[String: Any]] {
+    public static func credentials(home: URL) throws -> [[String: Any]] {
         let url = home.appendingPathComponent(".local/share/opencode/opencode.db")
         guard FileManager.default.fileExists(atPath: url.path) else { return [] }
         guard url.resolvingSymlinksInPath() == url,
@@ -100,8 +100,16 @@ public enum OpenCodeStorage {
         return result
     }
 
-    public static func seed(workspace: URL, loginHome: URL, executable: URL,
-                            environment: [String: String], profile: String) throws -> Bool {
+    /// A restricted bot's login comes from the profile it selected, or from
+    /// `system`, the user's home, when it uses the system profile.
+    public static func seed(workspace: URL, harnessProfile: HarnessProfile?, profiles: HarnessProfileStore, system: URL,
+                            executable: URL, environment: [String: String], profile: String) throws -> Bool {
+        try seed(workspace: workspace, loginHome: harnessProfile.map(profiles.loginHome) ?? system,
+                 executable: executable, environment: environment, profile: profile)
+    }
+
+    static func seed(workspace: URL, loginHome: URL, executable: URL,
+                     environment: [String: String], profile: String) throws -> Bool {
         try seed(credentials: credentials(home: loginHome), workspace: workspace, executable: executable,
                  environment: environment, profile: profile)
     }

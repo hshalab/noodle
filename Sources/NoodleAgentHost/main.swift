@@ -222,8 +222,8 @@ if CommandLine.arguments.count == 11, CommandLine.arguments[1] == "--harness-chi
                 }
             } else { setenv("HOME", privateHome.path, 1) }
             if provider == .openCode {
-                _ = try OpenCodeStorage.seed(workspace: workspace, loginHome: HostPaths.home, executable: executable,
-                    environment: ProcessInfo.processInfo.environment, profile: profile)
+                _ = try OpenCodeStorage.seed(workspace: workspace, harnessProfile: harnessProfile, profiles: profiles,
+                    system: HostPaths.home, executable: executable, environment: ProcessInfo.processInfo.environment, profile: profile)
                 // ACP v2 keeps the first catalogue it sees for its process lifetime.
                 // Refresh this bot's private cache before it opens a session.
                 try OpenCodeInspection.prepareCatalogue(executable: executable, workspace: workspace,
@@ -663,7 +663,7 @@ private final class HostSession: NSObject, AgentHostService {
         let profiles = HostPaths.profiles
         let profile = try profiles.validated(id)
         let provider = profile.provider
-        guard HarnessProfileLogin.arguments(provider) != nil || provider == .antigravity || provider == .claudeCode else {
+        guard HarnessProfileLogin.arguments(provider) != nil || [.antigravity, .claudeCode, .openCode].contains(provider) else {
             throw HostError("This harness does not support this sign-in flow.")
         }
         let executable = try HostPaths.executable(executablePath, provider: provider)
@@ -682,6 +682,8 @@ private final class HostSession: NSObject, AgentHostService {
                 return try AntigravityInspection.authenticated(executable: executable, environment: environment)
             case .claudeCode:
                 return try self.claudeAuthenticationStatus(executable, environment: environment)
+            case .openCode:
+                return try profiles.openCodeSignedIn(profile)
             default: throw HostError("This harness does not support this sign-in flow.")
             }
         }
