@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### What to Test
+
+- Paired with a Mac serving your devices (Settings > Hub in Noodle): create a computer and a browser, add a tool and sign it in, then give them to a bot. They appear in Noodle on the Mac too, and the bot can use them.
+
+### Fixed
+
+- On a Mac serving your devices, creating or changing tools, computers and browsers no longer fails with "Manage tools, computers and browsers in Noodle on the Mac." The phone works on the Mac's own ones.
+
 ## [0.5.0] - 2026-09-28
 
 ### What to Test

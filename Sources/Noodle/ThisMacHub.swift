@@ -1,6 +1,7 @@
 import Foundation
 import HubCore
 import NoodleCore
+import NoodleMCP
 import NoodleRuntime
 import Observation
 
@@ -12,6 +13,8 @@ import Observation
     var isOn: Bool { hub != nil }
     /// Runs after a device made, changed or deleted a bot, so Noodle reloads its bots.
     @ObservationIgnored var onBotsEdited: (() -> Void)?
+    /// Runs after a device changed tools, computers or browsers, so Noodle reads them again.
+    @ObservationIgnored var onToolsEdited: (() -> Void)?
     /// Runs when the owner read a conversation further on one of their devices.
     @ObservationIgnored var onRead: ((_ conversationID: UUID, _ upTo: Date) -> Void)?
 
@@ -19,16 +22,18 @@ import Observation
     @ObservationIgnored private let runtime: AgentRuntimeCoordinator
     @ObservationIgnored private let applets: AppletController
     @ObservationIgnored private let profiles: HarnessProfilesController
+    @ObservationIgnored private let service: MCPService
     @ObservationIgnored private var awake: NSObjectProtocol?
     @ObservationIgnored private let defaults: UserDefaults
     private static let enabledKey = "ThisMacHubEnabled"
 
     init(repository: WorkspaceRepository, runtime: AgentRuntimeCoordinator, applets: AppletController,
-         profiles: HarnessProfilesController, defaults: UserDefaults = .standard) {
+         profiles: HarnessProfilesController, service: MCPService, defaults: UserDefaults = .standard) {
         self.repository = repository
         self.runtime = runtime
         self.applets = applets
         self.profiles = profiles
+        self.service = service
         self.defaults = defaults
     }
 
@@ -44,13 +49,14 @@ import Observation
                 .appendingPathComponent("This Mac Hub", isDirectory: true)
             let port = (Bundle.main.object(forInfoDictionaryKey: "NoodlePersonalHubPort") as? String).flatMap(UInt16.init)
             let hub = PersonalHub(name: Host.current().localizedName ?? "My Mac", directory: directory, repository: repository,
-                                  runtime: runtime, applets: applets, profiles: profiles, port: port ?? PersonalHub.port,
+                                  runtime: runtime, applets: applets, profiles: profiles, service: service, port: port ?? PersonalHub.port,
                                   // As a Noodle Hub does: the router forwards the port, for devices away from home.
                                   router: SystemRouterPortMapper())
             // Copies of bots kept on joined Hubs are those Hubs', not this Mac's.
             hub.bots.isHidden = { [runtime] in runtime.remoteAgentIDs.contains($0) }
             hub.bots.onBotsEdited = { [weak self] in self?.onBotsEdited?() }
             hub.onRead = { [weak self] in self?.onRead?($0, $1) }
+            hub.onToolsEdited = { [weak self] in self?.onToolsEdited?() }
             self.hub = hub
             await hub.start()
             awake = ProcessInfo.processInfo.beginActivity(options: [.idleSystemSleepDisabled],

@@ -217,6 +217,7 @@ import os
         if case .openSurface(let conversationID, let attachmentID) = request {
             do {
                 let user = try user(key)
+                if access.isPersonal { readNoodlesTools() }
                 let (link, bot) = try await hubBots().companionLink(attachmentID, in: conversationID, for: user)
                 // Starting a computer or a noodlet can outlast a request, so the channel opens first
                 // and anything that then goes wrong comes down it.
@@ -402,13 +403,13 @@ import os
     private static let pushLog = Logger(subsystem: Bundle.main.bundleIdentifier ?? "HubCore", category: "Notifications")
 
     private func handle(_ request: LinkRequest, from key: LinkPublicKey) async throws -> LinkResponse {
-        // On the owner's own Mac these are Noodle's, kept in its own settings.
+        // On the owner's own Mac these are Noodle's, which changes them too: read them as it left them.
         if access.isPersonal {
             switch request {
-            case .saveConnection, .deleteConnection, .assignConnections, .signIn, .finishSignIn,
-                 .createComputer, .updateComputer, .deleteComputer, .assignComputers,
-                 .createBrowser, .updateBrowser, .deleteBrowser, .assignBrowsers:
-                throw LinkError("Manage tools, computers and browsers in Noodle on the Mac.")
+            case .connections, .saveConnection, .deleteConnection, .assignConnections, .signIn, .finishSignIn, .picture,
+                 .computers, .createComputer, .updateComputer, .deleteComputer, .assignComputers,
+                 .browsers, .createBrowser, .updateBrowser, .deleteBrowser, .assignBrowsers:
+                readNoodlesTools()
             default: break
             }
         }
@@ -571,6 +572,12 @@ import os
             push(.computersChanged, to: user.id)
             return .done
         }
+    }
+
+    private func readNoodlesTools() {
+        connections?.reloadAssignments()
+        computers?.reloadAssignments()
+        browsers?.reloadAssignments()
     }
 
     private func hubBrowsers() throws -> HubBrowsers {

@@ -6,6 +6,10 @@ All notable changes to Noodle are documented here, following
 
 ## [Unreleased]
 
+### Added
+
+- When this Mac serves your devices (Settings > Hub), your phone can create, edit, delete and assign the Mac's own tools, computers and browsers, and sign tools in. Changes show up in Noodle on the Mac, and bots use them straight away.
+
 ## [0.31.0] - 2026-09-28
 
 ### Added

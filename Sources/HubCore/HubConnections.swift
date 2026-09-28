@@ -138,6 +138,17 @@ import NoodleMCP
         return registry.connections.first { $0.id == record.id }!
     }
 
+    /// Reads the connections and grants again, after Noodle changed them in the same files on its owner's Mac.
+    public func reloadAssignments() {
+        guard let saved = try? MCPRegistry.load(root: root) else { return }
+        registry = saved
+        Task { [weak self, service] in
+            var signedIn: Set<UUID> = []
+            for connection in saved.connections where await service.hasCredentials(connection.id) { signedIn.insert(connection.id) }
+            self?.signedIn = signedIn
+        }
+    }
+
     /// Replaces which of the user's connections one of their bots may use.
     public func assign(_ ids: Set<UUID>, to bot: UUID, for user: HubUser) throws {
         guard access.owner(ofBot: bot) == user.id else { throw LinkError("That bot is not yours.") }
