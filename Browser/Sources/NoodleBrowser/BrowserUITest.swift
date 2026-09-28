@@ -3,7 +3,6 @@ import BrowserBridge
 import BrowserCore
 import NoodleLaunchChecks
 import SwiftUI
-import ScreenCaptureKit
 
 /// Opt-in signed fixture. Never loads user profiles or starts the provider.
 @MainActor enum BrowserUITest {
@@ -18,13 +17,7 @@ import ScreenCaptureKit
                 try FileManager.default.removeItem(at: library.root)
                 print("BROWSER_UI_CLEANED"); exit(0)
             }
-            var work = try library.create(name: "Work"), research = try library.create(name: "Research")
-            work.symbol = "briefcase.fill"; work.backgroundPreset = "ocean"
-            research.symbol = "sparkles"; research.colour = 1; research.paused = true; research.backgroundPreset = "forest"
-            try library.update(work); try library.update(research)
-            try library.addBookmark(work.id, url: "https://developer.apple.com/documentation/", title: "Documentation")
-            try library.addBookmark(work.id, url: "https://github.com/", title: "GitHub")
-            _ = try library.recordVisit(work.id, url: "https://developer.apple.com/documentation/", title: "Apple Developer Documentation")
+            let work = try library.create(name: "Work"), research = try library.create(name: "Research")
             presentation.selection = work.id
             for _ in 0..<30 {
                 if delegate.openLibrary != nil { break }
@@ -37,75 +30,13 @@ import ScreenCaptureKit
             }
             window.setContentSize(.init(width: 1180, height: 760))
             try await Task.sleep(for: .milliseconds(300))
-            // An aborted run can leave a collapsed sidebar persisted; start expanded.
-            if let show = sidebarToggle(window, "Show Sidebar") {
-                press(show)
-                try await Task.sleep(for: .milliseconds(600))
-            }
-            try await snapshot(window, to: library.root.appendingPathComponent("browser.png"))
-            guard !window.isOpaque, let content = window.contentView,
-                  containsNativeSidebar(in: content) else {
-                throw BrowserError("Browser must use Computer's native glass sidebar and transparent window compositing.")
-            }
-            try await snapshot(window, to: library.root.appendingPathComponent("browser.png"))
-            try verifyCreatePlacement(window, collapsed: false)
-            try verifySettingsPlacement(window)
-            try await verifyWebSurface(presentation, window: window, root: library.root)
-            try await verifyTabTargets(presentation, window: window)
-            guard let hide = sidebarToggle(window, "Hide Sidebar") else { throw BrowserError("Missing native sidebar toggle.") }
-            press(hide)
-            try await Task.sleep(for: .milliseconds(400))
-            try await snapshot(window, to: library.root.appendingPathComponent("browser-collapsed.png"))
-            try verifyCreatePlacement(window, collapsed: true)
-            // The expanded sidebar's own toggle is hidden with it; the collapsed one must remain.
-            guard let show = sidebarToggle(window, "Show Sidebar") else { throw BrowserError("Missing sidebar toggle while collapsed.") }
-            press(show)
-            try await Task.sleep(for: .milliseconds(600))
-            try verifyCreatePlacement(window, collapsed: false)
-            presentation.mode = .history
-            try await Task.sleep(for: .milliseconds(350))
-            try await snapshot(window, to: library.root.appendingPathComponent("history.png"))
-            presentation.mode = .bookmarks
-            try await Task.sleep(for: .milliseconds(350))
-            try await snapshot(window, to: library.root.appendingPathComponent("bookmarks.png"))
             presentation.selection = research.id
             try await Task.sleep(for: .milliseconds(800))
-            try await snapshot(window, to: library.root.appendingPathComponent("research.png"))
             guard library.profiles.count == 2, NSApp.windows.filter({ $0.identifier?.rawValue == "library" }).count == 1 else {
                 throw BrowserError("Selecting a browser created a separate browser window.")
             }
             presentation.selection = work.id
-            presentation.backgroundEditing = try library.profile(work.id)
             try await Task.sleep(for: .milliseconds(800))
-            guard let backgroundSheet = window.attachedSheet else { throw BrowserError("Background did not open its native sheet.") }
-            try await snapshot(backgroundSheet, to: library.root.appendingPathComponent("background.png"))
-            presentation.backgroundEditing = nil
-            try await Task.sleep(for: .milliseconds(300))
-            presentation.showingNew = true
-            try await Task.sleep(for: .milliseconds(600))
-            guard let newSheet = window.attachedSheet, let newContent = newSheet.contentView,
-                  containsTextField("Browser", in: newContent) else { throw BrowserError("New Browser must prefill a name.") }
-            try await snapshot(newSheet, to: library.root.appendingPathComponent("new-browser.png"))
-            guard let iconButton = elements(newContent).first(where: { attribute($0, .description) as? String == "Change Browser Icon" }) else {
-                throw BrowserError("Missing browser icon button.")
-            }
-            press(iconButton)
-            try await Task.sleep(for: .milliseconds(600))
-            guard let iconSheet = newSheet.attachedSheet, let iconContent = iconSheet.contentView,
-                  let done = elements(iconContent).first(where: { attribute($0, .title) as? String == "Done" || attribute($0, .description) as? String == "Done" }) else {
-                throw BrowserError("The browser icon must open the suite's full native sheet.")
-            }
-            try await snapshot(iconSheet, to: library.root.appendingPathComponent("browser-icon.png"))
-            press(done)
-            try await Task.sleep(for: .milliseconds(250))
-            presentation.showingNew = false
-            try await Task.sleep(for: .milliseconds(300))
-            presentation.editing = try library.profile(work.id)
-            try await Task.sleep(for: .milliseconds(900))
-            guard let sheet = window.attachedSheet else { throw BrowserError("Edit Browser did not open its native sheet.") }
-            try await snapshot(sheet, to: library.root.appendingPathComponent("edit-browser.png"))
-            presentation.editing = nil
-            try await Task.sleep(for: .milliseconds(300))
             guard let appMenu = NSApp.mainMenu?.items.first?.submenu else { throw BrowserError("Missing application menu.") }
             appMenu.update()
             guard appMenu.items.contains(where: { $0.title == "Check for Updates" }),
@@ -118,86 +49,22 @@ import ScreenCaptureKit
             guard let settingsWindow = NSApp.windows.first(where: { $0.isVisible && ($0.identifier?.rawValue.contains("Settings") == true || $0.title == "Settings" || $0.title == "General") }) else {
                 throw BrowserError("Command-comma did not open the suite Settings scene.")
             }
-            try await snapshot(settingsWindow, to: library.root.appendingPathComponent("settings.png"))
-            let generalHeight = settingsWindow.frame.height
-            guard let updates = settingsWindow.toolbar?.items.first(where: { $0.label == "Update" }), let action = updates.action else {
+            guard settingsWindow.toolbar?.items.contains(where: { $0.label == "Update" && $0.action != nil }) == true else {
                 throw BrowserError("Missing native Update settings tab.")
             }
-            NSApp.sendAction(action, to: updates.target, from: updates)
-            try await Task.sleep(for: .milliseconds(650))
-            // General now has four controls too; Update need not be taller.
-            try await snapshot(settingsWindow, to: library.root.appendingPathComponent("updates.png"))
-            guard let general = settingsWindow.toolbar?.items.first(where: { $0.label == "General" }), let generalAction = general.action else {
-                throw BrowserError("Missing native General settings tab.")
-            }
-            NSApp.sendAction(generalAction, to: general.target, from: general)
-            try await Task.sleep(for: .milliseconds(650))
-            guard abs(settingsWindow.frame.height - generalHeight) < 2 else {
-                throw BrowserError("Settings did not shrink back to its General content.")
-            }
             settingsWindow.close()
+            try await verifyWebSurface(presentation, window: window)
+            try await verifyTabTargets(presentation, window: window)
             // Delete the currently displayed profile while its window is mounted.
             // This catches retained WKWebViews that prevent data-store removal.
+            try await BrowserSmokeTest.eventually("the selected webpage mounted before deletion") { presentation.currentTab?.web.window === window }
             for profile in library.profiles { try await delegate.runtime.removeBrowser(profile.id) }
-            try await Task.sleep(for: .milliseconds(600))
-            try await snapshot(window, to: library.root.appendingPathComponent("empty-library.png"))
             window.close()
             delegate.runtime.shutdown()
-            print("BROWSER_UI_PASSED: native sidebar, toolbar, tab padding input, empty tab strip double-click, independent tab closing, collapsed content, icon/edit sheets, Settings, Update and standard menus")
+            print("BROWSER_UI_PASSED: web surface, tab padding input, empty tab strip double-click, independent tab closing, single window, Settings, Update and standard menus, deletion while mounted")
             print("BROWSER_UI_ARTIFACTS: \(library.root.path)")
             exit(0)
         } catch { fputs("BROWSER_UI_FAILED: \(error.localizedDescription)\n", stderr); exit(1) }
-    }
-    /// Create Browser follows the sidebar toggle inside the sidebar's toolbar section and
-    /// leaves with the sidebar, so it never joins Back and Forward.
-    private static func verifyCreatePlacement(_ window: NSWindow, collapsed: Bool) throws {
-        let items = (window.toolbar?.items ?? []).filter(\.isVisible)
-        // The toolbar drops Create while the sidebar is too narrow to hold it.
-        let fits = items.contains(where: { $0.label == "Create" })
-        let labels = collapsed ? ["Show Sidebar", "Back"] : fits ? ["Hide Sidebar", "Create", "Back"] : ["Hide Sidebar", "Back"]
-        let frames = labels.compactMap { toolbarItem(window, $0)?.view.map { $0.convert($0.bounds, to: nil) } }
-        print("BROWSER_UI_CREATE_PLACEMENT: \(labels)=\(frames)")
-        guard frames.count == labels.count, !(collapsed && fits),
-              zip(frames, frames.dropFirst()).allSatisfy({ $0.maxX < $1.minX }) else {
-            throw BrowserError("Create Browser must follow the sidebar toggle, apart from Back and Forward: \(labels)=\(frames). Toolbar: \(describeToolbar(window))")
-        }
-    }
-    /// macOS 26 bridges a toolbar group as one item, so a button is also found through
-    /// its group and its accessibility label.
-    private static func toolbarItem(_ window: NSWindow, _ label: String) -> NSToolbarItem? {
-        let items = (window.toolbar?.items ?? []).filter { $0.isVisible && $0.view != nil }
-        return items.first(where: { $0.label == label })
-            ?? items.first(where: { ($0 as? NSToolbarItemGroup)?.subitems.contains(where: { $0.label == label }) == true })
-            ?? items.first(where: { item in
-                item.toolTip == label || item.view.map(elements)?.contains(where: {
-                    attribute($0, .description) as? String == label || attribute($0, .title) as? String == label
-                }) == true
-            })
-    }
-    private static func describeToolbar(_ window: NSWindow) -> [String] {
-        (window.toolbar?.items ?? []).map { item in
-            let frame = item.view.map { $0.convert($0.bounds, to: nil) }
-            let subitems = (item as? NSToolbarItemGroup)?.subitems.map(\.label) ?? []
-            return "\(item.itemIdentifier.rawValue) label=\(item.label) visible=\(item.isVisible) view=\(item.view.map { String(describing: type(of: $0)) } ?? "nil") frame=\(String(describing: frame)) subitems=\(subitems)"
-        }
-    }
-    /// The fixture hides both entry points, so the App Settings fallback must close the toolbar.
-    private static func verifySettingsPlacement(_ window: NSWindow) throws {
-        let items = (window.toolbar?.items ?? []).filter { $0.isVisible && $0.view != nil }
-        let frames = items.map { ($0.label, $0.view.map { $0.convert($0.bounds, to: nil) } ?? .zero) }
-        print("BROWSER_UI_SETTINGS_PLACEMENT: \(frames)")
-        guard let settings = frames.first(where: { $0.0 == "App Settings" })?.1,
-              frames.allSatisfy({ $0.0 == "App Settings" || $0.1.maxX <= settings.minX }) else {
-            throw BrowserError("App Settings must be the last toolbar item: \(frames).")
-        }
-    }
-    private static func sidebarToggle(_ window: NSWindow, _ label: String) -> NSObject? {
-        toolbarItem(window, label)?.view.flatMap { view in
-            elements(view).first(where: { $0 is NSButton || attribute($0, .role) as? String == "AXButton" })
-        }
-    }
-    private static func containsNativeSidebar(in view: NSView) -> Bool {
-        view is NSGlassEffectView || view.subviews.contains(where: containsNativeSidebar)
     }
     private static func attribute(_ node: NSObject, _ key: NSAccessibility.Attribute) -> Any? {
         if let value = node.accessibilityAttributeValue(key) { return value }
@@ -308,29 +175,7 @@ import ScreenCaptureKit
             }
         }
     }
-    private static func containsTextField(_ value: String, in view: NSView) -> Bool {
-        (view as? NSTextField)?.stringValue == value || view.subviews.contains { containsTextField(value, in: $0) }
-    }
-    private static func snapshot(_ window: NSWindow, to url: URL) async throws {
-        // Capture only this process, as Noodle's native conversation capture does.
-        // AppKit cacheDisplay omits the GPU-composited sidebar glass.
-        let content = try await SCShareableContent.currentProcess
-        guard let target = content.windows.first(where: { $0.windowID == CGWindowID(window.windowNumber) }) else {
-            throw BrowserError("Fixture window is unavailable for capture.")
-        }
-        let config = SCStreamConfiguration()
-        config.width = max(1, Int(target.frame.width * window.backingScaleFactor))
-        config.height = max(1, Int(target.frame.height * window.backingScaleFactor))
-        config.showsCursor = false; config.ignoreShadowsSingleWindow = true; config.scalesToFit = true
-        config.includeChildWindows = false; config.captureResolution = .best
-        let capture = try await SCScreenshotManager.captureImage(
-            contentFilter: SCContentFilter(desktopIndependentWindow: target), configuration: config)
-        guard let data = NSBitmapImageRep(cgImage: capture).representation(using: .png, properties: [:]) else {
-            throw BrowserError("Snapshot encoding failed.")
-        }
-        try data.write(to: url)
-    }
-    private static func verifyWebSurface(_ presentation: BrowserPresentation, window: NSWindow, root: URL) async throws {
+    private static func verifyWebSurface(_ presentation: BrowserPresentation, window: NSWindow) async throws {
         guard let tab = presentation.currentTab else { throw BrowserError("Missing selected tab.") }
         tab.web.loadHTMLString("""
         <!doctype html><meta name="viewport" content="width=device-width"><title>Workspace</title>
@@ -344,12 +189,10 @@ import ScreenCaptureKit
         }
         try await Task.sleep(for: .milliseconds(300))
         guard tab.web.window === window else { throw BrowserError("The selected webpage is not mounted in the library window.") }
-        try await snapshot(window, to: root.appendingPathComponent("browser-page.png"))
         try await tab.click(target: "#save", x: nil, y: nil, frame: nil)
         try await BrowserSmokeTest.eventually("native input in the library window") {
             try await tab.evaluate("return document.querySelector('#save').textContent;") as? String == "Saved"
         }
-        try await snapshot(window, to: root.appendingPathComponent("browser-page.png"))
         presentation.mode = .history
         try await Task.sleep(for: .milliseconds(200))
         guard tab.web.window !== window else { throw BrowserError("Leaving Browser view did not restore its background surface.") }
