@@ -90,16 +90,91 @@ final class NoodletConfinementTests: XCTestCase {
     func testSilentLaunchesLoseTheAudioServer() {
         let root = URL(fileURLWithPath: "/tmp/applet")
         var request = launch(root)
-        let deny = "(deny mach-lookup (global-name \"com.apple.audio.audiohald\"))"
-        let quiet = NoodletConfinement.profile(request, toolchain: "/bin")
-        XCTAssertTrue(quiet.contains(deny), quiet)
-        // Seatbelt takes the last matching rule, so the deny has to follow the blanket allow.
-        XCTAssertTrue(quiet.range(of: deny)!.lowerBound > quiet.range(of: "(allow mach-lookup)")!.lowerBound, quiet)
-        request.audible = true
-        XCTAssertFalse(NoodletConfinement.profile(request, toolchain: "/bin").contains(deny))
+        let server = "\"com.apple.audio.audiohald\""
+        XCTAssertFalse(NoodletConfinement.profile(request, toolchain: "/bin").contains(server))
+        request.foreground = true
+        XCTAssertTrue(NoodletConfinement.profile(request, toolchain: "/bin").contains(server))
         // Recording granted by the user reaches the same audio server, so it keeps it.
-        request.audible = false
+        request.foreground = false
         request.devices = ["microphone"]
-        XCTAssertFalse(NoodletConfinement.profile(request, toolchain: "/bin").contains(deny))
+        XCTAssertTrue(NoodletConfinement.profile(request, toolchain: "/bin").contains(server))
+    }
+
+    /// Runs a system tool as a noodlet would, and unconfined, so each check compares
+    /// against what the same tool does on this Mac.
+    private func compare(_ request: NoodletLaunch, _ tool: String, _ arguments: [String], environment: [String: String] = [:]) throws -> (confined: (Int32, String), plain: (Int32, String)) {
+        func run(_ executable: String, _ arguments: [String]) throws -> (Int32, String) {
+            let process = Process(), output = Pipe()
+            process.executableURL = URL(fileURLWithPath: executable)
+            process.arguments = arguments
+            process.environment = ProcessInfo.processInfo.environment.merging(environment) { $1 }
+            process.standardInput = FileHandle.nullDevice
+            process.standardOutput = output
+            process.standardError = output
+            try process.run()
+            let text = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            process.waitUntilExit()
+            return (process.terminationStatus, text)
+        }
+        let profile = NoodletConfinement.profile(request, toolchain: "/usr/bin")
+        return (try run("/usr/bin/sandbox-exec", ["-p", profile, tool] + arguments), try run(tool, arguments))
+    }
+
+    /// Like a page, a native noodlet reaches the network only when its manifest asks for it.
+    func testNetworkFollowsTheManifest() throws {
+        var request = launch(URL(fileURLWithPath: "/tmp/applet"))
+        // Nothing listens on port 1: refused by the Mac when allowed, by the sandbox when not.
+        let closed = ["-vz", "-w1", "127.0.0.1", "1"]
+        let denied = try compare(request, "/usr/bin/nc", closed)
+        XCTAssertTrue(denied.confined.1.contains("Operation not permitted"), denied.confined.1)
+        request.network = true
+        let allowed = try compare(request, "/usr/bin/nc", closed)
+        XCTAssertTrue(allowed.confined.1.contains("Connection refused"), allowed.confined.1)
+    }
+
+    /// Network means internet addresses. Local sockets reach other programs on this Mac.
+    func testNetworkLeavesOutLocalSockets() throws {
+        var request = launch(URL(fileURLWithPath: "/tmp/applet"))
+        request.network = true
+        let result = try compare(request, "/usr/bin/nc", ["-U", "-w1", "/private/var/run/usbmuxd"])
+        guard result.plain.0 == 0 else { throw XCTSkip("No usbmuxd socket to connect to: \(result.plain.1)") }
+        XCTAssertNotEqual(result.confined.0, 0, result.confined.1)
+    }
+
+    /// The clipboard holds whatever the user copied last; only a noodlet they opened may read it.
+    func testClipboardOnlyInTheForeground() throws {
+        var request = launch(URL(fileURLWithPath: "/tmp/applet"))
+        request.network = true
+        let background = try compare(request, "/usr/bin/pbpaste", [])
+        guard background.plain.0 == 0 else { throw XCTSkip("No pasteboard on this Mac: \(background.plain.1)") }
+        XCTAssertNotEqual(background.confined.0, 0, "A noodlet out of sight read the clipboard.")
+        request.foreground = true
+        XCTAssertEqual(try compare(request, "/usr/bin/pbpaste", []).confined.0, 0)
+    }
+
+    /// Only services the frameworks need are named; the rest of the system stays out of reach.
+    func testServicesAndDriversAreNamed() {
+        let profile = NoodletConfinement.profile(launch(URL(fileURLWithPath: "/tmp/applet")), toolchain: "/bin")
+        XCTAssertFalse(profile.contains("(allow mach-lookup)"), profile)
+        XCTAssertFalse(profile.contains("(allow iokit-open)"), profile)
+        XCTAssertTrue(profile.contains("\"com.apple.windowserver.active\""), profile)
+    }
+
+    /// FoundationModels reports its model as not ready without the global preferences.
+    func testGlobalPreferencesAreReadable() throws {
+        let result = try compare(launch(URL(fileURLWithPath: "/tmp/applet")), "/usr/bin/defaults", ["read", "-g"])
+        guard result.plain.0 == 0 else { throw XCTSkip("No global preferences on this Mac.") }
+        XCTAssertEqual(result.confined.0, 0, result.confined.1)
+    }
+
+    /// A granted device brings the services Apple's own sandbox gives it.
+    func testDeviceServicesFollowGrantedPermissions() {
+        var request = launch(URL(fileURLWithPath: "/tmp/applet"))
+        let camera = "\"com.apple.applecamerad\"", speech = "\"com.apple.speech.localspeechrecognition\""
+        let none = NoodletConfinement.profile(request, toolchain: "/bin")
+        XCTAssertFalse(none.contains(camera) || none.contains(speech), none)
+        request.devices = ["camera", "speech-recognition"]
+        let granted = NoodletConfinement.profile(request, toolchain: "/bin")
+        XCTAssertTrue(granted.contains(camera) && granted.contains(speech), granted)
     }
 }

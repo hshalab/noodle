@@ -2,7 +2,15 @@
 
 ## [Unreleased]
 
+### Security
+
+- A native noodlet reaches the network only when its `noodlet.json` sets `"network": true`, as a web noodlet already did, and then only internet addresses, not other programs on this Mac. Native noodlets that fetch without it stop connecting until the flag is added.
+- A native noodlet reads the clipboard only when you opened it. One an agent started out of sight cannot.
+- Native noodlets reach only the system services and graphics drivers their frameworks need, instead of all of them.
+
 ### Fixed
+
+- Native noodlets can use the on-device Apple Intelligence model again. It reported that the model was not ready.
 
 - Applet no longer crashes on launch while it deletes what a noodlet that is gone had saved, as it could right after updating.
 

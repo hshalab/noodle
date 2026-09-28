@@ -361,7 +361,8 @@ import AppletCore
       executable: interpreter,
       arguments: interpreterArguments(buildRoot.appendingPathComponent("Program.swift"), sdk: sdk),
       environment: env, directory: snapshot.path, readable: [buildRoot.path, moduleCache.path],
-      writable: [dataRoot.path, home.path], devices: devices, audible: Self.audible(mode: mode))
+      writable: [dataRoot.path, home.path], devices: devices, foreground: Self.audible(mode: mode),
+      network: package.manifest.network)
     // Without the audio server the noodlet's engine renders itself.
     launch.environment["NOODLET_AUDIO"] = launch.reachesAudioServer ? "device" : "offline"
     let p = ConfinedProcess(launch, root: root)

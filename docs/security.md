@@ -153,7 +153,9 @@ unrestricted bot's wider access means assignments do not strictly limit it.
 A noodlet a bot writes in [Noodle Applet](../Applet/README.md) does not widen
 that bot's access. A noodlet can read only its own files and saved data. It
 cannot read your files, another noodlet, or the Keychain; a file reaches it only
-when you pick it in a dialog. Removing a bot from a conversation stops its
+when you pick it in a dialog. It reads the clipboard only once you open it, and
+reaches the internet only when it says it needs to, never other programs on
+your Mac. Removing a bot from a conversation stops its
 requests to shared noodlets, though one already running may still finish.
 
 ## Noodle Hub

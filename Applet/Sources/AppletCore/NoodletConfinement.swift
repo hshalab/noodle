@@ -12,15 +12,17 @@ public struct NoodletLaunch: Codable, Sendable {
   public var writable: [String]
   /// Manifest permissions the user granted that need a sandbox operation.
   public var devices: [String]
-  /// Whether this process may reach the audio output. Only a noodlet the user is
-  /// looking at is heard; everything else runs silent.
-  public var audible: Bool
+  /// Whether the user opened this noodlet. Only then is it heard and may it read
+  /// the clipboard; everything else runs silent and out of reach of what was copied.
+  public var foreground: Bool
+  /// Whether the manifest asks for the network.
+  public var network: Bool
   /// A granted microphone reaches the same audio server, so that grant keeps its audio.
-  public var reachesAudioServer: Bool { audible || devices.contains("microphone") }
+  public var reachesAudioServer: Bool { foreground || devices.contains("microphone") }
   public init(
     id: String = UUID().uuidString, executable: String, arguments: [String],
     environment: [String: String], directory: String, readable: [String], writable: [String],
-    devices: [String] = [], audible: Bool = false
+    devices: [String] = [], foreground: Bool = false, network: Bool = false
   ) {
     self.id = id
     self.executable = executable
@@ -30,7 +32,8 @@ public struct NoodletLaunch: Codable, Sendable {
     self.readable = readable
     self.writable = writable
     self.devices = devices
-    self.audible = audible
+    self.foreground = foreground
+    self.network = network
   }
 }
 
@@ -63,25 +66,64 @@ public enum NoodletConfinement {
       "(allow file-read* file-write-data file-ioctl (literal \"/dev/null\") (literal \"/dev/tty\") (subpath \"/dev/fd\"))",
       // Foundation stages atomic writes here, under a name no other process can list.
       "(allow file-read* file-write* (regex #\"^/private/var/folders/[^/]+/[^/]+/T/TemporaryItems(/NSIRD_swift-frontend_[^/]+(/.*)?)?$\"))",
-      // AppKit, SwiftUI and the on-device frameworks reach many services. Each
-      // one still checks this sandbox before it touches a file for the caller.
-      "(allow mach-lookup)", "(allow ipc-posix-shm)", "(allow iokit-open)", "(allow network-outbound)",
+      // FoundationModels reports its model as not ready without the global domain.
+      "(allow user-preference-read (preference-domain \"kCFPreferencesAnyApplication\"))",
+      "(allow ipc-posix-shm)",
+      "(allow iokit-open-user-client (iokit-user-client-class " + quotedList(drivers) + "))",
+      "(allow mach-lookup (xpc-service-name \"com.apple.audio.AudioConverterService\"))",
     ]
     // Without the audio server the process finds no output device, so a noodlet
-    // running where the user cannot see it cannot be heard either. Seatbelt takes
-    // the last matching rule, so this one follows the blanket mach-lookup above.
-    if !launch.reachesAudioServer {
-      rules.append("(deny mach-lookup (global-name \"com.apple.audio.audiohald\"))")
+    // running where the user cannot see it cannot be heard either.
+    var names = services + (launch.reachesAudioServer ? ["com.apple.audio.audiohald"] : [])
+    if launch.foreground { names.append("com.apple.pasteboard.1") }
+    if launch.network {
+      names.append("com.apple.dnssd.service")
+      // Addresses only: a local socket is another program on this Mac, such as an SSH agent.
+      rules.append("(allow network-outbound (remote ip) (literal \"/private/var/run/mDNSResponder\"))")
     }
+    // Apple's own sandbox gives each device these services.
+    if launch.devices.contains("microphone") {
+      rules.append("(allow device-microphone)")
+      rules.append("(allow iokit-open-user-client (iokit-user-client-class \"IOAudioControlUserClient\" \"IOAudioEngineUserClient\"))")
+      names.append("com.apple.cmio.registerassistantservice.system-extensions")
+    }
+    if launch.devices.contains("camera") {
+      rules.append("(allow device-camera)")
+      names += [
+        "com.apple.applecamerad", "com.apple.appleh13camerad", "com.apple.cmio.registerassistantservice",
+        "com.apple.cmio.registerassistantservice.system-extensions",
+      ]
+    }
+    if launch.devices.contains("speech-recognition") {
+      rules.append(
+        "(allow mach-lookup (xpc-service-name \"com.apple.speech.localspeechrecognition\" "
+          + "\"com.apple.SpeechRecognitionCore.brokerd\" \"com.apple.siri.embeddedspeech\"))")
+    }
+    rules.append("(allow mach-lookup (global-name " + quotedList(Array(Set(names)).sorted()) + "))")
     if !launch.writable.isEmpty {
       rules.append(
         "(allow file-write*\n  "
           + launch.writable.map { "(subpath \(quoted(path($0))))" }.joined(separator: "\n  ") + ")")
     }
-    if launch.devices.contains("microphone") { rules.append("(allow device-microphone)") }
-    if launch.devices.contains("camera") { rules.append("(allow device-camera)") }
     return rules.joined(separator: "\n")
   }
+  /// What AppKit, SwiftUI, SpriteKit, Metal, Core ML, Vision, speech synthesis,
+  /// WebKit and FoundationModels were seen to reach, each probed in this sandbox.
+  /// Anything else fails like a missing framework feature.
+  static let services = [
+    "com.apple.CARenderServer", "com.apple.CoreServices.coreservicesd", "com.apple.accessibility.voices",
+    "com.apple.appleneuralengine", "com.apple.audio.AudioComponentRegistrar", "com.apple.audio.AudioSession",
+    "com.apple.coreservices.launchservicesd", "com.apple.cvmsServ", "com.apple.dock.fullscreen",
+    "com.apple.dock.server", "com.apple.iconservices", "com.apple.iconservices.store", "com.apple.lsd.mapdb",
+    "com.apple.modelmanager", "com.apple.pluginkit.pkd", "com.apple.tccd", "com.apple.tccd.system",
+    "com.apple.window_proxies", "com.apple.windowmanager.server", "com.apple.windowserver.active",
+    // Light and dark appearance changes arrive as distributed notifications.
+    "com.apple.distributed_notifications@Uv3",
+  ]
+  /// The GPU, shared surfaces and power state.
+  static let drivers = [
+    "AGXDeviceUserClient", "IOSurfaceRootUserClient", "IOSurfaceAcceleratorClient", "RootDomainUserClient",
+  ]
 
   /// Refuses anything but an Apple compiler working inside Applet's own storage.
   public static func process(_ launch: NoodletLaunch, within root: URL) throws -> Process {
@@ -123,6 +165,7 @@ public enum NoodletConfinement {
     encoder.outputFormatting = [.withoutEscapingSlashes]
     return String(decoding: try! encoder.encode(value), as: UTF8.self)
   }
+  private static func quotedList(_ values: [String]) -> String { values.map(quoted).joined(separator: " ") }
 }
 
 /// Deliberately no executable of Applet's choosing. The host runs only an

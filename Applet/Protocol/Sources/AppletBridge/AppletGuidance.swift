@@ -197,7 +197,9 @@ public enum AppletGuidance {
         persist. Once the user opens it, `try await NoodletContext.files.open()` lets the
         user pick a file and returns a copy inside dataDirectory, or nil;
         `files.save("relative/path", suggestedName:)` saves a dataDirectory file
-        where the user chooses. The network manifest flag restricts HTML only.
+        where the user chooses. Like HTML, native code reaches the network only with
+        network:true, and then only internet addresses, not local sockets. Only a
+        noodlet the user opened can read the clipboard.
 
         To use the microphone, camera, speech recognition or screen recording, declare
         "permissions":["microphone","camera","speech-recognition","screen-capture"]
