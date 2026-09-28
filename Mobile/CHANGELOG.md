@@ -11,6 +11,7 @@
 - Create or edit a bot and choose a model with reasoning efforts, such as a Codex model: Effort appears under Model and offers Default and the model's efforts. Switching to a model without the chosen effort resets it. Needs the Mac or Hub on the next update.
 - Paired with a Mac serving your devices (Settings > Hub in Noodle): create a computer and a browser, add a tool and sign it in, then give them to a bot. They appear in Noodle on the Mac too, and the bot can use them.
 - Paired with a Mac serving your devices, edit a bot and change its model or effort: the bot restarts, and its next reply comes from the new model. Needs the Mac on the next Noodle update.
+- Create or edit a bot and open Harness: a harness lent under a profile shows its name with the profile on a second line; check that a long profile, such as an email address, reads cleanly. Once chosen, it reads on one line, such as Codex · you@example.com.
 
 ### Added
 
@@ -19,6 +20,10 @@
 - Kick and New Session, in a conversation's … menu, start a stuck bot again or give it a fresh context, as on the Mac.
 - New Tool lists the services your Hub offers, with search, and adds the one you tap and signs it in. Your own MCP server is under Custom MCP Server at the end of the list.
 - Effort, in the bot editor, sets how hard the bot's model reasons, when the model offers a choice.
+
+### Changed
+
+- Harness lists a profile under its harness's name, and shows the chosen one on a single line.
 
 ### Fixed
 

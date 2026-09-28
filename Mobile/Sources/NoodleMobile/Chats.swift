@@ -1358,12 +1358,22 @@ struct AgentEditor: View {
                     if harnesses.isEmpty {
                         Text("Your plan lends no harnesses").foregroundStyle(.secondary)
                     } else {
-                        Picker("Harness", selection: harness) {
+                        Picker(selection: harness) {
                             if harness.wrappedValue == nil { Text("Choose").tag(LinkHarness?.none) }
                             ForEach(harnesses, id: \.self) { harness in
-                                Text(harness.profileName.map { "\(harness.providerName) (\($0))" } ?? harness.providerName)
-                                    .tag(LinkHarness?.some(harness))
+                                // The menu shows a second text as a subtitle, so a long profile name keeps its own line.
+                                VStack {
+                                    Text(harness.providerName)
+                                    if let profile = harness.profileName { Text(profile) }
+                                }
+                                .tag(LinkHarness?.some(harness))
                             }
+                        } label: {
+                            Text("Harness")
+                        } currentValueLabel: {
+                            Text(harness.wrappedValue?.chosenName ?? "Choose")
+                                .lineLimit(1)
+                                .truncationMode(.middle)
                         }
                         if let lent = harness.wrappedValue, !models.isEmpty {
                             Picker("Model", selection: model) {
@@ -1455,6 +1465,13 @@ struct AgentEditor: View {
                 problem = error.localizedDescription
             }
         }
+    }
+}
+
+extension LinkHarness {
+    /// One line for the chosen harness: the provider, then the profile when it is not the harness's own login.
+    var chosenName: String {
+        profileName.map { "\(providerName) · \($0)" } ?? providerName
     }
 }
 
