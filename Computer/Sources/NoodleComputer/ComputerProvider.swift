@@ -18,10 +18,12 @@ import WebKit
     private var surfaces: [String: (computer: UUID, streamer: SurfaceStreamer)] = [:]
     private let transferRoot: URL
 
-    init(store: ComputerStore, socket: URL? = nil) throws {
+    /// `listens` false answers only what `handle` is given, as in tests, which cannot sign a socket.
+    init(store: ComputerStore, socket: URL? = nil, listens: Bool = true) throws {
         self.store = store
         let endpoint = try socket ?? ComputerConnection.socketURL()
         transferRoot = endpoint.deletingLastPathComponent()
+        guard listens else { return }
         let clients = socket == nil ? ComputerConnection.clientIDs : ComputerConnection.clientIDs + ["com.pdparchitect.noodle.integration"]
         server = try ComputerConnectionServer(socket: endpoint, team: ComputerConnection.signingTeam(), clientIDs: clients, handler: {
             [weak self] request, peer in
@@ -36,7 +38,7 @@ import WebKit
         do { return try await handle(request, peer: peer, surface: surface) }
         catch { return .init(error: error.localizedDescription) }
     }
-    private func handle(_ request: ComputerRequest, peer: String, surface socket: SurfaceSocket?) async throws -> ComputerResponse {
+    func handle(_ request: ComputerRequest, peer: String, surface socket: SurfaceSocket? = nil) async throws -> ComputerResponse {
         guard let store else { throw ComputerBridgeError("Computer is closing.") }
         let owner = ComputerBuildIdentity.principal(for: peer) + ":" + (request.agentID?.uuidString ?? "human")
         if request.operation == .terminalResolve {

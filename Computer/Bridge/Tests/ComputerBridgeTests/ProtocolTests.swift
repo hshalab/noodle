@@ -25,6 +25,7 @@ final class ProtocolTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(RemoteComputer.self, from: JSONEncoder().encode(computer)).description, "Release builds only.")
         let legacy = try JSONSerialization.data(withJSONObject: ["id": UUID().uuidString, "name": "Old", "kind": "Shell", "state": "Stopped", "symbol": "terminal", "colour": 0])
         XCTAssertNil(try JSONDecoder().decode(RemoteComputer.self, from: legacy).description)
+        XCTAssertNil(try JSONDecoder().decode(RemoteComputer.self, from: legacy).owner)
         // Every conversation member can read a card; the description is for assigned agents.
         XCTAssertNil(ComputerReference(computer: computer, terminalPreview: "").computer.description)
         let card = ComputerCard(computer: computer, agentID: UUID(), terminalPreview: "")
@@ -239,5 +240,27 @@ final class ProtocolTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: url) }
         XCTAssertThrowsError(try ComputerConnectionServer(socket: url, team: "1234567890") { _, _ in .init() })
         XCTAssertEqual(try Data(contentsOf: url), Data("keep".utf8))
+    }
+
+    /// Whom Noodle Hub keeps a computer for travels in its list, never in a card anyone in a conversation can read.
+    func testOwnersReachTheListAndStayOutOfCards() throws {
+        let owner = ComputerOwner(id: UUID(), name: "Ada")
+        let computer = RemoteComputer(id: UUID(), name: "Build box", kind: "Shell", state: "Running", symbol: "terminal", owner: owner)
+        XCTAssertEqual(try JSONDecoder().decode(RemoteComputer.self, from: JSONEncoder().encode(computer)).owner, owner)
+        XCTAssertNil(ComputerReference(computer: computer, terminalPreview: "").computer.owner)
+        let card = ComputerCard(computer: computer, agentID: UUID(), terminalPreview: "")
+        XCTAssertNil(card.computer.owner)
+        XCTAssertNil(card.reference.computer.owner)
+    }
+
+    /// A request from a Noodle Hub carries its owner; one without it clears the owner.
+    func testOwnerRequestsTravelAndDecodeWithoutOne() throws {
+        var request = ComputerRequest(.setOwner, computerID: UUID())
+        request.owner = ComputerOwner(id: UUID(), name: "Ada")
+        XCTAssertNoThrow(try request.validate())
+        XCTAssertEqual(try ComputerRequest.read(JSONEncoder().encode(request)).owner, request.owner)
+        request.owner = nil
+        XCTAssertNil(try ComputerRequest.read(JSONEncoder().encode(request)).owner)
+        XCTAssertThrowsError(try ComputerRequest(.setOwner).validate(), "An owner for no computer")
     }
 }

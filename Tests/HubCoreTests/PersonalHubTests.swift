@@ -1,4 +1,5 @@
 import BrowserBridge
+import ComputerBridge
 import Foundation
 import HubCore
 import HubLink
@@ -171,5 +172,33 @@ import XCTest
         let (f, _) = try await fixture(bots: [])
         XCTAssertThrowsError(try f.personal.access.addUser(named: "Bob"))
         XCTAssertEqual(f.personal.access.users.count, 1)
+    }
+
+    /// On a personal Mac everything is its owner's own: no bot, computer or browser is told whom it is for.
+    func testAPersonalMacNamesNoOwners() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("noodle-personal-hub-\(UUID())")
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+        let repository = WorkspaceRepository(rootURL: root.appendingPathComponent("Noodle"))
+        try repository.prepare()
+        let bot = try repository.createAgent(named: "Kai").agent
+        let runtime = AgentRuntimeCoordinator(discovery: HarnessDiscovery(managedHarnesses: repository.managedHarnesses))
+        let personal = PersonalHub(name: "Studio", directory: root.appendingPathComponent("Remote"), repository: repository,
+                                   runtime: runtime, applets: AppletController(repository: repository),
+                                   profiles: HarnessProfilesController(store: repository.harnessProfiles), port: 0)
+        personal.bots.synchronizeOwners()
+        try personal.access.rename(personal.owner, to: "Someone Else")
+        personal.bots.synchronizeOwners()
+        XCTAssertNil(try repository.loadAgentOwner(bot))
+
+        let computer = HubComputersTests.FakeComputer(), browser = HubBrowsersTests.FakeBrowser()
+        let tools = ToolProviderRegistry(), assignments = ToolAssignmentStore()
+        let computers = HubComputers(root: root, access: personal.access, tools: tools, assignments: assignments, call: { try computer.call($0) })
+        let browsers = HubBrowsers(root: root, access: personal.access, tools: tools, assignments: assignments, call: { try browser.call($0) })
+        let madeComputer = try await computers.create(ComputerDraft(template: "ubuntu", name: "Bench"), for: personal.owner)
+        let madeBrowser = try await browsers.create(BrowserDraft(name: "Work"), for: personal.owner)
+        await computers.refresh()
+        await browsers.refresh()
+        XCTAssertNil(computer.owner(of: madeComputer.id))
+        XCTAssertNil(browser.owner(of: madeBrowser.id))
     }
 }

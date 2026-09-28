@@ -52,4 +52,39 @@ import XCTest
         XCTAssertEqual(groups.people.first?.sessions.map(\.computer.name), ["Shell", "Lab"])
         XCTAssertEqual(groups.unowned.map(\.computer.name), ["Loose"])
     }
+
+    /// The Hub's word arrives as a request, and every client sees the owner in the list.
+    func testTheHubSaysWhomAComputerIsKeptForThroughItsRequests() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try ComputerStore(root: root), identity = ComputerBuildIdentity.current
+        let provider = try ComputerProvider(store: store, socket: root.appendingPathComponent("computer.sock"), listens: false)
+        let computer = Computer(name: "Shell", kind: .container)
+        try FileManager.default.createDirectory(at: store.library.stagingDirectory(for: computer.id), withIntermediateDirectories: true)
+        store.sessions = [ComputerSession(try store.library.commit(computer))]
+        var request = ComputerRequest(.setOwner, computerID: computer.id)
+        request.owner = ComputerOwner(id: UUID(), name: "Eve")
+        do { _ = try await provider.handle(request, peer: identity.noodleIDs[0]); XCTFail("Noodle said whom a computer is for") } catch {}
+        let ada = ComputerOwner(id: UUID(), name: "Ada")
+        request.owner = ada
+        _ = try await provider.handle(request, peer: identity.hubID)
+        for peer in [identity.hubID, identity.noodleIDs[0]] {
+            let listed = try await provider.handle(ComputerRequest(.list), peer: peer).computers
+            XCTAssertEqual(listed?.first?.owner, ada)
+        }
+        request.owner = nil
+        _ = try await provider.handle(request, peer: identity.hubID)
+        let cleared = try await provider.handle(ComputerRequest(.list), peer: identity.hubID).computers
+        XCTAssertNil(cleared?.first?.owner)
+    }
+
+    /// Records saved before computers kept their owner still load, with none.
+    func testRecordsFromBeforeOwnersLoad() throws {
+        var record = try JSONSerialization.jsonObject(with: JSONEncoder().encode(Computer(name: "Old", kind: .container))) as! [String: Any]
+        record["hub"] = true
+        record.removeValue(forKey: "hubOwner")
+        let decoded = try JSONDecoder().decode(Computer.self, from: JSONSerialization.data(withJSONObject: record))
+        XCTAssertEqual(decoded.hub, true)
+        XCTAssertNil(decoded.hubOwner)
+    }
 }

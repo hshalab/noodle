@@ -42,6 +42,7 @@ import XCTest
                 case .revoke:
                     revoked.append((try XCTUnwrap(request.computerID), try XCTUnwrap(request.agentID)))
                 case .setOwner:
+                    guard knowsOwners else { throw ComputerBridgeError("This needs a newer app. Update it.") }
                     // Deleted before the Hub's word arrived, as can happen.
                     guard let index = computers.firstIndex(where: { $0.id == request.computerID }) else { throw ComputerBridgeError("No such computer.") }
                     computers[index].owner = request.owner
@@ -54,6 +55,9 @@ import XCTest
 
         /// Whom Noodle Computer was last told a computer is kept for.
         func owner(of id: UUID) -> ComputerOwner? { lock.withLock { computers.first { $0.id == id }?.owner } }
+
+        /// False for one from before owners, which cannot read the request.
+        var knowsOwners = true
 
         /// As a Noodle Computer from before it kept owners.
         func forgetOwners() { lock.withLock { for index in computers.indices { computers[index].owner = nil } } }
@@ -115,6 +119,20 @@ import XCTest
         try await owner(ComputerOwner(id: f.ada.id, name: "Ada Lovelace"))
         f.hub.remove(f.ada)
         try await owner(nil)
+    }
+
+    /// A Noodle Computer from before owners refuses the Hub's word; its computers still work, under Hub alone.
+    func testAComputerAppFromBeforeOwnersStillWorks() async throws {
+        let f = try fixture()
+        f.computer.knowsOwners = false
+        let made = try await f.hub.computers.create(ComputerDraft(template: "ubuntu", name: "Workbench"), for: f.ada)
+        await f.hub.computers.refresh()
+        XCTAssertEqual(f.hub.computers.computers(for: f.ada).map(\.id), [made.id])
+        XCTAssertNil(f.computer.owner(of: made.id))
+        // Once updated, the next refresh names the owner.
+        f.computer.knowsOwners = true
+        await f.hub.computers.refresh()
+        XCTAssertEqual(f.computer.owner(of: made.id), ComputerOwner(id: f.ada.id, name: "Ada"))
     }
 
     func testOtherUsersCannotUseOrChangeAComputer() async throws {

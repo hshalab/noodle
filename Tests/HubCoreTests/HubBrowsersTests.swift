@@ -30,6 +30,7 @@ import XCTest
                 case .delete:
                     browsers.removeAll { $0.id == request.browserID }
                 case .setOwner:
+                    guard knowsOwners else { throw BrowserError("This needs a newer app. Update it.") }
                     // Deleted before the Hub's word arrived, as can happen.
                     guard let index = browsers.firstIndex(where: { $0.id == request.browserID }) else { throw BrowserError("No such browser.") }
                     browsers[index].owner = request.owner
@@ -44,6 +45,9 @@ import XCTest
 
         /// Whom Noodle Browser was last told a browser is kept for.
         func owner(of id: UUID) -> BrowserOwner? { lock.withLock { browsers.first { $0.id == id }?.owner } }
+
+        /// False for one from before owners, which cannot read the request.
+        var knowsOwners = true
 
         /// As a Noodle Browser from before it kept owners.
         func forgetOwners() { lock.withLock { for index in browsers.indices { browsers[index].owner = nil } } }
@@ -85,6 +89,20 @@ import XCTest
         try await owner(BrowserOwner(id: ada.id, name: "Ada Lovelace"))
         hub.remove(ada)
         try await owner(nil)
+    }
+
+    /// A Noodle Browser from before owners refuses the Hub's word; its browsers still work, under Hub alone.
+    func testABrowserAppFromBeforeOwnersStillWorks() async throws {
+        let (hub, ada, _) = try hub()
+        browser.knowsOwners = false
+        let made = try await hub.browsers.create(BrowserDraft(name: "Work"), for: ada)
+        await hub.browsers.refresh()
+        XCTAssertEqual(hub.browsers.browsers(for: ada).map(\.id), [made.id])
+        XCTAssertNil(browser.owner(of: made.id))
+        // Once updated, the next refresh names the owner.
+        browser.knowsOwners = true
+        await hub.browsers.refresh()
+        XCTAssertEqual(browser.owner(of: made.id), BrowserOwner(id: ada.id, name: "Ada"))
     }
 
     func testABrowserMadeForAUserReachesOnlyTheBotsItIsAssignedTo() async throws {

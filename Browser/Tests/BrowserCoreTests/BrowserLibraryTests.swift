@@ -4,6 +4,33 @@ import XCTest
 import AppKit
 
 final class BrowserLibraryTests: XCTestCase {
+    /// Whom Noodle Hub keeps a browser for travels in its list, never in a card anyone in a conversation can read.
+    func testOwnersReachTheListAndStayOutOfCards() throws {
+        let owner = BrowserOwner(id: UUID(), name: "Ada")
+        var profile = BrowserProfile(name: "Work")
+        profile.hubOwner = owner
+        XCTAssertEqual(profile.remote.owner, owner)
+        XCTAssertEqual(try JSONDecoder().decode(RemoteBrowser.self, from: JSONEncoder().encode(profile.remote)).owner, owner)
+        XCTAssertNil(BrowserReference(browser: profile.remote, tabID: UUID(), url: "https://example.com", title: "Example").browser.owner)
+    }
+
+    /// Browsers saved, and lists sent, before owners existed still decode, with none.
+    func testBrowsersFromBeforeOwnersDecode() throws {
+        var record = try JSONSerialization.jsonObject(with: JSONEncoder().encode(BrowserProfile(name: "Old"))) as! [String: Any]
+        record["hub"] = true
+        record.removeValue(forKey: "hubOwner")
+        let decoded = try JSONDecoder().decode(BrowserProfile.self, from: JSONSerialization.data(withJSONObject: record))
+        XCTAssertEqual(decoded.hub, true)
+        XCTAssertNil(decoded.hubOwner)
+        var remote = try JSONSerialization.jsonObject(with: JSONEncoder().encode(decoded.remote)) as! [String: Any]
+        remote.removeValue(forKey: "owner")
+        XCTAssertNil(try JSONDecoder().decode(RemoteBrowser.self, from: JSONSerialization.data(withJSONObject: remote)).owner)
+        var request = BrowserRequest(.setOwner, browserID: UUID())
+        request.owner = BrowserOwner(id: UUID(), name: "Ada")
+        XCTAssertNoThrow(try request.validate())
+        XCTAssertEqual(try BrowserRequest.read(JSONEncoder().encode(request)).owner, request.owner)
+    }
+
     @MainActor func testTheHubsBrowsersAreGroupedByPerson() {
         let ada = BrowserOwner(id: UUID(), name: "Ada"), bob = BrowserOwner(id: UUID(), name: "Bob")
         func profile(_ name: String, _ owner: BrowserOwner?) -> BrowserProfile {

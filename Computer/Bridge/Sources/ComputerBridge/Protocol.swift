@@ -242,8 +242,10 @@ public struct ComputerReference: Codable, Hashable, Sendable {
     public init(computer: RemoteComputer, terminalID: UUID? = nil, capturedAt: Date = Date(),
                 terminalPreview: String, view: String? = nil, previewImage: Data? = nil) {
         self.computer = computer; self.terminalID = terminalID; self.capturedAt = capturedAt
-        // Every conversation member can read a card; the description is for assigned agents.
+        // Every conversation member can read a card; the description is for assigned agents, and
+        // whom the Hub keeps it for is the Hub's.
         self.computer.description = nil
+        self.computer.owner = nil
         self.terminalPreview = String(terminalPreview.suffix(2000)); self.view = view; self.previewImage = previewImage
     }
 }
@@ -268,6 +270,7 @@ public struct ComputerCard: Codable, Hashable, Sendable {
     public init(computer: RemoteComputer, agentID: UUID, terminalID: UUID? = nil, terminalPreview: String, view: String? = nil, previewImage: Data? = nil) {
         self.computer = computer; self.agentID = agentID; self.terminalID = terminalID
         self.computer.description = nil
+        self.computer.owner = nil
         self.capturedAt = Date(); self.terminalPreview = String(terminalPreview.suffix(2000))
         self.view = view; self.previewImage = previewImage
     }

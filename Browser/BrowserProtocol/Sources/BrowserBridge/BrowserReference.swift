@@ -15,8 +15,10 @@ public struct BrowserReference: Codable, Hashable, Sendable {
     public init(browser: RemoteBrowser, tabID: UUID, url: String, title: String,
                 capturedAt: Date = Date(), previewImage: Data? = nil) {
         self.browser = browser; self.tabID = tabID; self.url = url; self.title = title
-        // Every conversation member can read a card; the description is for assigned agents.
+        // Every conversation member can read a card; the description is for assigned agents, and
+        // whom the Hub keeps it for is the Hub's.
         self.browser.description = nil
+        self.browser.owner = nil
         // Conversation metadata stores ISO-8601 dates at whole-second precision.
         // Keep its reference identical to the separately encoded document.
         self.capturedAt = Date(timeIntervalSince1970: capturedAt.timeIntervalSince1970.rounded(.down))
