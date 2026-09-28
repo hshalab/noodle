@@ -15,6 +15,7 @@
 - Search the bots list by name, description or what was said, as on the Mac.
 - Touching and holding a bot shows a menu with Pin or Unpin and Edit Bot….
 - Kick and New Session, in a conversation's … menu, start a stuck bot again or give it a fresh context, as on the Mac.
+- New Tool lists the services your Hub offers, with search, and adds the one you tap and signs it in. Your own MCP server is under Custom MCP Server at the end of the list.
 
 ### Fixed
 

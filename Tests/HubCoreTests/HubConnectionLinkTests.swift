@@ -87,4 +87,19 @@ import XCTest
         }
         XCTAssertTrue(signedIn)
     }
+
+    func testADeviceListsTheToolsTheHubOffers() async throws {
+        let f = try await fixture()
+        guard case .toolCatalog(let offered) = try await f.device.request(.toolCatalog) else { return XCTFail("no catalogue") }
+        let expected = ToolCatalog.matching("")
+        XCTAssertEqual(offered.map(\.id), expected.map(\.id))
+        let notion = try XCTUnwrap(offered.first { $0.id == "notion" })
+        let definition = try XCTUnwrap(ToolCatalog.entries.first { $0.id == "notion" })
+        XCTAssertEqual(notion.name, definition.name)
+        XCTAssertEqual(notion.summary, definition.summary)
+        XCTAssertEqual(notion.instructions, definition.defaultInstructions)
+        XCTAssertEqual(notion.endpoint, URL(string: "https://mcp.notion.com/mcp"))
+        XCTAssertNil(notion.badge)
+        XCTAssertEqual(offered.first { $0.id == "gmail" }?.badge, "Experimental")
+    }
 }

@@ -58,6 +58,12 @@ extension HubChats {
         }
     }
 
+    /// The services the Hub offers ready to connect.
+    func toolCatalog() async throws -> [LinkToolPreset] {
+        guard case .toolCatalog(let presets) = try await pairing.request(.toolCatalog) else { throw LinkError("The Hub sent an unexpected answer.") }
+        return presets
+    }
+
     // MARK: Computers and browsers
 
     func computerTemplates() async throws -> [LinkComputerTemplate] {
@@ -266,14 +272,24 @@ extension [LinkComputerTemplate] {
     }
 }
 
-/// Adds a connection, computer or browser on the Hub and gives it to the bot.
+/// Adds a tool, computer or browser on the Hub and gives it to the bot.
 private struct NewHubToolSheet: View {
+    let chats: HubChats
+    let agent: LinkBot
+    let kind: HubTool
+
+    var body: some View {
+        if kind == .connection { NewToolSheet(chats: chats, agent: agent) }
+        else { NewMachineSheet(chats: chats, agent: agent, kind: kind) }
+    }
+}
+
+private struct NewMachineSheet: View {
     let chats: HubChats
     let agent: LinkBot
     let kind: HubTool
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
-    @State private var address = ""
     @State private var templates: [LinkComputerTemplate] = []
     @State private var template = ""
     @State private var working = false
@@ -288,14 +304,10 @@ private struct NewHubToolSheet: View {
                     }
                 }
                 TextField("Name", text: $name)
-                if kind == .connection {
-                    TextField("MCP Server URL", text: $address)
-                        .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
-                }
                 if working, kind == .computer { ProgressView("Creating…") }
                 if let problem { Text(problem).foregroundStyle(.red) }
             }
-            .navigationTitle(kind == .connection ? "New Tool" : kind == .computer ? "New Computer" : "New Browser")
+            .navigationTitle(kind == .computer ? "New Computer" : "New Browser")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.disabled(working) }
@@ -316,11 +328,7 @@ private struct NewHubToolSheet: View {
 
     private var canCreate: Bool {
         let named = !name.trimmingCharacters(in: .whitespaces).isEmpty
-        switch kind {
-        case .connection: return named && URL(string: address)?.scheme == "https"
-        case .computer: return named && !template.isEmpty
-        case .browser: return named
-        }
+        return kind == .computer ? named && !template.isEmpty : named
     }
 
     private func create() {
@@ -330,16 +338,10 @@ private struct NewHubToolSheet: View {
         Task {
             defer { working = false }
             do {
-                switch kind {
-                case .connection:
-                    guard let url = URL(string: address.trimmingCharacters(in: .whitespaces)) else { return }
-                    let saved = try await chats.saveConnection(LinkConnectionDraft(name: name, endpoint: url))
-                    try await chats.toggle(.connection, saved.id, for: agent)
-                    if let connection = chats.connections.first(where: { $0.id == saved.id }) { try await chats.startSignIn(connection) }
-                case .computer:
+                if kind == .computer {
                     let made = try await chats.createComputer(LinkComputerDraft(template: template, name: name))
                     try await chats.toggle(.computer, made.id, for: agent)
-                case .browser:
+                } else {
                     try await chats.createBrowser(named: name)
                     if let made = chats.browsers.last(where: { $0.name == name && !$0.botIDs.contains(agent.id) }) {
                         try await chats.toggle(.browser, made.id, for: agent)
@@ -349,6 +351,169 @@ private struct NewHubToolSheet: View {
             } catch {
                 problem = error.localizedDescription
             }
+        }
+    }
+}
+
+/// The services the Hub offers, to add one and sign in; your own MCP server comes last.
+private struct NewToolSheet: View {
+    let chats: HubChats
+    let agent: LinkBot
+    @Environment(\.dismiss) private var dismiss
+    @State private var presets: [LinkToolPreset] = []
+    @State private var loading = true
+    @State private var search = ""
+    @State private var adding: String?
+    /// A retried service keeps the connection its first try saved, as on the Mac.
+    @State private var attempts: [String: UUID] = [:]
+    @State private var problem: String?
+
+    private var shown: [LinkToolPreset] {
+        let terms = search.split(whereSeparator: \.isWhitespace)
+        return presets.filter { preset in
+            let text = [preset.name, preset.summary, preset.badge ?? ""].joined(separator: " ")
+            return terms.allSatisfy { text.localizedCaseInsensitiveContains($0) }
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if let problem { Text(problem).foregroundStyle(.red) }
+                if loading { ProgressView().frame(maxWidth: .infinity) }
+                ForEach(shown) { preset in
+                    Button { add(preset) } label: { ToolPresetRow(preset: preset, adding: adding == preset.id) }
+                }
+                Section {
+                    NavigationLink("Custom MCP Server") { CustomToolForm(onAdd: connect) }
+                }
+            }
+            .disabled(adding != nil)
+            .searchable(text: $search, prompt: "Search tools")
+            .navigationTitle("New Tool")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+            }
+            .task {
+                defer { loading = false }
+                // A Hub from before the catalogue refuses the request; custom servers still work there.
+                presets = (try? await chats.toolCatalog()) ?? []
+            }
+        }
+    }
+
+    private func add(_ preset: LinkToolPreset) {
+        let id = attempts[preset.id] ?? UUID()
+        attempts[preset.id] = id
+        adding = preset.id
+        problem = nil
+        Task {
+            defer { adding = nil }
+            do {
+                try await connect(LinkConnectionDraft(id: id, name: availableName(preset.name, retrying: id), endpoint: preset.endpoint,
+                                                      description: preset.summary, instructions: preset.instructions))
+            } catch {
+                problem = error.localizedDescription
+            }
+        }
+    }
+
+    /// Every addition is its own account, so a second Notion is "Notion 2".
+    private func availableName(_ name: String, retrying id: UUID) -> String {
+        if let saved = chats.connections.first(where: { $0.id == id }) { return saved.draft.name }
+        let taken = chats.connections.map(\.draft.name)
+        var candidate = name, suffix = 2
+        while taken.contains(where: { $0.caseInsensitiveCompare(candidate) == .orderedSame }) {
+            candidate = "\(name) \(suffix)"
+            suffix += 1
+        }
+        return candidate
+    }
+
+    /// Saves the connection, gives it to the bot and starts signing it in.
+    private func connect(_ draft: LinkConnectionDraft) async throws {
+        let saved = try await chats.saveConnection(draft)
+        if chats.connections.first(where: { $0.id == saved.id })?.botIDs.contains(agent.id) != true {
+            try await chats.toggle(.connection, saved.id, for: agent)
+        }
+        if let connection = chats.connections.first(where: { $0.id == saved.id }) { try await chats.startSignIn(connection) }
+        dismiss()
+    }
+}
+
+private struct ToolPresetRow: View {
+    let preset: LinkToolPreset
+    let adding: Bool
+
+    var body: some View {
+        HStack(spacing: 12) {
+            icon.frame(width: 32, height: 32).clipShape(RoundedRectangle(cornerRadius: 7)).accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(preset.name).foregroundStyle(.primary)
+                    if let badge = preset.badge {
+                        Text(badge).font(.caption2).foregroundStyle(.orange)
+                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .background(.orange.opacity(0.12), in: Capsule())
+                    }
+                }
+                Text(preset.summary).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            if adding { ProgressView() }
+        }
+    }
+
+    @ViewBuilder private var icon: some View {
+        if let data = preset.icon, let image = UIImage(data: data) {
+            Image(uiImage: image).resizable().scaledToFit()
+        } else {
+            Text(String(preset.name.prefix(1))).font(.system(size: 18, weight: .semibold))
+                .frame(maxWidth: .infinity, maxHeight: .infinity).background(.quaternary)
+        }
+    }
+}
+
+/// Your own MCP server, by name and address.
+private struct CustomToolForm: View {
+    let onAdd: (LinkConnectionDraft) async throws -> Void
+    @State private var name = ""
+    @State private var address = ""
+    /// A retry changes the connection the first try saved.
+    @State private var id = UUID()
+    @State private var working = false
+    @State private var problem: String?
+
+    private var endpoint: URL? {
+        URL(string: address.trimmingCharacters(in: .whitespaces)).flatMap { $0.scheme == "https" ? $0 : nil }
+    }
+
+    var body: some View {
+        Form {
+            TextField("Name", text: $name)
+            TextField("MCP Server URL", text: $address)
+                .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
+            if let problem { Text(problem).foregroundStyle(.red) }
+        }
+        .navigationTitle("Custom MCP Server")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Add", action: add)
+                    .disabled(working || name.trimmingCharacters(in: .whitespaces).isEmpty || endpoint == nil)
+            }
+        }
+    }
+
+    private func add() {
+        guard let endpoint else { return }
+        working = true
+        problem = nil
+        let draft = LinkConnectionDraft(id: id, name: name.trimmingCharacters(in: .whitespaces), endpoint: endpoint)
+        Task {
+            defer { working = false }
+            do { try await onAdd(draft) } catch { problem = error.localizedDescription }
         }
     }
 }

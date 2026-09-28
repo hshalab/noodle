@@ -5,6 +5,7 @@
 ### Added
 
 - Kick and New Session work from Noodle on iPhone and iPad for bots on the Hub, with the same questions as in Noodle.
+- Noodle for iPhone lists the tool services the Hub offers when adding a tool, as Noodle's New Tool does.
 
 ## [0.6.0] - 2026-09-28
 

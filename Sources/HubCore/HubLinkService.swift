@@ -481,6 +481,9 @@ import os
             access.setPushTopic(topic, for: try paired(key))
             Self.pushLog.notice("A device \(topic == nil ? "stopped listening" : "listens", privacy: .public) for unread replies")
             return .done
+        case .toolCatalog:
+            _ = try user(key)
+            return .toolCatalog(HubConnections.catalogue)
         case .connections:
             return .connections(try hubConnections().link(for: try user(key)))
         case .picture(let owner):
