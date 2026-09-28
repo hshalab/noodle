@@ -452,6 +452,7 @@ struct AgentsView: View {
     @State private var chosen: MoreChoice?
     @State private var showingProfile = false
     @State private var creating = false
+    @State private var editing: Row?
 
     private struct Row: Identifiable {
         let chats: HubChats
@@ -479,9 +480,7 @@ struct AgentsView: View {
                                 PinnedAgent(agent: row.agent, unread: row.chats.isUnread(row.agent))
                             }
                             .buttonStyle(.plain)
-                            .contextMenu {
-                                Button { row.chats.togglePin(row.agent) } label: { Label("Unpin", systemImage: "pin.slash.fill") }
-                            }
+                            .contextMenu { menu(for: row) }
                         }
                     }
                     .padding(.vertical, 8)
@@ -500,6 +499,7 @@ struct AgentsView: View {
                         Button { row.chats.togglePin(row.agent) } label: { Label("Pin", systemImage: "pin.fill") }
                             .tint(.orange)
                     }
+                    .contextMenu { menu(for: row) }
                 }
             }
             .listStyle(.plain)
@@ -542,6 +542,7 @@ struct AgentsView: View {
             .sheet(isPresented: $creating) {
                 if let first = chats.first { AgentEditor(chats: first, agent: nil, hubs: chats) }
             }
+            .sheet(item: $editing) { row in AgentEditor(chats: row.chats, agent: row.agent) }
         }
         .onChange(of: opening, initial: true, open)
         .onChange(of: rows.map(\.id)) { open() }
@@ -553,6 +554,17 @@ struct AgentsView: View {
                 for hub in chats { group.addTask { await hub.follow() } }
             }
         }
+    }
+
+    /// A bot's touch-and-hold menu, the same for its row and its pinned circle.
+    @ViewBuilder
+    private func menu(for row: Row) -> some View {
+        if row.chats.isPinned(row.agent) {
+            Button { row.chats.togglePin(row.agent) } label: { Label("Unpin", systemImage: "pin.slash.fill") }
+        } else {
+            Button { row.chats.togglePin(row.agent) } label: { Label("Pin", systemImage: "pin.fill") }
+        }
+        Button { editing = row } label: { Label("Edit Bot…", systemImage: "pencil") }
     }
 
     /// Opens a tapped notification's conversation once its Hub's bots have loaded.

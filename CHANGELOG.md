@@ -6,6 +6,10 @@ All notable changes to Noodle are documented here, following
 
 ## [Unreleased]
 
+### Added
+
+- Noodle Mobile: touching and holding a bot shows a menu with Pin or Unpin and Edit Bot….
+
 ## [0.31.0] - 2026-09-28
 
 ### Added

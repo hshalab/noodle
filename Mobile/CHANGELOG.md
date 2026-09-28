@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### What to Test
+
+- Touch and hold a bot in the list: a menu offers Pin and Edit Bot…. On a pinned circle it offers Unpin and Edit Bot….
+
+### Added
+
+- Touching and holding a bot shows a menu with Pin or Unpin and Edit Bot….
+
 ## [0.5.0] - 2026-09-28
 
 ### What to Test
