@@ -23,6 +23,47 @@ import XCTest
         XCTAssertTrue(hub.repository.directory(for: created.agent).path.hasPrefix(root.path))
     }
 
+    /// The owner Noodle Applet reads from a bot's agent.json, or nil when it names none.
+    private func owner(in hub: Hub, of agent: AgentRecord) throws -> [String: String]? {
+        let file = hub.repository.agentsURL.appendingPathComponent("\(agent.id.uuidString.lowercased())/agent.json")
+        let json = try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any]
+        return json?["owner"] as? [String: String]
+    }
+
+    /// Noodle Applet lists the Hub's noodlets under the people whose bots made them, so each bot's
+    /// agent.json names its owner and follows a rename.
+    func testABotsFileNamesItsOwner() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("noodle-hub-tests-\(UUID())")
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+        let hub = Hub(root: root, messenger: nil)
+        try hub.repository.prepare()
+        let ada = try hub.access.addUser(named: "Ada")
+        let agent = try hub.repository.createAgent(named: "Alfred").agent
+        XCTAssertNil(try owner(in: hub, of: agent))
+        hub.access.setOwner(ada, ofBot: agent.id)
+        XCTAssertEqual(try owner(in: hub, of: agent), ["id": ada.id.uuidString, "name": "Ada"])
+        try hub.access.rename(ada, to: "Ada Lovelace")
+        XCTAssertEqual(try owner(in: hub, of: agent), ["id": ada.id.uuidString, "name": "Ada Lovelace"])
+        hub.access.setOwner(nil, ofBot: agent.id)
+        XCTAssertNil(try owner(in: hub, of: agent))
+    }
+
+    /// Bots made before their files named an owner get one when the Hub opens.
+    // TODO(NEXT_VERSION): remove with the synchronizeOwners() call in HubBots.init.
+    func testBotsFromBeforeGetTheirOwnerWhenTheHubOpens() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("noodle-hub-tests-\(UUID())")
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+        let repository = WorkspaceRepository(rootURL: root)
+        try repository.prepare()
+        let agent = try repository.createAgent(named: "Alfred").agent
+        let access = HubAccess(url: root.appendingPathComponent("access.json"))
+        let ada = try access.addUser(named: "Ada")
+        access.setOwner(ada, ofBot: agent.id)
+        XCTAssertNil(try repository.loadAgentOwner(agent))
+        let hub = Hub(root: root, messenger: nil)
+        XCTAssertEqual(try owner(in: hub, of: agent), ["id": ada.id.uuidString, "name": "Ada"])
+    }
+
     /// Only an app signed with the iCloud container talks to CloudKit; tests and development builds never do.
     func testPushesNeedTheICloudEntitlement() {
         XCTAssertNil(CloudKitPushes.ifEntitled())

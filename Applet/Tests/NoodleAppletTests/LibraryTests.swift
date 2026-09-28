@@ -44,6 +44,41 @@ final class LibraryTests: XCTestCase {
         XCTAssertNil(library.owner(of: library.documents.appendingPathComponent("Mine.noodlet")))
     }
 
+    /// Noodle Hub names each bot's owner in its agent.json; the bot's noodlets are listed under them.
+    @MainActor func testHubNoodletsAreListedUnderTheirBotsOwner() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let suite = "AppletLibraryTests." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer {
+            try? FileManager.default.removeItem(at: root)
+            defaults.removePersistentDomain(forName: suite)
+        }
+        let library = botLibrary(root: root, defaults: defaults)
+        let (ada, kai) = (UUID(), UUID())
+        func own(_ bot: String, by id: UUID, named name: String) throws {
+            try Data(#"{"displayName":"Bot","owner":{"id":"\#(id.uuidString)","name":"\#(name)"}}"#.utf8)
+                .write(to: root.appendingPathComponent("Hub Bots/\(bot)/agent.json"))
+        }
+        let board = try NoodletPackage(url: URL(fileURLWithPath: try botNoodlet(htmlNoodlet("Board"), named: "Board", owner: "alfred", root: root, hub: true)))
+        let chess = try NoodletPackage(url: URL(fileURLWithPath: try botNoodlet(htmlNoodlet("Chess"), named: "Chess", owner: "jeeves", root: root, hub: true)))
+        let loose = try NoodletPackage(url: URL(fileURLWithPath: try botNoodlet(htmlNoodlet("Loose"), named: "Loose", owner: "nobody", root: root, hub: true)))
+        _ = try botNoodlet(htmlNoodlet("Counter"), named: "Counter", owner: "local", root: root)
+        try own("alfred", by: ada, named: "Ada")
+        try own("jeeves", by: kai, named: "Kai")
+        library.scan()
+        XCTAssertEqual(library.hubPeople, [HubPerson(id: ada, name: "Ada"), HubPerson(id: kai, name: "Kai")])
+        XCTAssertEqual(library.hubOwners[board.key], HubPerson(id: ada, name: "Ada"))
+        XCTAssertEqual(library.hubOwners[chess.key], HubPerson(id: kai, name: "Kai"))
+        XCTAssertNil(library.hubOwners[loose.key], "A bot whose file names nobody has no owner.")
+
+        try own("alfred", by: ada, named: "Ada Lovelace")
+        library.scan()
+        XCTAssertEqual(library.hubPeople.first, HubPerson(id: ada, name: "Ada Lovelace"))
+
+        library.hide(chess.key)
+        XCTAssertEqual(library.hubPeople.map(\.id), [ada], "Someone whose noodlets are all hidden is listed.")
+    }
+
     /// Applet used to keep a copy of each noodlet a bot sent. The copies go, and what Applet kept
     /// for one follows the bot's own noodlet; a copy whose original is gone goes with its data.
     // TODO(NEXT_VERSION): remove with AppletLibrary.removeCopies.

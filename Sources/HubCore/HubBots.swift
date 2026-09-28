@@ -59,6 +59,10 @@ import NoodleRuntime
         computers.onAssignmentsChange = { [weak self] in self?.toolBroker?.synchronizeSkills() }
         browsers.onAssignmentsChange = { [weak self] in self?.toolBroker?.synchronizeSkills() }
         clearAbandonedUploads()
+        access.onOwnersChange = { [weak self] in self?.synchronizeOwners() }
+        // TODO(NEXT_VERSION): remove with HubTests.testBotsFromBeforeGetTheirOwnerWhenTheHubOpens.
+        // Bots made before agent.json named their owner get one here; later changes write it as they happen.
+        synchronizeOwners()
     }
 
     /// How long a file's pieces wait for the next one. Each piece touches the file, so one quiet
@@ -121,6 +125,16 @@ import NoodleRuntime
         loop?.cancel()
         loop = nil
         watching = false
+    }
+
+    /// Names each bot's owner in its agent.json, for Noodle Applet to list its noodlets under them.
+    /// A personal Mac's bots are Noodle's own and name nobody.
+    func synchronizeOwners() {
+        guard !access.isPersonal else { return }
+        for agent in (try? repository.loadAgents()) ?? [] {
+            let user = access.owner(ofBot: agent.id).flatMap { id in access.users.first { $0.id == id } }
+            try? repository.updateAgentOwner(agent, owner: user.map { AgentOwner(id: $0.id, name: $0.name) })
+        }
     }
 
     /// Lets bots call the tools assigned to them.

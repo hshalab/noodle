@@ -1,5 +1,17 @@
 import Foundation
 
+/// The person a bot on Noodle Hub belongs to, named in its agent.json so Noodle Applet can list
+/// the bot's noodlets under them.
+public struct AgentOwner: Codable, Hashable, Sendable {
+    public var id: UUID
+    public var name: String
+
+    public init(id: UUID, name: String) {
+        self.id = id
+        self.name = name
+    }
+}
+
 /// Private fields share agent.json with the public record, but are never added
 /// to AgentRecord or exposed by profiles and participant lists.
 struct AgentConfiguration: Codable {
@@ -8,13 +20,15 @@ struct AgentConfiguration: Codable {
     var folders: [AgentFolder] = []
     /// Nil selects the system profile: the harness's login in the user's home.
     var harnessProfile: UUID?
+    /// Only on Noodle Hub; its bots cannot change it, since only their workspace is theirs.
+    var owner: AgentOwner?
 
     init(agent: AgentRecord, backstory: String) {
         self.agent = agent
         self.backstory = backstory
     }
 
-    private enum CodingKeys: String, CodingKey { case backstory, folders, harnessProfile }
+    private enum CodingKeys: String, CodingKey { case backstory, folders, harnessProfile, owner }
 
     init(from decoder: Decoder) throws {
         agent = try AgentRecord(from: decoder)
@@ -24,6 +38,7 @@ struct AgentConfiguration: Codable {
         backstory = values.contains(.backstory) ? try values.decode(String.self, forKey: .backstory) : nil
         folders = try values.decodeIfPresent([AgentFolder].self, forKey: .folders) ?? []
         harnessProfile = try values.decodeIfPresent(UUID.self, forKey: .harnessProfile)
+        owner = try values.decodeIfPresent(AgentOwner.self, forKey: .owner)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -32,6 +47,7 @@ struct AgentConfiguration: Codable {
         try values.encodeIfPresent(backstory, forKey: .backstory)
         if !folders.isEmpty { try values.encode(folders, forKey: .folders) }
         try values.encodeIfPresent(harnessProfile, forKey: .harnessProfile)
+        try values.encodeIfPresent(owner, forKey: .owner)
     }
 
     func requireBackstory() throws -> String {

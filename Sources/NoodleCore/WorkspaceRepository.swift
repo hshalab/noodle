@@ -344,6 +344,19 @@ public struct WorkspaceRepository: Sendable {
         try configuration.save(to: layout)
     }
 
+    public func loadAgentOwner(_ agent: AgentRecord) throws -> AgentOwner? {
+        try AgentConfiguration.load(from: storage(for: agent.id)).owner
+    }
+
+    /// Writes only when the owner changed.
+    public func updateAgentOwner(_ agent: AgentRecord, owner: AgentOwner?) throws {
+        let layout = storage(for: agent.id)
+        var configuration = try AgentConfiguration.load(from: layout)
+        guard configuration.owner != owner else { return }
+        configuration.owner = owner
+        try configuration.save(to: layout)
+    }
+
     public func deleteAgent(_ agent: AgentRecord) throws {
         let package = storage(for: agent.id).package
         guard FileManager.default.fileExists(atPath: package.path) else { throw WorkspaceError.missingAgent(agent.id) }

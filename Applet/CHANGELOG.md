@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Hub is now the first category in the sidebar instead of a section of its own, and lists the people on Noodle Hub beneath it. Choose someone to see only the noodlets their bots made. Needs the latest Noodle Hub.
+
 ### Security
 
 - A native noodlet reaches the network only when its `noodlet.json` sets `"network": true`, as a web noodlet already did, and then only internet addresses, not other programs on this Mac. Native noodlets that fetch without it stop connecting until the flag is added.

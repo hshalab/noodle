@@ -54,6 +54,12 @@ struct BotFolder: Equatable {
   }
 }
 
+/// Someone on Noodle Hub, as their bot's agent.json names them.
+struct HubPerson: Hashable, Identifiable, Decodable {
+  let id: UUID
+  let name: String
+}
+
 @MainActor final class AppletLibrary: ObservableObject {
   let root: URL
   let documents: URL
@@ -66,6 +72,8 @@ struct BotFolder: Equatable {
   @Published var hidden: [String]
   /// Made or opened by Noodle Hub's bots; listed only under Hub, apart from this Mac's own.
   @Published var hub: [String]
+  /// Whose bot made each of Noodle Hub's noodlets, where the Hub names them.
+  @Published private(set) var hubOwners: [String: HubPerson] = [:]
   private let defaults: UserDefaults
   private struct Registration {
     let url: URL
@@ -326,6 +334,15 @@ struct BotFolder: Equatable {
     }
     if entries != next { entries = next }
     for entry in entries where isHub(entry.package.url) { markHub(entry.id) }
+    // Read once for each bot: agent.json holds its picture too.
+    var people: [URL: HubPerson?] = [:]
+    let owners = entries.reduce(into: [String: HubPerson]()) { owners, entry in
+      guard let bot = bot(holding: entry.package.url), bot.folder.isHub else { return }
+      let folder = bot.folder.url.appendingPathComponent(bot.owner)
+      if people[folder] == nil { people[folder] = .some(Self.person(owning: folder)) }
+      owners[entry.id] = people[folder] ?? nil
+    }
+    if hubOwners != owners { hubOwners = owners }
     for entry in entries {
       do { _ = try linkID(for: entry.package) } catch { self.error = error.localizedDescription }
     }
@@ -365,6 +382,16 @@ struct BotFolder: Equatable {
   var categories: [String] {
     let used = Set(entries.filter { !hidden.contains($0.id) && !hub.contains($0.id) }.compactMap(\.package.manifest.category))
     return NoodletManifest.knownCategories.filter(used.contains)
+  }
+  /// People with noodlets under Hub that are not hidden, by name.
+  var hubPeople: [HubPerson] {
+    let people = Set(hubOwners.filter { !hidden.contains($0.key) }.values)
+    return people.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+  }
+  private static func person(owning bot: URL) -> HubPerson? {
+    struct Configuration: Decodable { let owner: HubPerson? }
+    guard let data = try? Data(contentsOf: bot.appendingPathComponent("agent.json")) else { return nil }
+    return (try? JSONDecoder().decode(Configuration.self, from: data))?.owner
   }
   func markHub(_ key: String) {
     guard !hub.contains(key) else { return }

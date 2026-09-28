@@ -258,10 +258,11 @@ private enum LibrarySection: String, CaseIterable, Identifiable {
   }
 }
 
-/// A library section, or a category from the noodlets' manifests.
+/// A library section, a category from the noodlets' manifests, or someone's noodlets under Hub.
 private enum LibraryFilter: Hashable {
   case section(LibrarySection)
   case category(String)
+  case hubPerson(UUID)
   static let categorySymbols = [
     "games": "gamecontroller", "productivity": "checklist", "utilities": "wrench.and.screwdriver",
     "developer": "chevron.left.forwardslash.chevron.right", "data": "chart.bar",
@@ -284,9 +285,18 @@ private struct LibraryView: View {
   @State private var trashing: LibraryEntry?
   @AppStorage("AppletSidebarVisible") private var sidebarVisible = true
   @AppStorage("AppletCategoriesExpanded") private var categoriesExpanded = true
+  @AppStorage("AppletHubExpanded") private var hubExpanded = true
 
   private var section: LibrarySection? {
-    if case .section(let section) = selection { section } else { nil }
+    switch selection {
+    case .section(let section): section
+    case .hubPerson: .hub
+    default: nil
+    }
+  }
+  private var person: HubPerson? {
+    guard case .hubPerson(let id) = selection else { return nil }
+    return library.hubPeople.first { $0.id == id }
   }
   private var category: String? {
     if case .category(let category) = selection { category } else { nil }
@@ -301,6 +311,7 @@ private struct LibraryView: View {
         && (section != .pinned || library.pinned.contains($0.id))
         && (section != .recent || library.recent.contains($0.id))
         && (category == nil || $0.package.manifest.category == category)
+        && (person == nil || library.hubOwners[$0.id] == person)
     }
     if section == .recent {
       return matches.sorted {
@@ -318,13 +329,9 @@ private struct LibraryView: View {
             Label(section.rawValue, systemImage: section.symbol).tag(LibraryFilter.section(section))
           }
         }
-        if library.entries.contains(where: { library.hub.contains($0.id) }) {
-          Section("Hub") {
-            Label("Noodlets", systemImage: LibrarySection.hub.symbol).tag(LibraryFilter.section(.hub))
-          }
-        }
-        if !library.categories.isEmpty {
+        if hasHub || !library.categories.isEmpty {
           Section("Categories", isExpanded: $categoriesExpanded) {
+            if hasHub { hubRow }
             ForEach(library.categories, id: \.self) { category in
               Label(category.capitalized, systemImage: LibraryFilter.categorySymbols[category] ?? "tag")
                 .tag(LibraryFilter.category(category))
@@ -364,7 +371,7 @@ private struct LibraryView: View {
         }
       }
       .mask { ConversationContentTopFade() }
-      .navigationTitle(category?.capitalized ?? section?.rawValue ?? "All")
+      .navigationTitle(person?.name ?? category?.capitalized ?? section?.rawValue ?? "All")
       .toolbar { libraryToolbar }
     }
     .navigationSplitViewStyle(.balanced)
@@ -378,6 +385,11 @@ private struct LibraryView: View {
     .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
     .onChange(of: library.categories) { _, categories in
       if let category, !categories.contains(category) { selection = .section(.all) }
+    }
+    .onChange(of: library.hubPeople) { _, people in
+      if case .hubPerson(let id) = selection, !people.contains(where: { $0.id == id }) {
+        selection = .section(hasHub ? .hub : .all)
+      }
     }
     .onChange(of: searching) { _, active in if !active { searchFocused = false } }
     .onAppear { columnVisibility = sidebarVisible ? .all : .detailOnly }
@@ -413,6 +425,20 @@ private struct LibraryView: View {
       }
     } message: {
       Text("“\(trashing?.title ?? "")” will be moved to the Trash. Its saved data, secrets and permissions will be deleted.")
+    }
+  }
+  private var hasHub: Bool { library.entries.contains { library.hub.contains($0.id) } }
+  /// Noodle Hub's noodlets, always the first category, with the people whose bots made them beneath.
+  @ViewBuilder private var hubRow: some View {
+    let hub = Label(LibrarySection.hub.rawValue, systemImage: LibrarySection.hub.symbol).tag(LibraryFilter.section(.hub))
+    if library.hubPeople.isEmpty {
+      hub
+    } else {
+      DisclosureGroup(isExpanded: $hubExpanded) {
+        ForEach(library.hubPeople) { person in
+          Label(person.name, systemImage: "person").tag(LibraryFilter.hubPerson(person.id))
+        }
+      } label: { hub }
     }
   }
   /// SwiftUI places its own sidebar toggle last in the sidebar's toolbar section, so
