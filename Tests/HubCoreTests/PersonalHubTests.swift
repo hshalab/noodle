@@ -85,7 +85,9 @@ import XCTest
     /// with its profiles, and all of their models.
     func testAPhoneIsOfferedTheMacsHarnessesProfilesAndModels() async throws {
         let codex = ["gpt-5.5", "gpt-5.5-mini", "gpt-5.5-codex"].map {
-            HarnessModel(id: $0, displayName: $0.uppercased(), description: "", supportedEfforts: [], defaultEffort: "", isDefault: false)
+            HarnessModel(id: $0, displayName: $0.uppercased(), description: "",
+                         supportedEfforts: $0 == "gpt-5.5" ? [HarnessEffort(id: "low", description: ""), HarnessEffort(id: "xhigh", description: "")] : [],
+                         defaultEffort: $0 == "gpt-5.5" ? "low" : "", isDefault: false)
         }
         let (f, _) = try await fixture(bots: [], installed: [".codex/packages/standalone/current/bin/codex", ".local/bin/fx"],
                                        models: [.codex: codex], profiles: [(.fx, "Work"), (.openCode, "Side")])
@@ -95,7 +97,11 @@ import XCTest
         XCTAssertEqual(status.harnesses.map(\.provider), ["codex", "fx", "fx"])
         XCTAssertFalse(status.harnesses.contains(where: \.restrictsModels))
         let lent = try XCTUnwrap(status.harnesses.first { $0.provider == HarnessProvider.codex.rawValue })
-        XCTAssertEqual(lent.models, codex.map { LinkModel(id: $0.id, name: $0.displayName) })
+        XCTAssertEqual(lent.models.map(\.name), codex.map(\.displayName))
+        XCTAssertEqual(lent.models.first?.efforts, [LinkEffort(id: "low", name: "Low"), LinkEffort(id: "xhigh", name: "Extra High")])
+        XCTAssertEqual(lent.models.first?.defaultEffort, "low")
+        XCTAssertEqual(lent.models.last?.efforts, [])
+        XCTAssertNil(lent.models.last?.defaultEffort)
     }
 
     /// A phone joining later reads the conversations as they already are.

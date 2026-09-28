@@ -643,7 +643,11 @@ import os
                 profileName = profile.displayName
             }
             let known = bots?.models(for: harness.provider) ?? []
-            var models = known.map { LinkModel(id: $0.id, name: $0.displayName) }
+            var models = known.map {
+                LinkModel(id: $0.id, name: $0.displayName,
+                          efforts: $0.supportedEfforts.map { LinkEffort(id: $0.id, name: $0.displayName) },
+                          defaultEffort: $0.defaultEffort.isEmpty ? nil : $0.defaultEffort)
+            }
             let allowed = user.flatMap { access.models(on: harness, for: $0) }
             if let allowed {
                 // Models the Hub no longer lists stay usable until the plan drops them.

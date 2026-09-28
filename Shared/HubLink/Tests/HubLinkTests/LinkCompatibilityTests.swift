@@ -37,6 +37,11 @@ final class LinkCompatibilityTests: XCTestCase {
         let restricted = LinkHarness(provider: "codex", providerName: "Codex", profileName: nil,
                                      models: [LinkModel(id: "gpt-5", name: "GPT-5")], restrictsModels: true)
         XCTAssertEqual(try decode(LinkHarness.self, String(decoding: try LinkProtocol.encoder.encode(restricted), as: UTF8.self)), restricted)
+        let model = try decode(LinkModel.self, #"{"id":"gpt-5","name":"GPT-5"}"#)
+        XCTAssertEqual(model.efforts, [])
+        XCTAssertNil(model.defaultEffort)
+        let tunable = LinkModel(id: "gpt-5", name: "GPT-5", efforts: [LinkEffort(id: "xhigh", name: "Extra High")], defaultEffort: "xhigh")
+        XCTAssertEqual(try decode(LinkModel.self, String(decoding: try LinkProtocol.encoder.encode(tunable), as: UTF8.self)), tunable)
 
         let draft = try decode(LinkBotDraft.self, #"{"name":"Alfred","provider":"codex"}"#)
         XCTAssertEqual(draft, LinkBotDraft(name: "Alfred", provider: "codex"))
