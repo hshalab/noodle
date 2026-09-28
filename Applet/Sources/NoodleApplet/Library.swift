@@ -192,8 +192,8 @@ struct HubPerson: Hashable, Identifiable, Decodable {
         .filter { FileManager.default.fileExists(atPath: $0.path) }
     }
   }
-  // TODO(NEXT_VERSION): remove with its call in init and
-  // LibraryTests.testCopiesFromBeforeGoAndWhatTheyKeptFollowsTheOriginal.
+  // TODO(Applet 0.13.0): remove with its call in init, LibraryTests.testCopiesFromBeforeGoAndWhatTheyKeptFollowsTheOriginal
+  // and LibraryTests.testACopyWhoseOriginalCannotBeReadIsKeptForLater. Milestone: Applet 0.12.0.
   /// Applet used to keep a copy of each noodlet a bot sent, under Imports. The copies go. What
   /// was kept for one, its link, saved data, permissions, secrets and place in lists, follows the
   /// bot's own noodlet while that is still there, and goes with the copy when it is not.

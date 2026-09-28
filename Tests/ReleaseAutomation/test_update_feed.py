@@ -42,8 +42,8 @@ class UpdateFeedTests(unittest.TestCase):
 
     def test_hub_releases_keep_their_own_milestones_tags_and_archives(self):
         milestones = json.loads((ROOT / "Hub/Support/update-milestones.json").read_text())["milestones"]
-        # Hub 0.3.0 turns browser and computer cards into links.
-        self.assertEqual(milestones, ["0.3.0"])
+        # Hub 0.3.0 turns browser and computer cards into links; 0.6.0 names each bot's owner in its agent.json.
+        self.assertEqual(milestones, ["0.3.0", "0.6.0"])
         hub = dict(tag="hub-v", archive="Noodle-Hub-arm64.zip")
         result = feed.prepare(appcast("0.4.0", **hub), "0.4.0", milestones, lambda v: appcast(v, **hub), **hub)
         items = ET.fromstring(result).findall("channel/item")

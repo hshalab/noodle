@@ -81,7 +81,7 @@ final class LibraryTests: XCTestCase {
 
     /// Applet used to keep a copy of each noodlet a bot sent. The copies go, and what Applet kept
     /// for one follows the bot's own noodlet; a copy whose original is gone goes with its data.
-    // TODO(NEXT_VERSION): remove with AppletLibrary.removeCopies.
+    // TODO(Applet 0.13.0): remove with AppletLibrary.removeCopies. Milestone: Applet 0.12.0.
     @MainActor func testCopiesFromBeforeGoAndWhatTheyKeptFollowsTheOriginal() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let suite = "AppletLibraryTests." + UUID().uuidString
@@ -123,7 +123,7 @@ final class LibraryTests: XCTestCase {
 
     /// A copy whose original cannot be read right now, as when macOS keeps Applet out of the bot's
     /// folder, is not taken for one whose original is gone: it stays, with its data, for next time.
-    // TODO(NEXT_VERSION): remove with AppletLibrary.removeCopies.
+    // TODO(Applet 0.13.0): remove with AppletLibrary.removeCopies. Milestone: Applet 0.12.0.
     @MainActor func testACopyWhoseOriginalCannotBeReadIsKeptForLater() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let suite = "AppletLibraryTests." + UUID().uuidString

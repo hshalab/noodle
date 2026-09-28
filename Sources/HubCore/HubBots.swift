@@ -60,7 +60,7 @@ import NoodleRuntime
         browsers.onAssignmentsChange = { [weak self] in self?.toolBroker?.synchronizeSkills() }
         clearAbandonedUploads()
         access.onOwnersChange = { [weak self] in self?.synchronizeOwners() }
-        // TODO(NEXT_VERSION): remove with HubTests.testBotsFromBeforeGetTheirOwnerWhenTheHubOpens.
+        // TODO(Hub 0.7.0): remove with HubTests.testBotsFromBeforeGetTheirOwnerWhenTheHubOpens. Milestone: Hub 0.6.0.
         // Bots made before agent.json named their owner get one here; later changes write it as they happen.
         synchronizeOwners()
     }

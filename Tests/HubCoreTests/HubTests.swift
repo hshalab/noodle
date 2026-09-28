@@ -49,7 +49,7 @@ import XCTest
     }
 
     /// Bots made before their files named an owner get one when the Hub opens.
-    // TODO(NEXT_VERSION): remove with the synchronizeOwners() call in HubBots.init.
+    // TODO(Hub 0.7.0): remove with the synchronizeOwners() call in HubBots.init. Milestone: Hub 0.6.0.
     func testBotsFromBeforeGetTheirOwnerWhenTheHubOpens() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("noodle-hub-tests-\(UUID())")
         addTeardownBlock { try? FileManager.default.removeItem(at: root) }
