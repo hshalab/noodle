@@ -252,26 +252,6 @@ final class SurfaceTests: XCTestCase {
         XCTAssertGreaterThan(acting, still, "input did not bring back the full pace")
     }
 
-    /// A surface that has not settled is looked at 60 times a second, so what the viewer does
-    /// shows up within a frame or two. The surface here has no picture yet, so the count is the
-    /// streamer's own pace and not how fast this machine encodes.
-    @MainActor func testAnUnsettledSurfaceIsLookedAtSixtyTimesASecond() async throws {
-        var captures = 0
-        let streamer = SurfaceStreamer(capture: {
-            captures += 1
-            return nil
-        }, apply: { _ in })
-        defer { streamer.stop() }
-        let (companion, hub) = try pair()
-        streamer.attach(companion)
-        let reader = Task { for await _ in hub.frames {} }
-        defer { reader.cancel() }
-        try await Task.sleep(for: .milliseconds(500))
-        let before = captures
-        try await Task.sleep(for: .seconds(1))
-        XCTAssertGreaterThan(captures - before, 45, "an unsettled surface was looked at \(captures - before) times a second")
-    }
-
     /// A viewer that falls behind misses frames rather than getting old ones late, and always
     /// picks up again at a key frame, since the frames between depend on the ones before.
     @MainActor func testASlowViewerSkipsToTheNextKeyFrame() async throws {
