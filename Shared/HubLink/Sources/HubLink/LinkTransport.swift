@@ -445,6 +445,12 @@ public enum LinkClient {
                 connection.stateUpdateHandler = { state in
                     switch state {
                     case .ready: finish(.success((connection, endpoint)))
+                    // Waiting stays put until told to try again, and nothing listening yet is only
+                    // one reason; a refused handshake is final.
+                    case .waiting(let error) where !error.isTLS:
+                        LinkQUIC.queue.asyncAfter(deadline: .now() + .milliseconds(250)) {
+                            if case .waiting = connection.state { connection.restart() }
+                        }
                     case .failed, .waiting:
                         connection.stateUpdateHandler = nil
                         if failures.increment() == connections.count {
@@ -478,4 +484,11 @@ final class Counter: @unchecked Sendable {
     private let lock = NSLock()
     private var value = 0
     func increment() -> Int { lock.withLock { value += 1; return value } }
+}
+
+private extension NWError {
+    var isTLS: Bool {
+        if case .tls = self { return true }
+        return false
+    }
 }

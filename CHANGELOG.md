@@ -10,6 +10,10 @@ All notable changes to Noodle are documented here, following
 
 - The website writes the Noodle wordmark on as the apps do, with the swirl that rises from the bottom of the window into the word.
 
+### Fixed
+
+- Noodle Hub is tried again for a few seconds when it is starting up or the network is settling, instead of failing at once.
+
 ## [0.31.0] - 2026-09-28
 
 ### Added

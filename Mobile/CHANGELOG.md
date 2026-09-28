@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Noodle Hub is tried again for a few seconds when it is starting up or the network is settling, instead of failing at once.
+
 ## [0.5.0] - 2026-09-28
 
 ### What to Test

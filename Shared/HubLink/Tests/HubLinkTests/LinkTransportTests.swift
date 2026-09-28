@@ -93,6 +93,25 @@ final class LinkTransportTests: XCTestCase {
             endpoints: [LinkEndpoint(host: "unreachable.invalid", port: port), LinkEndpoint(host: "127.0.0.1", port: port)])
         XCTAssertEqual(used.host, "127.0.0.1")
     }
+
+    /// A Hub that is not listening yet, as while it relaunches, is tried again until the timeout.
+    func testTheDeviceReachesAHubThatStartsListeningAMomentLater() async throws {
+        let hub = LinkIdentity()
+        let earlier = try LinkServer(identity: hub, port: 0, admits: { _ in true }) { _, request in .response(request) }
+        try await earlier.start()
+        let port = try XCTUnwrap(earlier.port)
+        earlier.stop()
+        let late = try LinkServer(identity: hub, port: port, admits: { _ in true }) { _, request in .response(request) }
+        addTeardownBlock { late.stop() }
+        let listening = Task {
+            try await Task.sleep(for: .milliseconds(500))
+            try await late.start()
+        }
+        let (response, _) = try await LinkClient.exchange(Data("status".utf8), identity: LinkIdentity(), hubKey: hub.publicKey,
+                                                          endpoints: [LinkEndpoint(host: "::1", port: port)])
+        try await listening.value
+        XCTAssertEqual(response, Data("status".utf8))
+    }
 }
 
 final class LinkStreamTests: XCTestCase {
