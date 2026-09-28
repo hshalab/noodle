@@ -1,3 +1,4 @@
+import AppletBridge
 import XCTest
 @testable import NoodleApplet
 
@@ -85,5 +86,99 @@ final class NativeRunnerTests: XCTestCase {
         try FileManager.default.removeItem(at: frame)
         try FileManager.default.createSymbolicLink(at: frame, withDestinationURL: secret)
         XCTAssertThrowsError(try NativeRunner.liveFrame(reply, in: root), "followed a link")
+    }
+
+    /// A live view clicks a noodlet whose window is out of sight; SwiftUI controls must still act,
+    /// and the window must stay hidden.
+    func testSwiftUIControlsActWhileTheWindowIsHidden() throws {
+        guard let toolchain = try? NativeRunner.toolchain() else { throw XCTSkip("No Apple Swift compiler is installed.") }
+        let compiler = URL(fileURLWithPath: toolchain.frontend).deletingLastPathComponent().appendingPathComponent("swiftc").path
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        for folder in ["data", "package", "cache"] {
+            try FileManager.default.createDirectory(at: root.appendingPathComponent(folder), withIntermediateDirectories: true)
+        }
+        defer { try? FileManager.default.removeItem(at: root) }
+        try """
+            import SwiftUI
+            struct Noodlet: View {
+                var body: some View {
+                    VStack(spacing: 0) {
+                        Button("Press") { print("pressed") }.frame(width: 200, height: 100)
+                        Color.red.frame(width: 200, height: 100).onTapGesture { print("tapped") }
+                        Color.blue.frame(width: 200, height: 100).gesture(DragGesture().onEnded { _ in print("dragged") })
+                    }
+                }
+            }
+            """.write(to: root.appendingPathComponent("Main.swift"), atomically: true, encoding: .utf8)
+        let resources = AppletResources.bundle.url(forResource: "Resources", withExtension: nil)!
+        let build = Process(), log = Pipe()
+        build.executableURL = URL(fileURLWithPath: compiler)
+        build.arguments = ["-Onone", "-parse-as-library", "-swift-version", "5", "-sdk", toolchain.sdk,
+                           "-module-cache-path", root.appendingPathComponent("cache").path, "-o", root.appendingPathComponent("noodlet").path,
+                           root.appendingPathComponent("Main.swift").path]
+            + ["WindowFocusGuard.swift", "NoodletCast.swift", "NoodletRuntime.swift"].map { resources.appendingPathComponent($0).path }
+        build.standardOutput = log; build.standardError = log
+        try build.run()
+        let diagnostics = String(decoding: log.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        build.waitUntilExit()
+        XCTAssertEqual(build.terminationStatus, 0, diagnostics)
+        guard build.terminationStatus == 0 else { return }
+
+        // Background mode never orders the window in, so nothing appears on screen or takes focus.
+        let noodlet = Process(), input = Pipe(), output = Pipe()
+        noodlet.executableURL = root.appendingPathComponent("noodlet")
+        noodlet.environment = ProcessInfo.processInfo.environment.filter { ["PATH", "HOME", "TMPDIR"].contains($0.key) }.merging([
+            "NOODLET_PROTOCOL": "P:", "NOODLET_MODE": "background", "NOODLET_WIDTH": "200", "NOODLET_HEIGHT": "300",
+            "NOODLET_DATA": root.appendingPathComponent("data").path, "NOODLET_PACKAGE": root.appendingPathComponent("package").path,
+        ]) { _, new in new }
+        noodlet.standardInput = input; noodlet.standardOutput = output; noodlet.standardError = FileHandle.nullDevice
+        try noodlet.run()
+        defer { if noodlet.isRunning { noodlet.terminate() } }
+        // A noodlet that stops answering is ended, so the test fails instead of hanging.
+        DispatchQueue.global().asyncAfter(deadline: .now() + 120) { if noodlet.isRunning { noodlet.terminate() } }
+        let lines = LineReader(output.fileHandleForReading)
+        func reply(_ id: String) throws -> [String: Any] {
+            while let line = lines.next() {
+                guard line.hasPrefix("P:"), let reply = try JSONSerialization.jsonObject(with: Data(line.dropFirst(2).utf8)) as? [String: Any],
+                      reply["id"] as? String == id else { continue }
+                return reply
+            }
+            throw AppletError("The noodlet ended before replying to \(id).")
+        }
+        func send(_ id: String, _ command: [String: Any]) throws -> [String: Any] {
+            input.fileHandleForWriting.write(try JSONSerialization.data(withJSONObject: command.merging(["id": id]) { _, new in new }) + Data("\n".utf8))
+            return try reply(id)
+        }
+        _ = try reply("ready")
+        // Points from the top left: the button, the tap area, then a drag across the blue area.
+        XCTAssertNil(try send("button", ["operation": "click", "x": 100, "y": 50])["error"])
+        XCTAssertNil(try send("tap", ["operation": "click", "x": 100, "y": 150])["error"])
+        XCTAssertNil(try send("drag", ["operation": "drag", "x": 40, "y": 250, "toX": 160, "toY": 250])["error"])
+        XCTAssertNotNil(try send("place", ["operation": "place"])["error"], "the window was shown")
+        input.fileHandleForWriting.closeFile()
+        while lines.next() != nil {}
+        noodlet.waitUntilExit()
+        XCTAssertEqual(lines.seen.filter { !$0.hasPrefix("P:") }, ["pressed", "tapped", "dragged"])
+    }
+}
+
+/// Lines from a pipe, blocking for each; ends when the writer does.
+private final class LineReader {
+    private let handle: FileHandle
+    private var buffer = Data()
+    private(set) var seen: [String] = []
+    init(_ handle: FileHandle) { self.handle = handle }
+    func next() -> String? {
+        while true {
+            if let end = buffer.firstIndex(of: 10) {
+                let line = String(decoding: buffer[..<end], as: UTF8.self)
+                buffer.removeSubrange(...end)
+                seen.append(line)
+                return line
+            }
+            let chunk = handle.availableData
+            if chunk.isEmpty { return nil }
+            buffer.append(chunk)
+        }
     }
 }

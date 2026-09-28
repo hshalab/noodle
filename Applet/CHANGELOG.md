@@ -22,6 +22,10 @@
 
 - A bot on Noodle Hub reaches only its own noodlets and those shared with its conversations. Before, it could list and use every noodlet on the Hub's Mac, other people's included.
 
+### Fixed
+
+- Clicking a button in a native noodlet you are watching live from Noodle Hub now presses it. Before, buttons and other tappable parts ignored clicks while the noodlet's window was not on screen.
+
 ## [0.11.1] - 2026-09-27
 
 ### Fixed

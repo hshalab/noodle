@@ -166,6 +166,10 @@ public struct NoodletSecrets: Sendable {
 @main struct NoodletRuntime {
     @MainActor static func main() {
         setbuf(stdout, nil); setbuf(stderr, nil)
+        // SwiftUI's gesture containers take mouse events only through NSWindow.sendEvent, which drops
+        // them while the window is hidden, so a live view's clicks never reached a Button. The older
+        // path, which SwiftUI keeps for apps built with earlier SDKs, takes them at the view.
+        setenv("SWIFTUI_GESTURE_CONTAINER", "0", 1)
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
         let delegate = NoodletRuntimeDelegate()
