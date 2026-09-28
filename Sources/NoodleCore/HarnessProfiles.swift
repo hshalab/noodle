@@ -109,8 +109,15 @@ public struct HarnessProfileStore: Sendable {
         // user's Keychain out of reach, so the CLI keeps this login in a file here.
         case .antigravity: ["HOME": loginHome(profile).path]
         case .claudeCode: ["CLAUDE_CONFIG_DIR": accountHome(profile).path]
+        // FX has no setting for its folder either, and otherwise keeps logins in the Keychain.
+        case .fx: ["HOME": loginHome(profile).path, "FX_DISABLE_KEYCHAIN": "1"]
         default: [:]
         }
+    }
+
+    /// `base` with this profile's folder taking the place of the user's.
+    public func environment(_ profile: HarnessProfile, over base: [String: String]) -> [String: String] {
+        base.merging(environment(profile)) { _, profile in profile }
     }
 
     /// Where a restricted bot's copy of this profile's login comes from. Claude
@@ -168,6 +175,7 @@ public struct HarnessProfileStore: Sendable {
         case .muse: ".config/muse"
         case .antigravity: ".gemini/antigravity-cli"
         case .claudeCode: ".claude"
+        case .fx: ".fx"
         default: ".codex"
         }
     }

@@ -35,7 +35,7 @@ final class HarnessProfileTests: XCTestCase {
         XCTAssertEqual(try store.load().map(\.displayName), ["Client"])
         XCTAssertFalse(FileManager.default.fileExists(atPath: store.loginHome(personal).path))
 
-        XCTAssertThrowsError(try store.create(provider: .fx, named: "Other"))
+        XCTAssertThrowsError(try store.create(provider: .openCode, named: "Other"))
         XCTAssertThrowsError(try store.create(provider: .codex, named: " \n "))
     }
 
@@ -160,6 +160,61 @@ final class HarnessProfileTests: XCTestCase {
         try Data("personal-login".utf8).write(to: store.accountHome(other).appendingPathComponent("auth.json"))
         try RestrictedHarnessStorage.prepare(provider: .codex, workspace: workspace, loginHome: store.loginHome(other))
         XCTAssertEqual(try Data(contentsOf: seeded), Data("personal-login".utf8))
+    }
+
+    func testFxProfileKeepsItsLoginInFilesUnderItsOwnHome() throws {
+        let agent = try repository.createAgent(named: "FX Bot", harnessIdentifier: "fx").agent
+        let workspace = repository.storage(for: agent.id).workspace
+        let profile = try store.create(provider: .fx, named: "Work")
+        XCTAssertEqual(try store.validated(profile.id), profile)
+        XCTAssertEqual(store.environment(profile), ["HOME": store.loginHome(profile).path, "FX_DISABLE_KEYCHAIN": "1"])
+        XCTAssertEqual(store.accountHome(profile).path, store.loginHome(profile).appendingPathComponent(".fx").path)
+
+        // Not signed in yet: the user's own FX Keychain items never stand in.
+        let secret = store.loginSecret(profile, read: { _, _ in XCTFail("An FX profile must not read the Keychain"); return nil })
+        XCTAssertThrowsError(try RestrictedHarnessStorage.prepare(provider: .fx, workspace: workspace,
+            loginHome: store.loginHome(profile), secret: secret))
+
+        try Data("work-session".utf8).write(to: store.accountHome(profile).appendingPathComponent("auth.json"))
+        try RestrictedHarnessStorage.prepare(provider: .fx, workspace: workspace, loginHome: store.loginHome(profile), secret: secret)
+        let seeded = RestrictedHarnessStorage.home(workspace: workspace).appendingPathComponent(".fx/auth.json")
+        XCTAssertEqual(try Data(contentsOf: seeded), Data("work-session".utf8))
+    }
+
+    func testFxProfileSignInAndStatusUseTheProfilesHome() throws {
+        let profile = try store.create(provider: .fx, named: "Work")
+        let userHome = root.deletingLastPathComponent().appendingPathComponent("user-home", isDirectory: true)
+        try FileManager.default.createDirectory(at: userHome, withIntermediateDirectories: true)
+        let fx = root.deletingLastPathComponent().appendingPathComponent("fx")
+        try Data(#"""
+        #!/bin/sh
+        case "$*" in
+        login) mkdir -p "$HOME/.fx" && printf '%s' "$FX_DISABLE_KEYCHAIN" > "$HOME/.fx/auth.json"
+               printf 'Open https://vercel.com/device\nCode: ABCD-EFGH\n' ;;
+        'status --json') [ -f "$HOME/.fx/auth.json" ] && auth=stored || auth=missing
+               printf '{"kind":"status","auth":"%s"}' "$auth" ;;
+        *) exit 41 ;;
+        esac
+        """#.utf8).write(to: fx)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: fx.path)
+        // What the Agent Host gives every account command, with the user's home.
+        let environment = store.environment(profile, over: ["HOME": userHome.path, "PATH": "/usr/bin:/bin"])
+        XCTAssertFalse(try FxInspection.status(executable: fx, environment: environment).authenticated)
+
+        let login = Process(), output = Pipe()
+        login.executableURL = fx
+        login.arguments = ["login"]
+        login.environment = environment
+        login.standardOutput = output
+        try login.run()
+        login.waitUntilExit()
+        let challenge = FxProtocol.loginChallenge(String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self))
+        XCTAssertEqual(challenge?.code, "ABCD-EFGH")
+
+        XCTAssertEqual(try String(contentsOf: store.accountHome(profile).appendingPathComponent("auth.json"), encoding: .utf8), "1")
+        XCTAssertTrue(try FxInspection.status(executable: fx, environment: environment).authenticated)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: userHome.path), [])
+        XCTAssertFalse(try FxInspection.status(executable: fx, environment: ["HOME": userHome.path]).authenticated)
     }
 
     func testRestrictedClaudeBotIsSeededOnlyFromItsProfileKeychainItem() throws {

@@ -57,6 +57,18 @@ import XCTest
         XCTAssertTrue(error.contains("Check Again"), error)
     }
 
+    func testFxSignInGoesThroughTheAgentHostNotTerminal() async throws {
+        let (controller, _) = try controller()
+        let profile = try controller.create(provider: .fx, named: "Work")
+        controller.signIn(profile, installation: HarnessInstallation(provider: .fx, executablePath: "/fixtures/fx"))
+        XCTAssertEqual(controller.activity[profile.id], "Starting sign-in…")
+        await settle(controller, profile)
+        // Tests have no signed Agent Host to reach, so the host sign-in stops there.
+        let error = try XCTUnwrap(controller.errors[profile.id])
+        XCTAssertTrue(error.contains("Agent Host"), error)
+        XCTAssertFalse(error.contains("Terminal"), error)
+    }
+
     func testRefreshWithoutAnInstallationClearsStatusAndDeleteClearsErrors() async throws {
         let (controller, _) = try controller()
         let profile = try controller.create(provider: .antigravity, named: "Work")

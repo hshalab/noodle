@@ -106,7 +106,7 @@ public final class HarnessProfilesController {
     private func setupProvider(for profile: HarnessProfile) -> (any HarnessProfileAccount)? {
         switch profile.provider {
         case .codex: CodexAccountProvider(codexHome: store.accountHome(profile), profile: profile.id)
-        case .grokBuild, .muse, .claudeCode: HostProfileSetupProvider(profile: profile)
+        case .grokBuild, .muse, .claudeCode, .fx: HostProfileSetupProvider(profile: profile)
         case .antigravity: HostProfileSetupProvider(profile: profile, loginHome: store.loginHome(profile))
         default: nil
         }
@@ -122,7 +122,7 @@ public final class HarnessProfilesController {
 
 extension CodexAccountProvider: HarnessProfileAccount {}
 
-/// Grok Build, Muse Code and Claude Code sign in through the Agent Host, which
+/// Grok Build, Muse Code, Claude Code and FX sign in through the Agent Host, which
 /// resolves the profile's folder itself and runs the harness's own login.
 /// Antigravity has no such login: the host checks the profile, and the user
 /// signs in from Terminal with the profile's home, given here as `loginHome`.
