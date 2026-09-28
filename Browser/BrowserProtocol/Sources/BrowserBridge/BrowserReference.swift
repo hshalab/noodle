@@ -37,14 +37,6 @@ public struct BrowserReference: Codable, Hashable, Sendable {
     }
 }
 
-// TODO(0.29.0): Remove with CompanionCardMigration, which is its last reader.
-/// How versions up to 0.27 saved a shared browser tab beside its file.
-public struct BrowserCard: Codable, Hashable, Sendable {
-    public var reference: BrowserReference
-    public var agentID: UUID
-    public init(reference: BrowserReference, agentID: UUID) { self.reference = reference; self.agentID = agentID }
-}
-
 /// A link to a browser, and to one of its tabs: noodlebrowser://BROWSER?tab=TAB. It carries no
 /// cookies, credentials or authority; whoever opens it decides whether it may.
 public enum BrowserLink {

@@ -82,7 +82,6 @@ import NoodleRuntime
     public func start() throws {
         guard !running else { return }
         try repository.prepare()
-        CompanionCardMigration.run(repository)
         let agents = try repository.loadAgents()
         try repository.synchronizeAgentWorkspaces(agents)
         try messenger.start(agents: agents)
