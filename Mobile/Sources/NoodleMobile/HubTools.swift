@@ -258,6 +258,14 @@ struct HubToolsScreen: View {
     }
 }
 
+extension [LinkComputerTemplate] {
+    /// A new computer's name after its kind changes: it follows the kind's name until the user types their own.
+    func renamed(_ name: String, from old: String, to new: String) -> String {
+        guard name == (first { $0.id == old }?.name ?? ""), let named = first(where: { $0.id == new })?.name else { return name }
+        return named
+    }
+}
+
 /// Adds a connection, computer or browser on the Hub and gives it to the bot.
 private struct NewHubToolSheet: View {
     let chats: HubChats
@@ -299,9 +307,10 @@ private struct NewHubToolSheet: View {
                 guard kind == .computer else { return }
                 do {
                     templates = try await chats.computerTemplates()
-                    if let first = templates.first { template = first.id; if name.isEmpty { name = first.name } }
+                    if let first = templates.first { template = first.id }
                 } catch { problem = error.localizedDescription }
             }
+            .onChange(of: template) { old, new in name = templates.renamed(name, from: old, to: new) }
         }
     }
 

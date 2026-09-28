@@ -19,6 +19,7 @@
 
 - Noodle Hub is tried again for a few seconds when it is starting up or the network is settling, instead of failing at once.
 - A bot's harness shows its name rather than its internal identifier when the Hub no longer lends it under the same profile.
+- Switching a new computer between Shell and Desktop changes its name to match, unless you typed your own.
 
 ## [0.5.0] - 2026-09-28
 
