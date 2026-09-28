@@ -7,10 +7,12 @@
 - Open a conversation: its latest message sits just above the message field, with no gap under it, and the conversation does not sit shifted to the side before you first scroll.
 - The app icon on the Home Screen is Apple's system blue, matching the Mac apps.
 - Swipe right on a bot and tap Pin: it moves to a circle above the list, as in Messages. Tap the circle to open the chat; touch and hold it to unpin.
+- Touch and hold a message: as in Messages, the conversation blurs, the message lifts, reactions float above it and Copy below. Tap a reaction to add or take it back, or tap outside to close. Try messages near the top and bottom of the screen, and a long one.
 
 ### Changed
 
 - The app icon uses Apple's system blue, the same flat blue as the Noodle Mac apps.
+- Touching and holding a message lifts it with reactions above and actions below, as in Messages.
 
 ### Fixed
 
