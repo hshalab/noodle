@@ -74,16 +74,17 @@ final class AppletAccessTests: XCTestCase {
     }
 
     func testEveryCommandIsDocumentedInGeneratedSkillAndHelp() {
-        for command in AppletOperation.allCases where !command.isSurface {
+        for command in AppletOperation.allCases where !command.isSurface && command != .show {
             let guidance = AppletGuidance.operation(command)
             XCTAssertFalse(guidance.isEmpty)
-            XCTAssertTrue(AppletGuidance.cliHelp.contains(guidance))
-            XCTAssertTrue(AppletGuidance.skill.contains(guidance))
+            XCTAssertTrue(AppletGuidance.cliHelp.contains(guidance), command.rawValue)
+            XCTAssertTrue(AppletGuidance.skill.contains(guidance), command.rawValue)
         }
         // Showing a noodlet to a person is never a bot's command.
         for command in AppletOperation.allCases where command.isSurface {
             XCTAssertFalse(AppletGuidance.cliHelp.contains(command.rawValue), command.rawValue)
         }
+        XCTAssertFalse(AppletGuidance.cliHelp.contains("\n\(AppletOperation.show.rawValue): "))
     }
     func testManagedSkillPreservesCustomSkillAndExposesCorrectHelper() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
