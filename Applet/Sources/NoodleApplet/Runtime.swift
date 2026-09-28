@@ -351,6 +351,7 @@ import AppletCore
         guard let socket else { throw AppletError("A live view needs a connection of its own.") }
         let streamer = surfaceStreamers[session.id] ?? SurfaceStreamer(capture: { [weak session] in
           guard let session else { return nil }
+          if session.state == "running", let native = session.native { return (try await native.liveFrame(), session.size) }
           guard let picture = try await session.snapshot().cgImage(forProposedRect: nil, context: nil, hints: nil) else {
             throw AppletError("The noodlet cannot be shown.")
           }

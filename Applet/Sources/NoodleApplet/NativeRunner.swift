@@ -581,6 +581,65 @@ import AppletCore
     }
     return image
   }
+  /// A noodlet built before live frames only has screenshots, which are much slower.
+  private var screenshotsOnly = false
+  /// What the noodlet shows, for a live view. The noodlet draws into a file of plain pixels
+  /// in its own data folder, so no picture format sits between it and the video encoder.
+  func liveFrame() async throws -> CGImage {
+    if !screenshotsOnly {
+      let id = UUID().uuidString
+      let command = try JSONSerialization.data(withJSONObject: ["id": id, "operation": "frame"])
+      do {
+        return try Self.liveFrame(try await exchange(id: id, command, within: .seconds(2)), in: dataRoot)
+      } catch let error as AppletError where error.localizedDescription.hasPrefix("Unsupported native operation") {
+        screenshotsOnly = true
+      }
+    }
+    guard let image = try await snapshot().cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+      throw AppletError("The noodlet cannot be shown.")
+    }
+    return image
+  }
+  /// The pixels the noodlet says it drew. The noodlet controls the file, so it is copied, never
+  /// mapped, and only when it is a plain file as large as the noodlet claims.
+  nonisolated static func liveFrame(_ reply: String, in dataRoot: URL) throws -> CGImage {
+    struct Frame: Decodable { let width, height, bytesPerRow: Int; let alphaFirst, littleEndian: Bool }
+    let frame = try JSONDecoder().decode(Frame.self, from: Data(reply.utf8))
+    guard (1...8192).contains(frame.width), (1...8192).contains(frame.height),
+      frame.bytesPerRow >= frame.width * 4, frame.bytesPerRow <= frame.width * 4 + 1024
+    else { throw AppletError("The noodlet's frame has an impossible size.") }
+    let length = frame.bytesPerRow * frame.height
+    let path = try NoodletPackage.child(".live-frame", in: dataRoot).path
+    let fd = open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
+    guard fd >= 0 else { throw AppletError("The noodlet's frame cannot be read.") }
+    defer { close(fd) }
+    var status = stat()
+    guard fstat(fd, &status) == 0, status.st_mode & S_IFMT == S_IFREG, Int(status.st_size) >= length else {
+      throw AppletError("The noodlet's frame is not a plain file of the size it said.")
+    }
+    var pixels = Data(count: length)
+    let read = pixels.withUnsafeMutableBytes { buffer in
+      var offset = 0
+      while offset < length {
+        let got = pread(fd, buffer.baseAddress!.advanced(by: offset), length - offset, off_t(offset))
+        if got < 0 && errno == EINTR { continue }
+        guard got > 0 else { break }
+        offset += got
+      }
+      return offset
+    }
+    guard read == length, let provider = CGDataProvider(data: pixels as CFData) else {
+      throw AppletError("The noodlet's frame was cut short.")
+    }
+    let alpha = frame.alphaFirst ? CGImageAlphaInfo.premultipliedFirst : .premultipliedLast
+    let order = frame.littleEndian ? CGBitmapInfo.byteOrder32Little : []
+    guard let image = CGImage(width: frame.width, height: frame.height, bitsPerComponent: 8, bitsPerPixel: 32,
+        bytesPerRow: frame.bytesPerRow, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+        bitmapInfo: CGBitmapInfo(rawValue: alpha.rawValue).union(order), provider: provider, decode: nil,
+        shouldInterpolate: false, intent: .defaultIntent)
+    else { throw AppletError("The noodlet's frame cannot be shown.") }
+    return image
+  }
   func stop() {
     buildControl.cancel()
     process?.kill()

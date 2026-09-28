@@ -288,6 +288,38 @@ public struct NoodletSecrets: Sendable {
         guard let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]) else { return }
         FileHandle.standardOutput.write(Data((prefix + String(decoding: data, as: UTF8.self) + "\n").utf8))
     }
+    /// A live view's file, kept open between frames.
+    private var liveFile: Int32 = -1
+    /// The view as it looks into `bitmap`, over the window's background, with SpriteKit scenes
+    /// taken from their own textures since they only draw on screen.
+    func draw(into bitmap: NSBitmapImageRep) throws {
+        host.layoutSubtreeIfNeeded()
+        // Points to pixels, as the view draws itself.
+        let scale = CGSize(width: CGFloat(bitmap.pixelsWide) / max(1, host.bounds.width), height: CGFloat(bitmap.pixelsHigh) / max(1, host.bounds.height))
+        // A context of its own for each step, so none is left open over what the view draws.
+        func drawing(_ body: () throws -> Void) throws {
+            guard let context = NSGraphicsContext(bitmapImageRep: bitmap) else { throw RuntimeError("The native view cannot be captured offscreen.") }
+            NSGraphicsContext.saveGraphicsState(); defer { NSGraphicsContext.restoreGraphicsState() }
+            NSGraphicsContext.current = context
+            context.cgContext.saveGState(); defer { context.cgContext.restoreGState() }
+            context.cgContext.scaleBy(x: scale.width, y: scale.height)
+            try body()
+        }
+        try drawing { NSGraphicsContext.current?.cgContext.clear(CGRect(origin: .zero, size: host.bounds.size)); window.backgroundColor.setFill(); host.bounds.fill() }
+        host.cacheDisplay(in:host.bounds,to:bitmap)
+        func compositeSprites(_ view: NSView) throws {
+            if let sk = view as? SKView, let scene = sk.scene {
+                if !window.isVisible { scene.update(ProcessInfo.processInfo.systemUptime) }
+                guard let cg = sk.texture(from: scene)?.cgImage() else { throw RuntimeError("SpriteKit cannot capture this scene offscreen.") }
+                var frame = sk.convert(sk.bounds, to: host)
+                if host.isFlipped { frame.origin.y = host.bounds.height - frame.maxY }
+                NSImage(cgImage: cg, size: frame.size).draw(in: frame)
+            } else {
+                for child in view.subviews { try compositeSprites(child) }
+            }
+        }
+        try drawing { try compositeSprites(host) }
+    }
     func handle(_ command: [String: Any]) {
         if command["reply"] != nil { NoodletHost.resolve(command); return }
         let id = command["id"] as? String ?? "", op = command["operation"] as? String ?? ""
@@ -351,31 +383,29 @@ public struct NoodletSecrets: Sendable {
                     throw RuntimeError("Native scroll injection is not supported by this runtime. Use the noodlet's controls.")
                 }
             case "screenshot":
-                host.layoutSubtreeIfNeeded()
                 guard let bitmap = host.bitmapImageRepForCachingDisplay(in:host.bounds) else { throw RuntimeError("The native view cannot be captured offscreen.") }
-                host.cacheDisplay(in:host.bounds,to:bitmap)
-                let canvas = NSImage(size: host.bounds.size)
-                canvas.lockFocus()
-                window.backgroundColor.setFill(); host.bounds.fill()
-                bitmap.draw(in: host.bounds)
-                func compositeSprites(_ view: NSView) throws {
-                    if let sk = view as? SKView, let scene = sk.scene {
-                        if !window.isVisible { scene.update(ProcessInfo.processInfo.systemUptime) }
-                        guard let cg = sk.texture(from: scene)?.cgImage() else { throw RuntimeError("SpriteKit cannot capture this scene offscreen.") }
-                        var frame = sk.convert(sk.bounds, to: host)
-                        if host.isFlipped { frame.origin.y = host.bounds.height - frame.maxY }
-                        NSImage(cgImage: cg, size: frame.size).draw(in: frame)
-                    } else {
-                        for child in view.subviews { try compositeSprites(child) }
-                    }
-                }
-                do { try compositeSprites(host) } catch { canvas.unlockFocus(); throw error }
-                canvas.unlockFocus()
-                guard let tiff = canvas.tiffRepresentation, let image = NSBitmapImageRep(data: tiff) else { throw RuntimeError("Native screenshot composition failed.") }
-                guard let png = image.representation(using:.png,properties:[:]) else { throw RuntimeError("PNG encoding failed.") }
+                try draw(into: bitmap)
+                guard let png = bitmap.representation(using:.png,properties:[:]) else { throw RuntimeError("PNG encoding failed.") }
                 // The host supplies this private destination; noodlets never choose another session's output.
                 let output = NoodletContext.dataDirectory.appendingPathComponent(".capture.png")
                 try png.write(to:output,options:.atomic); value = ["path":output.path]
+            case "frame":
+                // A live view's frame: the pixels as drawn, into a file kept open, with nothing to encode.
+                // A bitmap drawn into once is not drawn into again, so each frame takes a new one.
+                guard let bitmap = host.bitmapImageRepForCachingDisplay(in:host.bounds) else { throw RuntimeError("The native view cannot be captured offscreen.") }
+                try draw(into: bitmap)
+                // What was drawn is in the bitmap's image, not always in its own pixel buffer.
+                guard let image = bitmap.cgImage, image.bitsPerPixel == 32, image.bitsPerComponent == 8,
+                      let data = image.dataProvider?.data, let pixels = CFDataGetBytePtr(data),
+                      CFDataGetLength(data) >= image.bytesPerRow * image.height else { throw RuntimeError("The native view cannot be captured offscreen.") }
+                if liveFile < 0 {
+                    liveFile = open(NoodletContext.dataDirectory.appendingPathComponent(".live-frame").path, O_RDWR | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0o600)
+                }
+                let length = image.bytesPerRow * image.height
+                guard liveFile >= 0, pwrite(liveFile, pixels, length, 0) == length else { throw RuntimeError("The live frame could not be written.") }
+                value = ["width":image.width, "height":image.height, "bytesPerRow":image.bytesPerRow,
+                         "alphaFirst":[.premultipliedFirst, .first, .noneSkipFirst].contains(image.alphaInfo),
+                         "littleEndian":image.bitmapInfo.contains(.byteOrder32Little)]
             default: throw RuntimeError("Unsupported native operation: \(op)")
             }
             emit(["id":id,"value":value])

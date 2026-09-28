@@ -5,6 +5,7 @@
 ### Changed
 
 - Watching the noodlet live from Noodle Hub runs at up to 60 frames a second instead of 30, costs this Mac less for each frame and, while the picture stays still, sends nothing and checks it only a few times a second, so the picture keeps up better.
+- A native noodlet watched live hands over each frame about twice as fast, without making a picture file of it first, so what you click shows sooner. Its screenshots are quicker too.
 
 ## [0.12.0] - 2026-09-28
 
