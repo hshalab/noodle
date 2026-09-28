@@ -4,6 +4,7 @@ import ImageIO
 import PhotosUI
 import QuickLook
 import QuickLookThumbnailing
+import SafariServices
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -20,6 +21,8 @@ struct AttachmentView: View {
     let attachment: LinkAttachment
     /// Every attachment of the message this one belongs to.
     var group: [LinkAttachment] = []
+    /// Sharing a row with others, so a picture takes less room.
+    var compact = false
     @Environment(\.displayScale) private var displayScale
     @State private var url: URL?
     @State private var image: UIImage?
@@ -97,20 +100,24 @@ struct AttachmentView: View {
 
     /// The most room a picture takes in the conversation.
     private static let pictureBounds = CGSize(width: 240, height: 320)
+    /// Small enough for two to share a row.
+    private static let compactBounds = CGSize(width: 144, height: 192)
     /// The least, so a long strip stays big enough to tap.
     private static let pictureMinimum: CGFloat = 44
 
     /// The room a picture of this size takes, known before it loads so the conversation does not shift.
     /// Nil without a size: a placeholder stands in and the picture takes its own room once loaded.
-    static func pictureFrame(for size: LinkPixelSize?) -> CGSize? {
+    static func pictureFrame(for size: LinkPixelSize?, compact: Bool = false) -> CGSize? {
         guard let size else { return nil }
-        let scale = min(pictureBounds.width / CGFloat(size.width), pictureBounds.height / CGFloat(size.height))
+        let bounds = compact ? compactBounds : pictureBounds
+        let scale = min(bounds.width / CGFloat(size.width), bounds.height / CGFloat(size.height))
         return CGSize(width: max(pictureMinimum, (CGFloat(size.width) * scale).rounded()),
                       height: max(pictureMinimum, (CGFloat(size.height) * scale).rounded()))
     }
 
     @ViewBuilder private var picture: some View {
-        let frame = Self.pictureFrame(for: attachment.pixelSize)
+        let frame = Self.pictureFrame(for: attachment.pixelSize, compact: compact)
+        let bounds = compact ? Self.compactBounds : Self.pictureBounds
         if let image {
             if let frame {
                 Image(uiImage: image)
@@ -122,13 +129,13 @@ struct AttachmentView: View {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFit()
-                    .frame(maxWidth: Self.pictureBounds.width, maxHeight: Self.pictureBounds.height)
+                    .frame(maxWidth: bounds.width, maxHeight: bounds.height)
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
         } else {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(Color(.secondarySystemBackground))
-                .frame(width: frame?.width ?? 240, height: frame?.height ?? 160)
+                .frame(width: frame?.width ?? bounds.width, height: frame?.height ?? bounds.width * 2 / 3)
                 .overlay { status }
         }
     }
@@ -210,6 +217,101 @@ struct AttachmentView: View {
     }
 }
 
+/// How the files of a message sit together, as on the Mac.
+enum AttachmentLayout: String, CaseIterable, Identifiable {
+    case wrap, vertical, stack
+
+    static let key = "chatAttachmentLayout"
+    static let standard = Self.vertical
+    var id: String { rawValue }
+    var name: String { rawValue.capitalized }
+
+    var explanation: String {
+        switch self {
+        case .wrap: "Files sit side by side and wrap onto new rows."
+        case .vertical: "Files sit one below another."
+        case .stack: "Files overlap, with part of each one showing."
+        }
+    }
+}
+
+/// Places a message's files by `mode`, each at its own size. Measuring and placing share one plan.
+struct AttachmentRows: Layout {
+    let mode: AttachmentLayout
+    let trailing: Bool
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        plan(proposal.width, subviews).size
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        for (subview, frame) in zip(subviews, plan(bounds.width, subviews).frames) {
+            subview.place(at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY), proposal: ProposedViewSize(frame.size))
+        }
+    }
+
+    private func plan(_ width: CGFloat?, _ subviews: Subviews) -> (size: CGSize, frames: [CGRect]) {
+        Self.plan(sizes: subviews.map { $0.sizeThatFits(ProposedViewSize(width: width, height: nil)) },
+                  width: width, mode: mode, trailing: trailing)
+    }
+
+    /// Rows filled left to right, the Mac's plan: a stack overlaps each file, leaving a strip of the one below
+    /// and dropping its top a little, and starts another row rather than hiding the strips.
+    static func plan(sizes: [CGSize], width: CGFloat?, mode: AttachmentLayout, trailing: Bool) -> (size: CGSize, frames: [CGRect]) {
+        let limit = mode == .vertical ? 0 : max(0, width ?? .infinity)
+        let spacing: CGFloat = switch mode { case .vertical: 4; case .wrap: 8; case .stack: 12 }
+        var rows: [[CGRect]] = []
+        var row: [CGRect] = []
+        var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0
+        for size in sizes {
+            if !row.isEmpty, x + size.width > limit {
+                rows.append(row)
+                row = []
+                x = 0
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            let stagger = mode == .stack ? CGFloat(row.count) * 12 : 0
+            row.append(CGRect(origin: CGPoint(x: x, y: y + stagger), size: size))
+            x += mode == .stack ? min(72, size.width * 0.42) : size.width + spacing
+            rowHeight = max(rowHeight, stagger + size.height)
+        }
+        if !row.isEmpty { rows.append(row) }
+        let widest = rows.joined().map(\.maxX).max() ?? 0
+        let frames = rows.flatMap { row in
+            let shift = trailing ? widest - (row.map(\.maxX).max() ?? 0) : 0
+            return row.map { $0.offsetBy(dx: shift, dy: 0) }
+        }
+        return (CGSize(width: widest, height: sizes.isEmpty ? 0 : y + rowHeight), frames)
+    }
+}
+
+/// Web links open in a preview first, whose Safari button continues in the browser, as on the Mac.
+enum WebLinkPreview {
+    static let key = "webLinksPreview"
+
+    /// The link to preview, or nil when it goes straight to the system.
+    static func previewed(_ url: URL, enabled: Bool) -> URL? {
+        guard enabled, ["http", "https"].contains(url.scheme?.lowercased() ?? ""), url.host?.isEmpty == false else { return nil }
+        return url
+    }
+}
+
+/// A web link being previewed.
+struct PreviewedLink: Identifiable {
+    let url: URL
+    var id: URL { url }
+}
+
+/// Safari inside the app, with its own button to open the page in Safari.
+struct WebPreview: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeUIViewController(context: Context) -> SFSafariViewController { SFSafariViewController(url: url) }
+
+    func updateUIViewController(_ controller: SFSafariViewController, context: Context) {}
+}
+
 /// The preview card for the first public web link in a message, as on the Mac.
 enum LinkPreview {
     static func firstURL(in text: String) -> URL? {
@@ -259,10 +361,17 @@ enum LinkPreview {
 struct LinkPreviewCard: View {
     let url: URL
     @State private var metadata: LPLinkMetadata?
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         Group {
-            if let metadata { LinkPresentationView(metadata: metadata).frame(maxWidth: 280) }
+            if let metadata {
+                // Tapped here rather than in the card, so the link opens as the conversation's other links do.
+                Button { openURL(url) } label: {
+                    LinkPresentationView(metadata: metadata).frame(maxWidth: 280).allowsHitTesting(false)
+                }
+                .buttonStyle(.plain)
+            }
         }
         .task(id: url) { metadata = await LinkMetadataCache.shared.metadata(for: url) }
     }

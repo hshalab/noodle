@@ -493,3 +493,37 @@ struct QRScanner: UIViewControllerRepresentable {
         }
     }
 }
+
+/// Options for the whole app, whichever Hub is shown.
+struct SettingsView: View {
+    @Environment(\.dismiss) private var dismiss
+    @AppStorage(AttachmentLayout.key) private var attachmentLayout = AttachmentLayout.standard.rawValue
+    @AppStorage(WebLinkPreview.key) private var previewsLinks = true
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Picker("Attachments", selection: $attachmentLayout) {
+                        ForEach(AttachmentLayout.allCases) { Text($0.name).tag($0.rawValue) }
+                    }
+                    .pickerStyle(.segmented)
+                } header: {
+                    Text("Attachments")
+                } footer: {
+                    Text((AttachmentLayout(rawValue: attachmentLayout) ?? .standard).explanation)
+                }
+                Section {
+                    Toggle("Preview Web Links", isOn: $previewsLinks)
+                } footer: {
+                    Text("Web links open in a preview first, with a button to continue in Safari. When off, they open in Safari.")
+                }
+            }
+            .navigationTitle("Settings")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+            }
+        }
+    }
+}

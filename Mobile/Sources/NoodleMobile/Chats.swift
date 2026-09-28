@@ -482,6 +482,7 @@ struct AgentsView: View {
     /// What was picked in the … sheet; it opens once that sheet has gone.
     @State private var chosen: MoreChoice?
     @State private var showingProfile = false
+    @State private var showingSettings = false
     @State private var creating = false
     @State private var search = ""
     @State private var editing: Row?
@@ -576,6 +577,7 @@ struct AgentsView: View {
                 }
             }
             .sheet(isPresented: $showingProfile) { HubsView() }
+            .sheet(isPresented: $showingSettings) { SettingsView() }
             .sheet(isPresented: $creating) {
                 if let first = chats.first { AgentEditor(chats: first, agent: nil, hubs: chats) }
             }
@@ -617,6 +619,7 @@ struct AgentsView: View {
         switch chosen {
         case .createBot: creating = true
         case .profiles: showingProfile = true
+        case .settings: showingSettings = true
         case nil: break
         }
         chosen = nil
@@ -634,7 +637,7 @@ struct ChatLink: Hashable {
     let agent: UUID
 }
 
-enum MoreChoice { case createBot, profiles }
+enum MoreChoice { case createBot, profiles, settings }
 
 /// The rarely used actions, in a short sheet from the bottom.
 struct MoreSheet: View {
@@ -644,11 +647,12 @@ struct MoreSheet: View {
         VStack(spacing: 12) {
             option("New Bot", systemImage: "plus", .createBot)
             option("Profiles", systemImage: "person.crop.circle", .profiles)
+            option("Settings", systemImage: "gear", .settings)
         }
         .buttonStyle(.bordered)
         .controlSize(.large)
         .padding(24)
-        .presentationDetents([.height(170)])
+        .presentationDetents([.height(230)])
         .presentationDragIndicator(.visible)
     }
 
@@ -769,6 +773,8 @@ struct ChatView: View {
     static let controlHeight: CGFloat = 48
     let chats: HubChats
     let agentID: UUID
+    @AppStorage(WebLinkPreview.key) private var previewsLinks = true
+    @State private var previewing: PreviewedLink?
     @State private var draft = ""
     @State private var caret = 0
     @State private var files: [OutgoingFile] = []
@@ -908,6 +914,12 @@ struct ChatView: View {
             attach { try result.get().map(PickedFiles.copy) }
         }
         .environment(\.watchLive) { watching = $0 }
+        .environment(\.openURL, OpenURLAction { url in
+            guard let link = WebLinkPreview.previewed(url, enabled: previewsLinks) else { return .systemAction }
+            previewing = PreviewedLink(url: link)
+            return .handled
+        })
+        .sheet(item: $previewing) { WebPreview(url: $0.url).ignoresSafeArea() }
         .environment(\.focusMessage) { focus in
             var instant = Transaction()
             instant.disablesAnimations = true
@@ -1170,6 +1182,7 @@ private struct Bubble: View {
     @State private var pressing = false
     @State private var textFrame = CGRect.zero
     @Environment(\.focusMessage) private var focusMessage
+    @AppStorage(AttachmentLayout.key) private var attachmentLayout = AttachmentLayout.standard.rawValue
 
     var body: some View {
         switch message.author {
@@ -1221,8 +1234,15 @@ private struct Bubble: View {
     }
 
     @ViewBuilder private func content(foreground: Color, background: Color) -> some View {
-        ForEach(message.attachments) { attachment in
-            AttachmentView(chats: chats, agent: agent, attachment: attachment, group: message.attachments)
+        if !message.attachments.isEmpty {
+            let mode = AttachmentLayout(rawValue: attachmentLayout) ?? .standard
+            let together = mode != .vertical && message.attachments.count > 1
+            AttachmentRows(mode: mode, trailing: message.author == .you) {
+                ForEach(message.attachments) { attachment in
+                    AttachmentView(chats: chats, agent: agent, attachment: attachment, group: message.attachments, compact: together)
+                        .shadow(color: mode == .stack && together ? .black.opacity(0.3) : .clear, radius: 3, y: 2)
+                }
+            }
         }
         if showsText {
             MessageText(text: message.body, folded: folded, foreground: foreground, background: background) { expanded = true }

@@ -15,6 +15,8 @@
 - Open a conversation: the Message field and the + beside it are as tall as Search on the bots list.
 - Close a game noodlet's window on the Mac, such as a canvas game, then watch it from the phone: it plays and moves, rather than showing only its background. Needs the Mac on the next Noodle Applet update.
 - Send a message with a web link: in your blue bubble the link reads in white and underlined.
+- Tap a web link in a conversation: it opens in a preview inside the app, whose Safari button continues in Safari. Turn off Preview Web Links in Settings, from the … button on the bots list, and it opens in Safari straight away.
+- In Settings, from the … button on the bots list, choose Wrap, Vertical or Stack for Attachments, then open a message with several pictures: they sit side by side, one below another, or overlapping.
 
 ### Added
 
@@ -23,6 +25,9 @@
 - Kick and New Session, in a conversation's … menu, start a stuck bot again or give it a fresh context, as on the Mac.
 - New Tool lists the services your Hub offers, with search, and adds the one you tap and signs it in. Your own MCP server is under Custom MCP Server at the end of the list.
 - Effort, in the bot editor, sets how hard the bot's model reasons, when the model offers a choice.
+- Web links open in a preview first, as on the Mac, with a button to continue in Safari. Preview Web Links, in Settings, turns this off.
+- Settings, in the … menu of the bots list, holds options for the whole app.
+- Attachments, in Settings, lays out a message's files side by side, one below another or overlapping, as on the Mac.
 
 ### Changed
 
