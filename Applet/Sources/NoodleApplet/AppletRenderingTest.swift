@@ -8,7 +8,9 @@ import WebKit
 @MainActor enum AppletRenderingTest {
   static func run() async throws {
     setbuf(stdout, nil)
-    let root = FileManager.default.temporaryDirectory.appendingPathComponent("Rendering-\(UUID())")
+    // Inside Applet's storage, the only place a Swift noodlet may be built.
+    let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+      .appendingPathComponent("NoodleApplet/Rendering-\(UUID())")
     let suite = "RenderingTest.\(UUID())"
     let defaults = UserDefaults(suiteName: suite)!
     let library = AppletLibrary(root: root, defaults: defaults, installExamples: false, watchChanges: false)
@@ -57,6 +59,30 @@ import WebKit
     func value(_ args: [String]) async throws -> [String: Any] {
       let response = try await call(args)
       return try JSONSerialization.jsonObject(with: Data((response.value ?? "{}").utf8)) as? [String: Any] ?? [:]
+    }
+    /// Watches a session as a paired device does, once its first picture has arrived.
+    func watch(_ session: UUID) async throws -> SurfaceSocket {
+      let (near, far) = try {
+        var fds: [Int32] = [0, 0]
+        guard socketpair(AF_UNIX, SOCK_STREAM, 0, &fds) == 0 else { throw AppletError("No socket pair") }
+        return (SurfaceSocket(fd: fds[0], held: true), SurfaceSocket(fd: fds[1]))
+      }()
+      let streamed = await runtime.handle(
+        AppletRequest(.surfaceStream, sessionID: session), identity: AppletBuildIdentity.current.noodleID, surface: near)
+      near.start(with: try JSONEncoder().encode(streamed))
+      try require(streamed.error == nil, "Live view refused: \(streamed.error ?? "")")
+      let frame = await withTaskGroup(of: SurfacePacket?.self) { group in
+        group.addTask {
+          for await data in far.frames { if let packet = SurfacePacket.decode(data)?.first { return packet } }
+          return nil
+        }
+        group.addTask { try? await Task.sleep(for: .seconds(5)); return nil }
+        let first = await group.next() ?? nil
+        group.cancelAll()
+        return first
+      }
+      try require(frame?.keyFrame == true, "A background noodlet sent no live view within 5 seconds")
+      return far
     }
     do {
     let source = library.documents.appendingPathComponent("Animation.\(AppletBuildIdentity.current.fileExtension)")
@@ -112,26 +138,7 @@ import WebKit
     let wasActive = NSApp.isActive
     let cold = try await call(["open", "--mode", "background"] + watchedTarget)
     guard let session = runtime.sessions[cold.sessionID!], let web = session.web else { throw AppletError("Background session missing") }
-    let (near, far) = try {
-      var fds: [Int32] = [0, 0]
-      guard socketpair(AF_UNIX, SOCK_STREAM, 0, &fds) == 0 else { throw AppletError("No socket pair") }
-      return (SurfaceSocket(fd: fds[0], held: true), SurfaceSocket(fd: fds[1]))
-    }()
-    let streamed = await runtime.handle(
-      AppletRequest(.surfaceStream, sessionID: cold.sessionID), identity: AppletBuildIdentity.current.noodleID, surface: near)
-    near.start(with: try JSONEncoder().encode(streamed))
-    try require(streamed.error == nil, "Live view refused: \(streamed.error ?? "")")
-    let frame = await withTaskGroup(of: SurfacePacket?.self) { group in
-      group.addTask {
-        for await data in far.frames { if let packet = SurfacePacket.decode(data)?.first { return packet } }
-        return nil
-      }
-      group.addTask { try? await Task.sleep(for: .seconds(5)); return nil }
-      let first = await group.next() ?? nil
-      group.cancelAll()
-      return first
-    }
-    try require(frame?.keyFrame == true, "A background noodlet sent no live view within 5 seconds")
+    let far = try await watch(cold.sessionID!)
     try await Task.sleep(for: .milliseconds(300))
     // What the live view captures, as it captures it.
     let picture = try await session.snapshot()
@@ -170,6 +177,73 @@ import WebKit
     try require(try await web.evaluate("return document.visibilityState") == "\"hidden\"", "The noodlet still counts as seen after the live view ended")
     _ = try await call(["close"] + watchedTarget)
     print("PASS live view: a noodlet opened only in the background draws for its viewer and stays out of sight on this Mac")
+    // Watched after a person closed its window, as the phone does: the Hub opens it again in the background.
+    // Only Noodle, for the person, brings a noodlet to the foreground.
+    var foreground = AppletRequest(.open)
+    foreground.noodletID = try library.linkID(for: NoodletPackage(url: watched))
+    foreground.mode = "foreground"
+    let shown = try await runtime.handle(foreground, identity: AppletBuildIdentity.current.noodleID).checked()
+    guard let shownWeb = runtime.sessions[shown.sessionID!]?.web else { throw AppletError("Foreground session missing") }
+    shownWeb.window.performClose(nil)
+    try await Task.sleep(for: .milliseconds(300))
+    try require(runtime.sessions[shown.sessionID!]?.state == "stopped", "Closing the window left the noodlet running")
+    let reopened = try await call(["open", "--mode", "background"] + watchedTarget)
+    guard let reopenedWeb = runtime.sessions[reopened.sessionID!]?.web else { throw AppletError("Reopened session missing") }
+    let reopenedView = try await watch(reopened.sessionID!)
+    try await Task.sleep(for: .milliseconds(300))
+    let reopenedTicks = Int(try await reopenedWeb.evaluate("return ticks")) ?? 0
+    try await Task.sleep(for: .milliseconds(500))
+    let reopenedMoved = (Int(try await reopenedWeb.evaluate("return ticks")) ?? 0) - reopenedTicks
+    let reopenedVisibility = try await reopenedWeb.evaluate("return document.visibilityState")
+    print("INFO closed then watched: \(reopenedMoved) frames in 500 ms, visibility \(reopenedVisibility)")
+    try require(reopenedMoved >= 5 && reopenedVisibility == "\"visible\"", "A noodlet watched after its window was closed does not animate")
+    reopenedView.close()
+    _ = try await call(["close"] + watchedTarget)
+    print("PASS live view: a noodlet whose window was closed animates for its viewer")
+    // A Swift noodlet draws itself; its picture must keep changing while only another device watches.
+    let native = library.documents.appendingPathComponent("NativeWatched.\(AppletBuildIdentity.current.fileExtension)")
+    _ = try NoodletPackage.install([
+      "noodlet.json": try JSONEncoder().encode(NoodletManifest(title: "Native live view regression", runtime: "swift", entry: "Main.swift")),
+      "Main.swift": Data("""
+        import SwiftUI
+        struct Noodlet: View {
+          var body: some View {
+            TimelineView(.animation) { context in
+              let phase = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1)
+              Color(red: phase, green: 1 - phase, blue: 0).frame(width: 160, height: 120)
+            }
+          }
+        }
+        """.utf8),
+    ], to: native)
+    library.scan()
+    let nativeTarget = ["--id", try library.linkID(for: NoodletPackage(url: native)).uuidString]
+    let nativeOpen: AppletResponse
+    do {
+      nativeOpen = try await call(["open", "--mode", "background"] + nativeTarget)
+    } catch {
+      // The compiler's diagnostics are in the session's log, gone with the fixture.
+      print(try? await call(["logs"] + nativeTarget).text ?? "", terminator: "")
+      throw error
+    }
+    guard let nativeRunner = runtime.sessions[nativeOpen.sessionID!]?.native else { throw AppletError("Native session missing") }
+    let nativeView = try await watch(nativeOpen.sessionID!)
+    func centre() async throws -> [UInt8] {
+      let image = try await nativeRunner.liveFrame()
+      let bitmap = NSBitmapImageRep(cgImage: image)
+      guard let colour = bitmap.colorAt(x: bitmap.pixelsWide / 2, y: bitmap.pixelsHigh / 2)?.usingColorSpace(.deviceRGB) else { return [] }
+      return [colour.redComponent, colour.greenComponent].map { UInt8($0 * 255) }
+    }
+    var seen = Set<[UInt8]>()
+    for _ in 0..<6 {
+      seen.insert(try await centre())
+      try await Task.sleep(for: .milliseconds(150))
+    }
+    print("INFO native watched background: \(seen.count) distinct pictures in 6 frames")
+    try require(seen.count >= 3, "A watched background Swift noodlet stopped animating")
+    nativeView.close()
+    _ = try await call(["close"] + nativeTarget)
+    print("PASS live view: a Swift noodlet opened only in the background animates for its viewer")
     let open = try await call(["open", "--mode", "headless", "--test-clock"] + target)
     let exact = target + ["--session", open.sessionID!.uuidString]
     try require(open.testClock == true && open.dataScope == "test", "Clock did not use test data")
