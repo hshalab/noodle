@@ -78,15 +78,16 @@ public struct AppleLocalModelStore: Sendable {
         }
         let configURL = source.appendingPathComponent("config.json")
         try Self.regularFile(configURL, maximumSize: 4_194_304)
+        // These families have tool-aware templates supported by MLX. Gemma 4 and
+        // Qwen3.5 checkpoints are multimodal; MLX loads their text weights only
+        // and their text settings sit under `text_config`.
+        let multimodal = ["gemma4", "qwen3_5", "qwen3_5_moe"]
         guard let config = try JSONSerialization.jsonObject(with: Data(contentsOf: configURL)) as? [String: Any],
               let modelType = config["model_type"] as? String,
-              // These families have tool-aware templates supported by MLX. Gemma 4
-              // checkpoints are multimodal; MLX loads their text weights only and
-              // their text settings sit under `text_config`.
-              ["qwen2", "qwen3", "qwen3_moe", "llama", "gemma4"].contains(modelType),
-              let context = (modelType == "gemma4" ? config["text_config"] as? [String: Any] : config)?["max_position_embeddings"] as? Int,
-              (1_024...1_048_576).contains(context), modelType == "gemma4" || config["vision_config"] == nil else {
-            throw HarnessSetupError("Import an MLX Qwen2, Qwen3, Llama, or Gemma 4 chat model with a valid context size.")
+              (["qwen2", "qwen3", "qwen3_moe", "qwen3_next", "llama", "gpt_oss"] + multimodal).contains(modelType),
+              let context = (multimodal.contains(modelType) ? config["text_config"] as? [String: Any] : config)?["max_position_embeddings"] as? Int,
+              (1_024...1_048_576).contains(context), multimodal.contains(modelType) || config["vision_config"] == nil else {
+            throw HarnessSetupError("Import an MLX Qwen, gpt-oss, Llama, or Gemma 4 chat model with a valid context size.")
         }
         let files = try Self.resources(in: source)
         let names = Set(files.map(\.lastPathComponent))

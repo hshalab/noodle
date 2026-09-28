@@ -86,6 +86,25 @@ final class AppleLocalModelsTests: XCTestCase {
         }
     }
 
+    func testQwen35FamilyGptOssAndQwen3NextImport() throws {
+        try fixture { source, store in
+            let config = source.appendingPathComponent("config.json")
+            for (json, type, context) in [
+                (#"{"model_type":"qwen3_5","vision_config":{},"text_config":{"max_position_embeddings":262144}}"#, "qwen3_5", 262_144),
+                (#"{"model_type":"qwen3_5_moe","vision_config":{},"text_config":{"max_position_embeddings":262144}}"#, "qwen3_5_moe", 262_144),
+                (#"{"model_type":"gpt_oss","max_position_embeddings":131072}"#, "gpt_oss", 131_072),
+                (#"{"model_type":"qwen3_next","max_position_embeddings":262144}"#, "qwen3_next", 262_144),
+            ] {
+                try Data(json.utf8).write(to: config)
+                let imported = try store.importModel(from: source)
+                XCTAssertEqual(imported.modelType, type)
+                XCTAssertEqual(imported.contextSize, context)
+            }
+            try Data(#"{"model_type":"gpt_oss","max_position_embeddings":131072,"vision_config":{}}"#.utf8).write(to: config)
+            XCTAssertThrowsError(try store.importModel(from: source))
+        }
+    }
+
     func testMissingWeightsUnsupportedModelsAndLinksAreRejectedWithoutPublishing() throws {
         try fixture { source, store in
             let weights = source.appendingPathComponent("model.safetensors")

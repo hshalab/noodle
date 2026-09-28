@@ -174,15 +174,18 @@ per message, 20 MiB each and 40 MiB in total. Local models accept text only.
    **Recommended** suits this Mac's memory best. The list shows each download
    size and links to the model's details and license. **Cancel** removes partial
    files; choose **Download** again to retry.
-3. Or choose **Import Model** and select an MLX Qwen2, Qwen3, Llama, or Gemma 4
-   chat or instruct model folder you have already downloaded. The folder must
-   contain real files, not links, so copy a Hugging Face cache snapshot into a
-   folder first. Gemma 4 is used for text only.
+3. Or choose **Import Model** and select an MLX Qwen2, Qwen3, Qwen3-Next,
+   Qwen3.5, gpt-oss, Llama, or Gemma 4 chat or instruct model folder you have
+   already downloaded. The folder must contain real files, not links, so copy a
+   Hugging Face cache snapshot into a folder first. Qwen3.5 and Gemma 4 are used
+   for text only.
 4. Edit a bot, choose Apple Intelligence, and select the model.
 
 The Available list offers, smallest first: Qwen3 1.7B, Qwen3 4B Instruct (2507),
-Qwen3 8B, Gemma 4 E4B and Qwen3 14B. Each says what it suits and how much memory
-it needs. Gemma 4 is offered under Google's Gemma terms, linked from **Details**.
+Qwen3 8B, Gemma 4 E4B, Qwen3.5 9B, Qwen3 14B, gpt-oss 20B, Qwen3.8 27B,
+Qwen3.6 35B-A3B and Qwen3 Coder Next. Each says what it suits and how much memory
+it needs; the largest want a Mac with 32 GB or 64 GB. Gemma 4 is offered under
+Google's Gemma terms, linked from **Details**.
 Downloaded models move to **Installed**.
 
 - Allow disk space for both the download and Noodle's copy while installing.

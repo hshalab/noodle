@@ -125,7 +125,10 @@ final class AppleModelDownloaderTests: XCTestCase {
         XCTAssertEqual(recommended(16), "Qwen3 8B")
         XCTAssertEqual(recommended(18), "Qwen3 8B")
         XCTAssertEqual(recommended(24), "Qwen3 14B")
-        XCTAssertEqual(recommended(128), "Qwen3 14B")
+        XCTAssertEqual(recommended(32), "Qwen3.8 27B")
+        XCTAssertEqual(recommended(48), "Qwen3.8 27B")
+        XCTAssertEqual(recommended(64), "Qwen3 Coder Next")
+        XCTAssertEqual(recommended(128), "Qwen3 Coder Next")
         XCTAssertEqual(recommended(4), "Qwen3 1.7B")
         for model in AppleDownloadableModel.available {
             XCTAssertNotNil(model.revision.range(of: "^[0-9a-f]{40}$", options: .regularExpression))
