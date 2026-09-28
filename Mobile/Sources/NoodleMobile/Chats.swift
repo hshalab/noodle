@@ -766,7 +766,7 @@ struct ConversationScrolling: ViewModifier {
 /// One agent's conversation, laid out like Messages.
 struct ChatView: View {
     /// The height of a one-line message field, which the buttons beside it match.
-    private static let controlHeight: CGFloat = 40
+    static let controlHeight: CGFloat = 48
     let chats: HubChats
     let agentID: UUID
     @State private var draft = ""
@@ -1043,7 +1043,7 @@ struct ChatView: View {
             ComposerField(text: $draft, caret: $caret, placeholder: "Message") { image in
                 attach { try PickedFiles.store(image.pngData() ?? Data(), named: "Image.png", type: .png) }
             }
-            .padding(.vertical, 9)
+            .padding(.vertical, 13)
             // As in Messages: the microphone until there is something to send.
             if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && files.isEmpty {
                 Button { recorder.start() } label: {

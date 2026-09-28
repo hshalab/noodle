@@ -12,6 +12,7 @@
 - Paired with a Mac serving your devices (Settings > Hub in Noodle): create a computer and a browser, add a tool and sign it in, then give them to a bot. They appear in Noodle on the Mac too, and the bot can use them.
 - Paired with a Mac serving your devices, edit a bot and change its model or effort: the bot restarts, and its next reply comes from the new model. Needs the Mac on the next Noodle update.
 - Create or edit a bot and open Harness: a harness lent under a profile shows its name with the profile on a second line; check that a long profile, such as an email address, reads cleanly. Once chosen, it reads on one line, such as Codex · you@example.com.
+- Open a conversation: the Message field and the + beside it are as tall as Search on the bots list.
 
 ### Added
 
@@ -27,6 +28,7 @@
 
 ### Fixed
 
+- The Message field in a conversation is as tall as Search on the bots list.
 - Noodle Hub is tried again for a few seconds when it is starting up or the network is settling, instead of failing at once.
 - A bot's harness shows its name rather than its internal identifier when the Hub no longer lends it under the same profile.
 - Switching a new computer between Shell and Desktop changes its name to match, unless you typed your own.
