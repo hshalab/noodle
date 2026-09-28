@@ -106,6 +106,7 @@ import SwiftUI
                 try require(try await isolated.evaluate("return !(await (await fetch('/auth-state')).json()).authenticated;") as? Bool == true, "Profile cookie isolation failed")
                 _ = try await tab.evaluate("return await new Promise((resolve,reject)=>{const r=indexedDB.open('noodle-fixture',1);r.onupgradeneeded=()=>r.result.createObjectStore('values');r.onerror=()=>reject(r.error);r.onsuccess=()=>{const db=r.result,tx=db.transaction('values','readwrite');tx.objectStore('values').put('saved','state');tx.oncomplete=()=>{db.close();resolve(true)};tx.onerror=()=>reject(tx.error)}});")
                 print("PASS DOM inspection, iframe, fill, native click, authenticated request, profile isolation, IndexedDB write")
+                try await verifyLiveView(runtime, tab: isolated)
                 try await verifyWebMCP(runtime, browserID: profile.id, otherID: other.id, base: base)
                 #if NOODLE_DEV_HOOKS
                 if checks.contains(BrowserLaunchCheck.webMCPDemos) { try await verifyPublicWebMCPDemos(runtime, browserID: profile.id) }
@@ -237,6 +238,54 @@ import SwiftUI
         } catch {
             fputs("BROWSER_SMOKE_FAILED: \(error.localizedDescription)\n", stderr); fflush(stderr); exit(1)
         }
+    }
+
+    /// A person watching a tab from another device, with no browser window open on this Mac:
+    /// the page must keep animating and count as seen, as it would in a window.
+    private static func verifyLiveView(_ runtime: BrowserRuntime, tab: BrowserTab) async throws {
+        _ = try await tab.evaluate("window.ticks=0;(function tick(){ticks++;requestAnimationFrame(tick);})();return true;")
+        let (near, far) = try {
+            var fds: [Int32] = [0, 0]
+            guard socketpair(AF_UNIX, SOCK_STREAM, 0, &fds) == 0 else { throw BrowserError("No socket pair") }
+            return (SurfaceSocket(fd: fds[0], held: true), SurfaceSocket(fd: fds[1]))
+        }()
+        let streamed = try await runtime.perform(.init(.surfaceStream, browserID: tab.browserID, tabID: tab.id), surface: near)
+        near.start(with: try JSONEncoder().encode(streamed))
+        let frame = await withTaskGroup(of: SurfacePacket?.self) { group in
+            group.addTask {
+                for await data in far.frames { if let packet = SurfacePacket.decode(data)?.first { return packet } }
+                return nil
+            }
+            group.addTask { try? await Task.sleep(for: .seconds(5)); return nil }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
+        }
+        try require(frame?.keyFrame == true, "A tab sent no live view within 5 seconds")
+        try await Task.sleep(for: .milliseconds(300))
+        func ticks() async throws -> Int { (try await tab.evaluate("return ticks;") as? Int) ?? 0 }
+        let before = try await ticks()
+        try await Task.sleep(for: .milliseconds(500))
+        let moved = try await ticks() - before
+        let visibility = try await tab.evaluate("return document.visibilityState;") as? String ?? ""
+        print("INFO watched tab without a window: \(moved) frames in 500 ms, visibility \(visibility)")
+        try require(moved >= 5, "A watched tab stopped getting animation frames")
+        try require(visibility == "visible", "A watched tab is hidden from its own page")
+        try require(!tab.surface.isVisible || tab.surface.alphaValue == 0, "A watched tab showed a window on this Mac")
+        // A tab opened while watched is the one watched; the one before goes back out of sight.
+        let next = try runtime.makeTab(browserID: tab.browserID)
+        _ = try await next.evaluate("window.ticks=0;(function tick(){ticks++;requestAnimationFrame(tick);})();return true;")
+        let nextBefore = (try await next.evaluate("return ticks;") as? Int) ?? 0
+        try await Task.sleep(for: .milliseconds(500))
+        let nextMoved = ((try await next.evaluate("return ticks;") as? Int) ?? 0) - nextBefore
+        try require(nextMoved >= 5, "A tab opened while watched does not animate")
+        try require(try await tab.evaluate("return document.visibilityState;") as? String == "hidden", "A tab left while watched still counts as seen")
+        try runtime.closeTab(browserID: tab.browserID, tabID: next.id)
+        far.close()
+        try await eventually("live view ended") { !runtime.isWatched(tab.browserID) }
+        try require(try await tab.evaluate("return document.visibilityState;") as? String == "hidden" && !tab.surface.isVisible,
+                    "A tab still counts as seen after the live view ended")
+        print("PASS live view: a tab watched with no browser window open animates and counts as seen")
     }
 
     private static func verifyTabSwitching(_ presentation: BrowserPresentation, tab: BrowserTab, window: NSWindow, url: URL) async throws {

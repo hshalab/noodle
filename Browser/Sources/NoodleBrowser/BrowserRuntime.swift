@@ -52,6 +52,7 @@ import WebKit
             do { try library.update(profile) } catch { tab.stop(); throw error }
         }
         tabs[info.id] = tab
+        showWatchedTab(browserID)
         return tab
     }
     func tab(browserID: UUID, tabID: UUID) throws -> BrowserTab {
@@ -70,11 +71,18 @@ import WebKit
     }
     /// Someone is watching the browser live.
     func isWatched(_ browser: UUID) -> Bool { surfaces[browser]?.isWatched == true }
+    /// Only the tab a person is watching draws as if seen.
+    private func showWatchedTab(_ browserID: UUID, watched: Bool? = nil) {
+        let watched = watched ?? isWatched(browserID)
+        let selected = try? library.profile(browserID).selectedTabID
+        for tab in tabs.values where tab.browserID == browserID { tab.watched = watched && tab.id == selected }
+    }
     func selectTab(browserID: UUID, tabID: UUID) throws {
         var profile = try library.profile(browserID)
         guard profile.tabs.contains(where: { $0.id == tabID }) else { throw BrowserError("Tab not found in this browser.") }
         profile.selectedTabID = tabID; try library.update(profile)
         _ = try tab(browserID: browserID, tabID: tabID)
+        showWatchedTab(browserID)
     }
     func closeTab(browserID: UUID, tabID: UUID) throws {
         var profile = try library.profile(browserID)
@@ -83,6 +91,7 @@ import WebKit
         if profile.selectedTabID == tabID { profile.selectedTabID = profile.tabs.first?.id }
         try library.update(profile)
         tabs.removeValue(forKey: tabID)?.stop()
+        showWatchedTab(browserID)
     }
     func setMuted(_ value: Bool, browserID: UUID) async throws {
         var profile = try library.profile(browserID); profile.muted = value; try library.update(profile)
@@ -202,7 +211,9 @@ import WebKit
             if let tabID = request.tabID, profile.tabs.contains(where: { $0.id == tabID }) { try selectTab(browserID: id, tabID: tabID) }
             let streamer = surfaces[id] ?? {
                 let view = BrowserLiveView(browserID: id, runtime: self)
-                return SurfaceStreamer(capture: { try await view.picture() }, apply: { try view.apply($0) })
+                let streamer = SurfaceStreamer(capture: { try await view.picture() }, apply: { try view.apply($0) })
+                streamer.watchingChanged = { [weak self] watched in self?.showWatchedTab(id, watched: watched) }
+                return streamer
             }()
             surfaces[id] = streamer
             streamer.attach(surface)

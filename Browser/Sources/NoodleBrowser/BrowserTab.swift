@@ -105,6 +105,7 @@ import WebKit
             surface.contentView = web
             web.setFrameOrigin(.zero)
         }
+        showUnseen()
     }
     func detachSurface() {
         if let window = web.window, let responder = window.firstResponder as? NSView,
@@ -112,6 +113,28 @@ import WebKit
             window.makeFirstResponder(nil)
         }
         web.removeFromSuperview()
+        showUnseen()
+    }
+    /// While a person watches from another device the page must draw as if seen, which WebKit only
+    /// does for a window on screen. A tab not in a browser window has its own panel put there,
+    /// transparent, at the back and taking no clicks.
+    var watched = false {
+        didSet { if watched != oldValue { showUnseen() } }
+    }
+    private func showUnseen() {
+        let unseen = watched && !stopped && web.window === surface
+        guard unseen != (surface.alphaValue == 0) else { return }
+        surface.alphaValue = unseen ? 0 : 1
+        surface.ignoresMouseEvents = unseen
+        // A transparent window at the back counts as occluded, which WebKit reports to the page as hidden.
+        setOcclusionDetection(!unseen)
+        if unseen { surface.orderBack(nil) } else { surface.orderOut(nil) }
+    }
+    private func setOcclusionDetection(_ enabled: Bool) {
+        let selector = NSSelectorFromString("_setWindowOcclusionDetectionEnabled:")
+        typealias Setter = @convention(c) (AnyObject, Selector, Bool) -> Void
+        guard let method = class_getInstanceMethod(WKWebView.self, selector) else { return }
+        unsafeBitCast(method_getImplementation(method), to: Setter.self)(web, selector, enabled)
     }
     func navigate(_ url: URL) {
         info.error = nil

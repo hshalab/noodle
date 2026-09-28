@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- A page watched live from another device keeps animating, and counts as seen, when no Browser window shows it on this Mac. Games, videos and other animation used to freeze until the window was opened.
+
 ## [0.8.0] - 2026-09-28
 
 ### Changed

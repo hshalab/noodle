@@ -14,6 +14,7 @@
 - Create or edit a bot and open Harness: a harness lent under a profile shows its name with the profile on a second line; check that a long profile, such as an email address, reads cleanly. Once chosen, it reads on one line, such as Codex · you@example.com.
 - Open a conversation: the Message field and the + beside it are as tall as Search on the bots list.
 - Close a game noodlet's window on the Mac, such as a canvas game, then watch it from the phone: it plays and moves, rather than showing only its background. Needs the Mac on the next Noodle Applet update.
+- With no Browser window open on the Mac, watch a browser tab from the phone that plays a video or animation: it keeps moving. Open another tab from the phone and it moves too. Needs the Mac on the next Noodle Browser update.
 - Send a message with a web link: in your blue bubble the link reads in white and underlined.
 - Tap a web link in a conversation: it opens in a preview inside the app, whose Safari button continues in Safari. Turn off Preview Web Links in Settings, from the … button on the bots list, and it opens in Safari straight away.
 - In Settings, from the … button on the bots list, choose Wrap, Vertical or Stack for Attachments, then open a message with several pictures: they sit side by side, one below another, or overlapping.
