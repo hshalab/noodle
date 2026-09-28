@@ -131,6 +131,7 @@ final class LinkVersion1Tests: XCTestCase {
             "messagePageAfter": .messagePage(LinkMessagePage(conversationID: b, after: 3, limit: 100)),
             "markRead": .markRead(LinkReadMark(conversationID: b, messageID: a)),
             "pushTopic": .pushTopic(LinkPushTopic(topic: "topic")), "noPushTopic": .pushTopic(LinkPushTopic(topic: nil)),
+            "kick": .kick(botID: a), "confirmKick": .confirmKick(botID: a, confirmationID: b), "newSession": .newSession(botID: a),
         ]
     }
     private var nextResponses: [String: LinkResponse] {
@@ -145,6 +146,8 @@ final class LinkVersion1Tests: XCTestCase {
                                   card: LinkCardInfo(title: "Hacker News", detail: "https://news.ycombinator.com", image: Data([4]),
                                                      symbol: "globe", colour: 1, icon: Data([5]), capturedAt: date))
         return [
+            "kickConfirmation": .kickConfirmation(LinkKickConfirmation(id: a, title: "Safeguards stopped Alfred", message: "Stopped.",
+                                                                       confirmTitle: "Resume", offersNewSession: true)),
             "connections": .connections([connection]), "connection": .connection(connection),
             "computers": .computers([computer]), "computer": .computer(computer),
             "computerTemplates": .computerTemplates([LinkComputerTemplate(id: "ubuntu", name: "Ubuntu", description: "Linux", symbol: "terminal")]),
@@ -204,6 +207,9 @@ final class LinkVersion1Tests: XCTestCase {
         "markRead": #"{"version":1,"request":{"markRead":{"_0":{"conversationID":"00000000-0000-0000-0000-00000000000B","messageID":"00000000-0000-0000-0000-00000000000A"}}}}"#,
         "pushTopic": #"{"version":1,"request":{"pushTopic":{"_0":{"topic":"topic"}}}}"#,
         "noPushTopic": #"{"version":1,"request":{"pushTopic":{"_0":{}}}}"#,
+        "kick": #"{"version":1,"request":{"kick":{"botID":"00000000-0000-0000-0000-00000000000A"}}}"#,
+        "confirmKick": #"{"version":1,"request":{"confirmKick":{"botID":"00000000-0000-0000-0000-00000000000A","confirmationID":"00000000-0000-0000-0000-00000000000B"}}}"#,
+        "newSession": #"{"version":1,"request":{"newSession":{"botID":"00000000-0000-0000-0000-00000000000A"}}}"#,
         "assignBrowsers": #"{"version":1,"request":{"assignBrowsers":{"botID":"00000000-0000-0000-0000-00000000000A","browserIDs":["00000000-0000-0000-0000-00000000000B"]}}}"#,
         "assignComputers": #"{"request":{"assignComputers":{"botID":"00000000-0000-0000-0000-00000000000A","computerIDs":["00000000-0000-0000-0000-00000000000B"]}},"version":1}"#,
         "assignConnections": #"{"version":1,"request":{"assignConnections":{"botID":"00000000-0000-0000-0000-00000000000A","connectionIDs":["00000000-0000-0000-0000-00000000000B"]}}}"#,
@@ -225,6 +231,7 @@ final class LinkVersion1Tests: XCTestCase {
         "updateComputer": #"{"version":1,"request":{"updateComputer":{"id":"00000000-0000-0000-0000-00000000000A","_1":{"template":"ubuntu","description":"Builds","symbol":"hammer","colour":3,"name":"Workbench"}}}}"#
     ]
     private static let nextResponseJSON: [String: String] = [
+        "kickConfirmation": #"{"kickConfirmation":{"_0":{"id":"00000000-0000-0000-0000-00000000000A","title":"Safeguards stopped Alfred","message":"Stopped.","confirmTitle":"Resume","offersNewSession":true}}}"#,
         "messagePage": #"{"messages":{"_0":{"count":120,"start":70,"messages":[{"attachments":[],"reactions":[],"author":{"bot":{"_0":"00000000-0000-0000-0000-00000000000A"}},"id":"00000000-0000-0000-0000-00000000000A","conversationID":"00000000-0000-0000-0000-00000000000B","createdAt":1790000000,"body":"Hi","delivered":true}]}}}"#,
         "browser": #"{"browser":{"_0":{"name":"Work","symbol":"briefcase","botIDs":["00000000-0000-0000-0000-00000000000B"],"id":"00000000-0000-0000-0000-00000000000A","icon":"Aw==","colour":2,"description":"Research","paused":true}}}"#,
         "browsers": #"{"browsers":{"_0":[{"paused":true,"id":"00000000-0000-0000-0000-00000000000A","symbol":"briefcase","botIDs":["00000000-0000-0000-0000-00000000000B"],"colour":2,"name":"Work","icon":"Aw==","description":"Research"}]}}"#,

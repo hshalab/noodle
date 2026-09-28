@@ -6,6 +6,10 @@ All notable changes to Noodle are documented here, following
 
 ## [Unreleased]
 
+### Added
+
+- Kick and New Session work from Noodle on iPhone and iPad for the bots on this Mac, as they do in the sidebar, with the same questions first.
+
 ### Changed
 
 - The website writes the Noodle wordmark on as the apps do, with the swirl that rises from the bottom of the window into the word.

@@ -6,11 +6,13 @@
 
 - Pull down on the bots list and type in Search: only bots whose name, description or conversation match are listed, in one list without the pinned circles. Accents and capitals do not matter.
 - Touch and hold a bot in the list: a menu offers Pin and Edit Bot…. On a pinned circle it offers Unpin and Edit Bot….
+- In a conversation, tap the … button at the top right: New Session asks first, then starts the bot with a fresh context. When the bot has failed, Kick is there too and starts it again, asking first when the Mac or Hub would. Try it with a bot on your Mac and one on a Noodle Hub.
 
 ### Added
 
 - Search the bots list by name, description or what was said, as on the Mac.
 - Touching and holding a bot shows a menu with Pin or Unpin and Edit Bot….
+- Kick and New Session, in a conversation's … menu, start a stuck bot again or give it a fresh context, as on the Mac.
 
 ### Fixed
 

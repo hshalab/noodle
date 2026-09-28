@@ -15,14 +15,14 @@ import XCTest
         let device: HubPairing
     }
 
-    private func fixture(bots names: [String]) async throws -> (Fixture, [AgentRecord]) {
+    private func fixture(bots names: [String], runtime: AgentRuntimeCoordinator? = nil) async throws -> (Fixture, [AgentRecord]) {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("noodle-personal-hub-\(UUID())")
         addTeardownBlock { try? FileManager.default.removeItem(at: root) }
         let repository = WorkspaceRepository(rootURL: root.appendingPathComponent("Noodle"))
         try repository.prepare()
         // Bots made in Noodle before it served anyone.
         let made = try names.map { try repository.createAgent(named: $0).agent }
-        let runtime = AgentRuntimeCoordinator(discovery: HarnessDiscovery(managedHarnesses: repository.managedHarnesses))
+        let runtime = runtime ?? AgentRuntimeCoordinator(discovery: HarnessDiscovery(managedHarnesses: repository.managedHarnesses))
         let personal = PersonalHub(name: "Studio", directory: root.appendingPathComponent("Remote"), repository: repository,
                                    runtime: runtime, applets: AppletController(repository: repository),
                                    profiles: HarnessProfilesController(store: repository.harnessProfiles), port: 0,
@@ -137,6 +137,123 @@ import XCTest
         XCTAssertNil(listed.card?.image, "a page carried a card's picture")
         let fetched = try await f.device.request(.linkPreview(conversationID: conversation.id, attachmentID: card.id))
         XCTAssertEqual(fetched, .picture(picture))
+    }
+
+    /// Stands in for a harness, so the Mac's own runtime can be told to fail and seen to restart.
+    private final class FakeProcess: AgentRuntimeProcess {
+        let launch: AgentRuntimeLaunch
+        var configuration: AgentRecord { launch.agent }
+        var snapshot: AgentRuntimeSnapshot
+        var isAlive = false
+        var hasInterruptedWork: Bool { false }
+        var canReceiveHeartbeat: Bool { false }
+        var stops = 0
+
+        init(_ launch: AgentRuntimeLaunch) {
+            self.launch = launch
+            snapshot = AgentRuntimeSnapshot(agentID: launch.agent.id, phase: .offline, detail: "")
+        }
+        func set(_ phase: AgentRuntimePhase, failure: AgentRuntimeFailure? = nil) {
+            snapshot.phase = phase
+            snapshot.failure = failure
+            launch.onSnapshot(snapshot)
+        }
+        func start() { isAlive = true; set(.ready) }
+        func stop(completion: @escaping (Bool) -> Void) { stops += 1; isAlive = false; set(.offline); completion(true) }
+        func notify(immediately: Bool) -> UUID { UUID() }
+        func promoteNotification(_ id: UUID) {}
+        func heartbeat() {}
+    }
+
+    /// Noodle's own runtime, with a harness that is only a file and processes that are fakes.
+    private func fakeRuntime() throws -> (AgentRuntimeCoordinator, () -> [FakeProcess]) {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("noodle-personal-runtime-\(UUID())").resolvingSymlinksInPath()
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+        let bin = root.appendingPathComponent("bin"), codex = root.appendingPathComponent("bin/codex")
+        try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+        try Data("#!/bin/sh\nexit 99\n".utf8).write(to: codex)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: codex.path)
+        let suite = "Noodle.PersonalHubTests.\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { UserDefaults().removePersistentDomain(forName: suite) }
+        var processes: [FakeProcess] = []
+        let runtime = AgentRuntimeCoordinator(
+            discovery: HarnessDiscovery(homeDirectory: root, applicationsDirectory: root, executableSearchDirectories: [bin],
+                                        applicationBundleURL: root, environment: [:]),
+            defaults: defaults, makeProcess: { launch in
+                let process = FakeProcess(launch)
+                processes.append(process)
+                return process
+            })
+        addTeardownBlock { await MainActor.run { runtime.stopAll() } }
+        return (runtime, { processes })
+    }
+
+    private func startedBot(_ f: Fixture, in runtime: AgentRuntimeCoordinator, _ processes: () -> [FakeProcess]) throws -> (AgentRecord, FakeProcess) {
+        let made = try f.repository.createAgent(named: "Kai", harnessIdentifier: "codex").agent
+        // As Noodle runs it: read back from its library.
+        let agent = try XCTUnwrap(f.repository.loadAgents().first { $0.id == made.id })
+        runtime.start(agent: agent, repository: f.repository)
+        return (agent, try XCTUnwrap(processes().last))
+    }
+
+    /// As in Noodle's sidebar: Kick restarts a failed bot at once, through the Mac's own runtime.
+    func testAPhoneKicksAFailedBotThroughTheMacsRuntime() async throws {
+        let (runtime, processes) = try fakeRuntime()
+        let (f, _) = try await fixture(bots: [], runtime: runtime)
+        let (agent, first) = try startedBot(f, in: runtime, processes)
+        first.set(.failed)
+
+        let answer = try await f.device.request(.kick(botID: agent.id))
+        XCTAssertEqual(answer, .done)
+        XCTAssertEqual(first.stops, 1)
+        XCTAssertEqual(processes().count, 2, "Kick starts the bot again in Noodle's runtime, not another")
+        XCTAssertEqual(runtime.snapshot(for: agent.id).phase, .ready)
+    }
+
+    /// A failure Noodle asks about first is asked about on the phone too, in Noodle's words,
+    /// and only the confirmation restarts the bot, once.
+    func testAPhoneConfirmsAKickNoodleWouldAskAbout() async throws {
+        let (runtime, processes) = try fakeRuntime()
+        let (f, _) = try await fixture(bots: [], runtime: runtime)
+        let (agent, first) = try startedBot(f, in: runtime, processes)
+        first.set(.failed, failure: .safetyStop)
+
+        guard case .kickConfirmation(let confirmation) = try await f.device.request(.kick(botID: agent.id)) else {
+            return XCTFail("no confirmation")
+        }
+        XCTAssertEqual(confirmation.title, "Safeguards stopped Kai")
+        XCTAssertTrue(confirmation.message.hasPrefix("The model's safeguards stopped a response."))
+        XCTAssertEqual(confirmation.confirmTitle, "Resume")
+        XCTAssertTrue(confirmation.offersNewSession)
+        XCTAssertEqual(first.stops, 0, "Asking must leave the bot alone")
+
+        let confirmed = try await f.device.request(.confirmKick(botID: agent.id, confirmationID: confirmation.id))
+        XCTAssertEqual(confirmed, .done)
+        XCTAssertEqual(first.stops, 1)
+        XCTAssertEqual(processes().count, 2)
+        let again = try await f.device.request(.confirmKick(botID: agent.id, confirmationID: confirmation.id))
+        XCTAssertEqual(again, .done)
+        XCTAssertEqual(processes().count, 2, "A confirmation works once")
+    }
+
+    /// As in Noodle's sidebar: New Session is there whatever the bot is doing, but not for another Hub's bot.
+    func testAPhoneStartsANewSession() async throws {
+        let (runtime, processes) = try fakeRuntime()
+        let (f, _) = try await fixture(bots: [], runtime: runtime)
+        let (agent, first) = try startedBot(f, in: runtime, processes)
+
+        let answer = try await f.device.request(.newSession(botID: agent.id))
+        XCTAssertEqual(answer, .done)
+        XCTAssertEqual(first.stops, 1)
+        XCTAssertEqual(processes().count, 2)
+
+        f.personal.bots.isHidden = { $0 == agent.id }
+        do {
+            _ = try await f.device.request(.newSession(botID: agent.id))
+            XCTFail("another Hub's bot was restarted")
+        } catch {}
+        XCTAssertEqual(processes().count, 2)
     }
 
     /// Copies of bots the owner keeps on another Hub are that Hub's, not this Mac's.

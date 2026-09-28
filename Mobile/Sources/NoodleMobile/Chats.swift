@@ -207,6 +207,28 @@ import SwiftUI
         saveCache()
     }
 
+    /// Starts a failed bot again, as Kick does on the Mac: at once, or after the question the Hub returns.
+    func kick(_ agent: LinkBot) async throws -> LinkKickConfirmation? {
+        switch try await pairing.request(.kick(botID: agent.id)) {
+        case .done: return nil
+        case .kickConfirmation(let confirmation): return confirmation
+        default: throw LinkError("The Hub sent an unexpected answer.")
+        }
+    }
+
+    func confirmKick(_ confirmation: LinkKickConfirmation, for agent: LinkBot) async throws {
+        guard case .done = try await pairing.request(.confirmKick(botID: agent.id, confirmationID: confirmation.id)) else {
+            throw LinkError("The Hub sent an unexpected answer.")
+        }
+    }
+
+    /// Starts the bot with a fresh context; its workspace, memory and messages are kept.
+    func startNewSession(_ agent: LinkBot) async throws {
+        guard case .done = try await pairing.request(.newSession(botID: agent.id)) else {
+            throw LinkError("The Hub sent an unexpected answer.")
+        }
+    }
+
     func agent(_ id: UUID) -> LinkBot? { agents.first { $0.id == id } }
 
     func messages(of agent: LinkBot) -> [LinkMessage] { conversations[agent.conversationID] ?? [] }
@@ -752,6 +774,9 @@ struct ChatView: View {
     @State private var files: [OutgoingFile] = []
     @State private var problem: String?
     @State private var editing = false
+    /// What the Hub asked before a Kick, and whether New Session is being confirmed, as on the Mac.
+    @State private var kickConfirmation: LinkKickConfirmation?
+    @State private var confirmingNewSession = false
     @State private var pickingPhotos = false
     @State private var photos: [PhotosPickerItem] = []
     @State private var takingPhoto = false
@@ -834,6 +859,35 @@ struct ChatView: View {
                 }
                 .accessibilityHint("Edit")
             }
+            // As in the Mac's sidebar: Kick only for a failed bot, New Session always.
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    if agent.phase == .failed {
+                        Button("Kick", systemImage: "arrow.clockwise") { kick(agent) }
+                    }
+                    Button("New Session", systemImage: "sparkles") { confirmingNewSession = true }
+                } label: {
+                    Image(systemName: "ellipsis")
+                }
+                .accessibilityLabel("More")
+            }
+        }
+        .alert("Start a new session for \(agent.draft.name)?", isPresented: $confirmingNewSession) {
+            Button("New Session") { run { try await chats.startNewSession(agent) } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("\(agent.draft.name) will start with a fresh context. Its workspace, memory and messages are kept.")
+        }
+        .alert(kickConfirmation?.title ?? "Recover Bot", isPresented: Binding(
+            get: { kickConfirmation != nil }, set: { if !$0 { kickConfirmation = nil } }
+        ), presenting: kickConfirmation) { confirmation in
+            Button(confirmation.confirmTitle) { run { try await chats.confirmKick(confirmation, for: agent) } }
+            if confirmation.offersNewSession {
+                Button("New Session") { run { try await chats.startNewSession(agent) } }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { confirmation in
+            Text(confirmation.message)
         }
         .sheet(isPresented: $editing) { AgentEditor(chats: chats, agent: agent) }
         .photosPicker(isPresented: $pickingPhotos, selection: $photos, maxSelectionCount: 10,
@@ -1061,6 +1115,18 @@ struct ChatView: View {
             } catch {
                 problem = error.localizedDescription
             }
+        }
+    }
+
+    private func kick(_ agent: LinkBot) {
+        run { kickConfirmation = try await chats.kick(agent) }
+    }
+
+    /// Asks the Hub for something, showing what went wrong under the conversation.
+    private func run(_ request: @escaping () async throws -> Void) {
+        problem = nil
+        Task {
+            do { try await request() } catch { problem = error.localizedDescription }
         }
     }
 

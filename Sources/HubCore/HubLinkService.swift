@@ -443,6 +443,14 @@ import os
         case .deleteBot(let id):
             try hubBots().delete(id, for: try user(key))
             return .done
+        case .kick(let botID):
+            return try hubBots().kick(botID, for: try user(key)).map(LinkResponse.kickConfirmation) ?? .done
+        case .confirmKick(let botID, let confirmationID):
+            try hubBots().confirmKick(botID, confirmation: confirmationID, for: try user(key))
+            return .done
+        case .newSession(let botID):
+            try hubBots().startNewSession(botID, for: try user(key))
+            return .done
         case .messages(let conversationID, let after):
             return .messages(try hubBots().messages(in: conversationID, after: after, for: try user(key)))
         case .messagePage(let page):

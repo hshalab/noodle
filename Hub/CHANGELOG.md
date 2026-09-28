@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Kick and New Session work from Noodle on iPhone and iPad for bots on the Hub, with the same questions as in Noodle.
+
 ## [0.6.0] - 2026-09-28
 
 ### Added
