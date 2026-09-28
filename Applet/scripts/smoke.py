@@ -5,7 +5,6 @@ import http.server
 import threading
 import pathlib
 import plistlib
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -19,7 +18,7 @@ extension = '.noodlet-dev' if bundle_id.endswith('.local') else '.noodlet'
 cli = app / 'Contents/Helpers/noodlet'
 output = root / '.build/applet/smoke'
 output.mkdir(parents=True, exist_ok=True)
-sessions, imported = [], []
+sessions = []
 
 
 def call(*args, success=True):
@@ -45,14 +44,22 @@ def package(directory, name, runtime, source):
     entry = 'index.html' if runtime == 'html' else 'Main.swift'
     (path / 'noodlet.json').write_text(json.dumps(dict(version=1, title='Applet smoke ' + name, runtime=runtime, entry=entry, network=False)))
     (path / entry).write_text(source)
-    return path
+    # Applet uses only noodlets it lists, so open this one in the app as a person would, then
+    # close what that opened so the checks start from a headless session of their own.
+    subprocess.run(['open', '-g', '-a', app, path], check=True, timeout=30)
+    for _ in range(150):
+        item = next((item for item in call('list').get('items', [])
+                     if pathlib.Path(item['path']).resolve() == path.resolve()), None)
+        if item and item.get('sessionID'):
+            call('terminate', '--session', item['sessionID'])
+            return path
+        time.sleep(.2)
+    raise AssertionError(('not listed after opening in the app', path))
 
 
 def track(reply):
     if reply.get('sessionID'):
         sessions.append(reply['sessionID'])
-    if reply.get('path'):
-        imported.append(pathlib.Path(reply['path']))
     return reply['sessionID']
 
 
@@ -180,9 +187,5 @@ finally:
             call('terminate', '--session', sid)
         except Exception:
             pass
-    # Only remove imports made from this invocation's ephemeral fixtures.
-    for path in set(imported):
-        if path.suffix == extension and '/NoodleApplet/Noodlets/Imports/' in str(path):
-            shutil.rmtree(path, ignore_errors=True)
 
 print('Signed Applet smoke checks passed. Captures:', output)
