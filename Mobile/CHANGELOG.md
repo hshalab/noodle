@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Switching a new computer between Shell and Desktop changes its name to match, unless you typed your own.
+
 ## [0.5.0] - 2026-09-28
 
 ### What to Test
