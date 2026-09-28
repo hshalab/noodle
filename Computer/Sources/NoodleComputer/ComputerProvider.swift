@@ -96,6 +96,10 @@ import WebKit
             throw ComputerBridgeError("This computer no longer exists or is not supported by this provider version.")
         }
         store.note(session, usedBy: peer)
+        if request.operation == .setOwner {
+            try store.setHubOwner(session, request.owner.map { HubOwner(id: $0.id, name: $0.name) }, from: peer)
+            return .init()
+        }
         if request.operation == .update, let draft = request.computer {
             var appearance = session.computer.appearance ?? ComputerAppearance()
             if let symbol = draft.symbol { appearance.iconSymbol = symbol }
@@ -307,7 +311,8 @@ import WebKit
         return RemoteComputer(id: session.id, name: session.computer.name, description: session.computer.description, kind: session.computer.displayType,
             state: session.phase.label, symbol: appearance?.iconSymbol ?? session.computer.displaySymbol,
             colour: appearance?.iconColour ?? 0, icon: (icon?.count ?? 0) <= 65_536 ? icon : nil,
-            hasWebDisplay: session.desktop != nil || session.computer.kind == .localMac)
+            hasWebDisplay: session.desktop != nil || session.computer.kind == .localMac,
+            owner: session.computer.hubOwner.map { ComputerOwner(id: $0.id, name: $0.name) })
     }
     private func handleLocal(_ request: ComputerRequest, session: ComputerSession, store: ComputerStore, owner: String) async throws -> ComputerResponse {
         localTerminals = localTerminals.filter { _, value in

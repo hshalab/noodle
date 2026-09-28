@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Under Hub in the sidebar, browsers Noodle Hub keeps are grouped under the people they are for. Needs the latest Noodle Hub.
+
 ## [0.7.0] - 2026-09-28
 
 ### Changed

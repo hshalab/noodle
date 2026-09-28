@@ -59,7 +59,6 @@ import NoodleRuntime
         computers.onAssignmentsChange = { [weak self] in self?.toolBroker?.synchronizeSkills() }
         browsers.onAssignmentsChange = { [weak self] in self?.toolBroker?.synchronizeSkills() }
         clearAbandonedUploads()
-        access.onOwnersChange = { [weak self] in self?.synchronizeOwners() }
         // TODO(Hub 0.7.0): remove with HubTests.testBotsFromBeforeGetTheirOwnerWhenTheHubOpens. Milestone: Hub 0.6.0.
         // Bots made before agent.json named their owner get one here; later changes write it as they happen.
         synchronizeOwners()
@@ -128,7 +127,7 @@ import NoodleRuntime
 
     /// Names each bot's owner in its agent.json, for Noodle Applet to list its noodlets under them.
     /// A personal Mac's bots are Noodle's own and name nobody.
-    func synchronizeOwners() {
+    public func synchronizeOwners() {
         guard !access.isPersonal else { return }
         for agent in (try? repository.loadAgents()) ?? [] {
             let user = access.owner(ofBot: agent.id).flatMap { id in access.users.first { $0.id == id } }

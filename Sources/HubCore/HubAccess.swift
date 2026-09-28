@@ -108,7 +108,7 @@ public struct HubDevice: Identifiable, Codable, Hashable, Sendable {
     /// Which user each browser the Hub lends belongs to.
     public private(set) var browserOwners: [UUID: UUID] = [:]
     @ObservationIgnored private let url: URL
-    /// Runs when a bot's owner, or an owner's name, changed.
+    /// Runs when a bot's, computer's or browser's owner, or an owner's name, changed.
     @ObservationIgnored public var onOwnersChange: (() -> Void)?
 
     private struct Stored: Codable {
@@ -232,11 +232,13 @@ public struct HubDevice: Identifiable, Codable, Hashable, Sendable {
     public func setOwner(_ user: HubUser?, ofBrowser browser: UUID) {
         browserOwners[browser] = user?.id
         save()
+        onOwnersChange?()
     }
 
     public func setOwner(_ user: HubUser?, ofComputer computer: UUID) {
         computerOwners[computer] = user?.id
         save()
+        onOwnersChange?()
     }
 
     public func setOwner(_ user: HubUser?, ofConnection connection: UUID) {

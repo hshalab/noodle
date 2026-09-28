@@ -24,6 +24,8 @@ public struct BrowserProfile: Codable, Identifiable, Equatable, Sendable {
     /// Kept for Noodle Hub's bots rather than this Mac's own; listed apart. Optional, so
     /// archives written before it decode without it.
     public var hub: Bool?
+    /// Whom Noodle Hub keeps it for, as the Hub last said; listed under them.
+    public var hubOwner: BrowserOwner?
     public var background: ConversationBackground {
         get { .init(preset: backgroundPreset.flatMap(ConversationBackgroundPreset.init(rawValue:)), imageFilename: backgroundFilename, mediaKind: backgroundMediaKind) }
         set { backgroundPreset = newValue.preset?.rawValue; backgroundFilename = newValue.imageFilename; backgroundMediaKind = newValue.mediaKind }
@@ -32,7 +34,7 @@ public struct BrowserProfile: Codable, Identifiable, Equatable, Sendable {
         self.id = id; self.name = name; self.colour = colour; symbol = "globe"
         muted = true; paused = false; tabs = []; downloads = []
     }
-    public var remote: RemoteBrowser { .init(id: id, name: name, description: description, symbol: symbol, colour: colour, icon: catalogueIcon, muted: muted, paused: paused, tabCount: tabs.count) }
+    public var remote: RemoteBrowser { .init(id: id, name: name, description: description, symbol: symbol, colour: colour, icon: catalogueIcon, muted: muted, paused: paused, tabCount: tabs.count, owner: hubOwner) }
     private var catalogueIcon: Data? {
         guard let iconImage, let source = CGImageSourceCreateWithData(iconImage as CFData, nil),
               let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
@@ -47,6 +49,14 @@ public struct BrowserProfile: Codable, Identifiable, Equatable, Sendable {
 }
 
 @MainActor public final class BrowserLibrary: ObservableObject {
+    /// The Hub's browsers under the people they are kept for, by name, then those it names nobody for.
+    public static func hubGroups(_ profiles: [BrowserProfile]) -> (people: [(owner: BrowserOwner, profiles: [BrowserProfile])], unowned: [BrowserProfile]) {
+        let owners = profiles.compactMap(\.hubOwner).reduce(into: [UUID: BrowserOwner]()) { $0[$1.id] = $1 }
+        let people = owners.values.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+            .map { owner in (owner: owner, profiles: profiles.filter { $0.hubOwner?.id == owner.id }) }
+        return (people, profiles.filter { $0.hubOwner == nil })
+    }
+
     private struct Archive: Codable { var version = 1; var profiles: [BrowserProfile] }
     @Published public private(set) var profiles: [BrowserProfile] = []
     @Published public private(set) var failure: String?

@@ -146,10 +146,42 @@ import NoodleCore
         registry = next
         ids.forEach { access.setOwner(nil, ofComputer: $0) }
         publish()
+        for id in ids {
+            Task { [call] in
+                var request = ComputerRequest(.setOwner, computerID: id)
+                request.owner = nil
+                _ = try? await call(request)
+            }
+        }
     }
 
     /// Reads names and states from Noodle Computer; computers deleted there are dropped here.
     public func refresh() async {
+        await reload()
+        await synchronizeOwners()
+    }
+
+    /// Tells Noodle Computer whom each of the Hub's computers is kept for, where it says otherwise,
+    /// so it lists them under those people. A personal Mac's are its owner's own.
+    public func synchronizeOwners() async {
+        guard !access.isPersonal else { return }
+        for computer in registry.computers {
+            let owner = access.owner(ofComputer: computer.id).flatMap { id in access.users.first { $0.id == id } }
+                .map { ComputerOwner(id: $0.id, name: $0.name) }
+            guard computer.owner != owner else { continue }
+            var request = ComputerRequest(.setOwner, computerID: computer.id)
+            request.owner = owner
+            // One from before owners says it cannot; it lists the computer under Hub alone.
+            guard (try? await call(request).checked()) != nil,
+                  let index = registry.computers.firstIndex(where: { $0.id == computer.id }) else { continue }
+            var next = registry
+            next.computers[index].owner = owner
+            try? next.save(root: root)
+            registry = next
+        }
+    }
+
+    private func reload() async {
         guard let listed = try? await call(ComputerRequest(.list)).checked().computers else { return }
         let gone = Set(registry.computers.map(\.id)).subtracting(listed.map(\.id))
         var next = registry

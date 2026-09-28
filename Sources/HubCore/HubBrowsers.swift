@@ -134,10 +134,42 @@ import NoodleCore
         registry = next
         ids.forEach { access.setOwner(nil, ofBrowser: $0) }
         publish()
+        for id in ids {
+            Task { [call] in
+                var request = BrowserRequest(.setOwner, browserID: id)
+                request.owner = nil
+                _ = try? await call(request)
+            }
+        }
     }
 
     /// Reads names and states from Noodle Browser; browsers deleted there are dropped here.
     public func refresh() async {
+        await reload()
+        await synchronizeOwners()
+    }
+
+    /// Tells Noodle Browser whom each of the Hub's browsers is kept for, where it says otherwise,
+    /// so it lists them under those people. A personal Mac's are its owner's own.
+    public func synchronizeOwners() async {
+        guard !access.isPersonal else { return }
+        for browser in registry.browsers {
+            let owner = access.owner(ofBrowser: browser.id).flatMap { id in access.users.first { $0.id == id } }
+                .map { BrowserOwner(id: $0.id, name: $0.name) }
+            guard browser.owner != owner else { continue }
+            var request = BrowserRequest(.setOwner, browserID: browser.id)
+            request.owner = owner
+            // One from before owners says it cannot; it lists the browser under Hub alone.
+            guard (try? await call(request).checked()) != nil,
+                  let index = registry.browsers.firstIndex(where: { $0.id == browser.id }) else { continue }
+            var next = registry
+            next.browsers[index].owner = owner
+            try? next.save(root: root)
+            registry = next
+        }
+    }
+
+    private func reload() async {
         guard let listed = try? await call(BrowserRequest(.list)).checked().browsers else { return }
         let gone = Set(registry.browsers.map(\.id)).subtracting(listed.map(\.id))
         var next = registry

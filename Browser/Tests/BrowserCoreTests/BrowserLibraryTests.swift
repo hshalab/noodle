@@ -4,6 +4,20 @@ import XCTest
 import AppKit
 
 final class BrowserLibraryTests: XCTestCase {
+    @MainActor func testTheHubsBrowsersAreGroupedByPerson() {
+        let ada = BrowserOwner(id: UUID(), name: "Ada"), bob = BrowserOwner(id: UUID(), name: "Bob")
+        func profile(_ name: String, _ owner: BrowserOwner?) -> BrowserProfile {
+            var profile = BrowserProfile(name: name)
+            profile.hub = true
+            profile.hubOwner = owner
+            return profile
+        }
+        let groups = BrowserLibrary.hubGroups([profile("Bank", bob), profile("Work", ada), profile("Loose", nil), profile("News", ada)])
+        XCTAssertEqual(groups.people.map(\.owner), [ada, bob])
+        XCTAssertEqual(groups.people.first?.profiles.map(\.name), ["Work", "News"])
+        XCTAssertEqual(groups.unowned.map(\.name), ["Loose"])
+    }
+
     func testBrowserReferencesValidateFilesAndKeepBuildChannelsSeparate() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

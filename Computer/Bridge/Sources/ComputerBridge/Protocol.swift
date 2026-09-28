@@ -8,6 +8,13 @@ public struct ComputerBridgeError: LocalizedError, Sendable {
     public var errorDescription: String? { message }
 }
 
+/// The person on Noodle Hub a computer is kept for.
+public struct ComputerOwner: Codable, Hashable, Sendable {
+    public var id: UUID
+    public var name: String
+    public init(id: UUID, name: String) { self.id = id; self.name = name }
+}
+
 public struct RemoteComputer: Codable, Hashable, Identifiable, Sendable {
     public static let maximumDescriptionLength = 500
     public var id: UUID
@@ -20,10 +27,13 @@ public struct RemoteComputer: Codable, Hashable, Identifiable, Sendable {
     public var colour: Int
     public var icon: Data?
     public var hasWebDisplay: Bool?
-    public init(id: UUID, name: String, description: String? = nil, kind: String, state: String, symbol: String, colour: Int = 0, icon: Data? = nil, hasWebDisplay: Bool? = nil) {
+    /// Whom Noodle Hub keeps it for, as the Hub last said.
+    public var owner: ComputerOwner?
+    public init(id: UUID, name: String, description: String? = nil, kind: String, state: String, symbol: String, colour: Int = 0, icon: Data? = nil, hasWebDisplay: Bool? = nil,
+                owner: ComputerOwner? = nil) {
         self.id = id; self.name = name; self.description = description; self.kind = kind; self.state = state
         self.symbol = symbol; self.colour = colour; self.icon = icon
-        self.hasWebDisplay = hasWebDisplay
+        self.hasWebDisplay = hasWebDisplay; self.owner = owner
     }
 }
 
@@ -35,6 +45,8 @@ public enum ComputerOperation: String, Codable, Sendable {
     /// A person watching and using a computer from Noodle or Noodle Hub: the connection stays
     /// open, video coming down it and what they do going up.
     case surfaceStream
+    /// Noodle Hub saying whom a computer is kept for, or nobody.
+    case setOwner
     public var isFileTransfer: Bool { self == .fileUpload || self == .fileDownload }
     /// A new computer may first download its image.
     public var timeout: Int { self == .create ? 1800 : isFileTransfer ? 600 : (self == .start ? 180 : 120) }
@@ -81,6 +93,8 @@ public struct ComputerRequest: Codable, Sendable {
     /// Broker-generated reference in the shared App Group, never a host path.
     public var transferID: UUID?
     public var computer: ComputerDraft?
+    /// For setOwner; nil clears it.
+    public var owner: ComputerOwner?
     public init(_ operation: ComputerOperation, computerID: UUID? = nil, agentID: UUID? = nil,
                 terminalID: UUID? = nil, data: Data? = nil, offset: Int64? = nil, columns: Int? = nil, rows: Int? = nil) {
         self.operation = operation; self.computerID = computerID; self.agentID = agentID

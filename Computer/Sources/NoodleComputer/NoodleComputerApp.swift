@@ -399,6 +399,8 @@ struct ComputerLibraryView: View {
   @State private var searchText = ""
   @State private var columnVisibility = NavigationSplitViewVisibility.all
   @AppStorage("ComputerSidebarVisible") private var sidebarVisible = true
+  /// People under Hub whose computers are folded away.
+  @State private var foldedPeople: Set<UUID> = []
   @Environment(\.colorScheme) private var colorScheme
 
   private var filteredSessions: [ComputerSession] {
@@ -431,8 +433,18 @@ struct ComputerLibraryView: View {
     NavigationSplitView(columnVisibility: $columnVisibility) {
       List(selection: $store.selection) {
         Section("Computers") { rows(filteredSessions.filter { $0.computer.hub != true }) }
-        let hub = filteredSessions.filter { $0.computer.hub == true }
-        if !hub.isEmpty { Section("Hub") { rows(hub) } }
+        let hub = ComputerStore.hubGroups(filteredSessions.filter { $0.computer.hub == true })
+        if !hub.people.isEmpty || !hub.unowned.isEmpty {
+          Section("Hub") {
+            ForEach(hub.people, id: \.owner.id) { group in
+              DisclosureGroup(isExpanded: Binding(
+                get: { !foldedPeople.contains(group.owner.id) },
+                set: { if $0 { foldedPeople.remove(group.owner.id) } else { foldedPeople.insert(group.owner.id) } })
+              ) { rows(group.sessions) } label: { Label(group.owner.name, systemImage: "person") }
+            }
+            rows(hub.unowned)
+          }
+        }
       }
       .listStyle(.sidebar)
       .scrollContentBackground(.hidden)

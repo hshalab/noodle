@@ -21,6 +21,25 @@ final class BrowserRuntimeTests: XCTestCase {
         _ = try await runtime.perform(.init(.bookmarks, browserID: earlier.id), caller: identity.hubID)
         XCTAssertEqual(try library.profile(earlier.id).hub, true)
     }
+    @MainActor func testOnlyTheHubSaysWhomABrowserIsKeptFor() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let library = BrowserLibrary(root: root), identity = BrowserBuildIdentity.current
+        let runtime = BrowserRuntime(library: library), made = try library.create(name: "Work")
+        var set = BrowserRequest(.setOwner, browserID: made.id)
+        set.owner = BrowserOwner(id: UUID(), name: "Eve")
+        do { _ = try await runtime.perform(set, caller: identity.noodleID); XCTFail("Noodle said whom a browser is for") } catch {}
+        XCTAssertNil(try library.profile(made.id).hubOwner)
+        let ada = BrowserOwner(id: UUID(), name: "Ada")
+        set.owner = ada
+        _ = try await runtime.perform(set, caller: identity.hubID)
+        XCTAssertEqual(try library.profile(made.id).hubOwner, ada)
+        let listed = try await runtime.perform(.init(.list), caller: identity.hubID).browsers
+        XCTAssertEqual(listed?.first?.owner, ada)
+        set.owner = nil
+        _ = try await runtime.perform(set, caller: identity.hubID)
+        XCTAssertNil(try library.profile(made.id).hubOwner)
+    }
     @MainActor func testRecordCommandsRespectPauseAndProfileOwnership() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }

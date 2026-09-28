@@ -1,5 +1,12 @@
 import Foundation
 
+/// A person on Noodle Hub, as the Hub names them.
+public struct HubOwner: Codable, Hashable, Sendable {
+    public var id: UUID
+    public var name: String
+    public init(id: UUID, name: String) { self.id = id; self.name = name }
+}
+
 public enum ComputerKind: String, Codable, CaseIterable, Sendable {
     case macOS, linux, container, localMac
 
@@ -71,6 +78,8 @@ public struct Computer: Codable, Identifiable, Equatable, Sendable {
     public var localMacSetupRequested: Bool?
     /// Kept for Noodle Hub's bots rather than this Mac's own; listed apart.
     public var hub: Bool?
+    /// Whom Noodle Hub keeps it for, as the Hub last said; listed under them.
+    public var hubOwner: HubOwner?
 
     public init(id: UUID = UUID(), name: String, kind: ComputerKind, cpuCount: Int = 4,
                 memoryGiB: Int = 4, diskGiB: Int = 64, networkEnabled: Bool = true,

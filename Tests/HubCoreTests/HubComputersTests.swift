@@ -41,12 +41,22 @@ import XCTest
                     computers.removeAll { $0.id == request.computerID }
                 case .revoke:
                     revoked.append((try XCTUnwrap(request.computerID), try XCTUnwrap(request.agentID)))
+                case .setOwner:
+                    // Deleted before the Hub's word arrived, as can happen.
+                    guard let index = computers.firstIndex(where: { $0.id == request.computerID }) else { throw ComputerBridgeError("No such computer.") }
+                    computers[index].owner = request.owner
                 default:
                     break
                 }
                 return response
             }
         }
+
+        /// Whom Noodle Computer was last told a computer is kept for.
+        func owner(of id: UUID) -> ComputerOwner? { lock.withLock { computers.first { $0.id == id }?.owner } }
+
+        /// As a Noodle Computer from before it kept owners.
+        func forgetOwners() { lock.withLock { for index in computers.indices { computers[index].owner = nil } } }
     }
 
     private func fixture() throws -> Fixture {
@@ -86,6 +96,25 @@ import XCTest
 
         let renamed = try await f.hub.computers.update(made.id, with: ComputerDraft(name: "Bench"), for: f.ada)
         XCTAssertEqual(renamed.name, "Bench")
+    }
+
+    /// Noodle Computer lists the Hub's computers under the people they are kept for.
+    func testNoodleComputerIsToldWhomEachComputerIsFor() async throws {
+        let f = try fixture()
+        let made = try await f.hub.computers.create(ComputerDraft(template: "ubuntu", name: "Workbench"), for: f.ada)
+        func owner(_ expected: ComputerOwner?) async throws {
+            for _ in 0..<50 where f.computer.owner(of: made.id) != expected { try await Task.sleep(for: .milliseconds(20)) }
+            XCTAssertEqual(f.computer.owner(of: made.id), expected)
+        }
+        try await owner(ComputerOwner(id: f.ada.id, name: "Ada"))
+        try f.hub.access.rename(f.ada, to: "Ada Lovelace")
+        try await owner(ComputerOwner(id: f.ada.id, name: "Ada Lovelace"))
+        // One that lost it, as when it was made before Noodle Computer kept owners, gets it back.
+        f.computer.forgetOwners()
+        await f.hub.computers.refresh()
+        try await owner(ComputerOwner(id: f.ada.id, name: "Ada Lovelace"))
+        f.hub.remove(f.ada)
+        try await owner(nil)
     }
 
     func testOtherUsersCannotUseOrChangeAComputer() async throws {

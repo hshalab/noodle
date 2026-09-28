@@ -31,6 +31,8 @@ struct BrowserLibraryView: View {
     init(presentation: BrowserPresentation) {
         self.presentation = presentation; library = presentation.library; runtime = presentation.runtime
     }
+    /// People under Hub whose browsers are folded away.
+    @State private var foldedPeople: Set<UUID> = []
     private var filtered: [BrowserProfile] {
         library.profiles.filter {
             search.isEmpty || $0.name.localizedCaseInsensitiveContains(search) || $0.description?.localizedCaseInsensitiveContains(search) == true
@@ -56,8 +58,18 @@ struct BrowserLibraryView: View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             List(selection: $presentation.selection) {
                 Section("Browsers") { rows(filtered.filter { $0.hub != true }) }
-                let hub = filtered.filter { $0.hub == true }
-                if !hub.isEmpty { Section("Hub") { rows(hub) } }
+                let hub = BrowserLibrary.hubGroups(filtered.filter { $0.hub == true })
+                if !hub.people.isEmpty || !hub.unowned.isEmpty {
+                    Section("Hub") {
+                        ForEach(hub.people, id: \.owner.id) { group in
+                            DisclosureGroup(isExpanded: Binding(
+                                get: { !foldedPeople.contains(group.owner.id) },
+                                set: { if $0 { foldedPeople.remove(group.owner.id) } else { foldedPeople.insert(group.owner.id) } })
+                            ) { rows(group.profiles) } label: { Label(group.owner.name, systemImage: "person") }
+                        }
+                        rows(hub.unowned)
+                    }
+                }
             }
             .listStyle(.sidebar)
             .scrollContentBackground(.hidden)

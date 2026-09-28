@@ -29,6 +29,10 @@ import XCTest
                     response.browser = browsers[index]
                 case .delete:
                     browsers.removeAll { $0.id == request.browserID }
+                case .setOwner:
+                    // Deleted before the Hub's word arrived, as can happen.
+                    guard let index = browsers.firstIndex(where: { $0.id == request.browserID }) else { throw BrowserError("No such browser.") }
+                    browsers[index].owner = request.owner
                 default:
                     break
                 }
@@ -37,6 +41,12 @@ import XCTest
                 return response
             }
         }
+
+        /// Whom Noodle Browser was last told a browser is kept for.
+        func owner(of id: UUID) -> BrowserOwner? { lock.withLock { browsers.first { $0.id == id }?.owner } }
+
+        /// As a Noodle Browser from before it kept owners.
+        func forgetOwners() { lock.withLock { for index in browsers.indices { browsers[index].owner = nil } } }
     }
 
     private var browser = FakeBrowser()
@@ -56,6 +66,25 @@ import XCTest
         hub.access.move(ada, to: family)
         hub.access.move(bob, to: family)
         return (hub, ada, bob)
+    }
+
+    /// Noodle Browser lists the Hub's browsers under the people they are kept for.
+    func testNoodleBrowserIsToldWhomEachBrowserIsFor() async throws {
+        let (hub, ada, _) = try hub()
+        let made = try await hub.browsers.create(BrowserDraft(name: "Work"), for: ada)
+        func owner(_ expected: BrowserOwner?) async throws {
+            for _ in 0..<50 where browser.owner(of: made.id) != expected { try await Task.sleep(for: .milliseconds(20)) }
+            XCTAssertEqual(browser.owner(of: made.id), expected)
+        }
+        try await owner(BrowserOwner(id: ada.id, name: "Ada"))
+        try hub.access.rename(ada, to: "Ada Lovelace")
+        try await owner(BrowserOwner(id: ada.id, name: "Ada Lovelace"))
+        // One that lost it, as when it was made before Noodle Browser kept owners, gets it back.
+        browser.forgetOwners()
+        await hub.browsers.refresh()
+        try await owner(BrowserOwner(id: ada.id, name: "Ada Lovelace"))
+        hub.remove(ada)
+        try await owner(nil)
     }
 
     func testABrowserMadeForAUserReachesOnlyTheBotsItIsAssignedTo() async throws {

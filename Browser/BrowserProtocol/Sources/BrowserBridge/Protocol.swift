@@ -20,10 +20,12 @@ public enum BrowserOperation: String, Codable, CaseIterable, Sendable {
     /// A person watching and using a tab from Noodle or Noodle Hub, whatever bots are allowed:
     /// the connection stays open, video coming down it and what they do going up.
     case surfaceStream = "surface-stream"
+    /// Noodle Hub saying whom a browser is kept for, or nobody.
+    case setOwner = "browser-set-owner"
     public var timeout: Int { isFileTransfer ? 600 : 60 }
     public var isFileTransfer: Bool { self == .upload || self == .download || self == .screenshot }
-    public var isManagement: Bool { [.create, .update, .delete, .surfaceStream].contains(self) }
-    public var needsTab: Bool { ![.list, .status, .tabs, .open, .downloads, .download, .show, .history, .bookmarks, .bookmarkAdd, .bookmarkUpdate, .bookmarkRemove, .create, .update, .delete].contains(self) }
+    public var isManagement: Bool { [.create, .update, .delete, .surfaceStream, .setOwner].contains(self) }
+    public var needsTab: Bool { ![.list, .status, .tabs, .open, .downloads, .download, .show, .history, .bookmarks, .bookmarkAdd, .bookmarkUpdate, .bookmarkRemove, .create, .update, .delete, .setOwner].contains(self) }
     /// What bots may call.
     public static var agentCases: [Self] { allCases.filter { !$0.isManagement } }
 }
@@ -70,6 +72,13 @@ public struct BrowserBookmark: Codable, Identifiable, Equatable, Sendable {
     }
 }
 
+/// The person on Noodle Hub a browser is kept for.
+public struct BrowserOwner: Codable, Hashable, Sendable {
+    public var id: UUID
+    public var name: String
+    public init(id: UUID, name: String) { self.id = id; self.name = name }
+}
+
 public struct RemoteBrowser: Codable, Identifiable, Hashable, Sendable {
     public static let maximumDescriptionLength = 500
     public var id: UUID
@@ -82,10 +91,13 @@ public struct RemoteBrowser: Codable, Identifiable, Hashable, Sendable {
     public var muted: Bool
     public var paused: Bool
     public var tabCount: Int
-    public init(id: UUID, name: String, description: String? = nil, symbol: String = "globe", colour: Int = 0, icon: Data? = nil, muted: Bool = true, paused: Bool = false, tabCount: Int = 0) {
+    /// Whom Noodle Hub keeps it for, as the Hub last said.
+    public var owner: BrowserOwner?
+    public init(id: UUID, name: String, description: String? = nil, symbol: String = "globe", colour: Int = 0, icon: Data? = nil, muted: Bool = true, paused: Bool = false, tabCount: Int = 0,
+                owner: BrowserOwner? = nil) {
         self.id = id; self.name = name; self.description = description; self.symbol = symbol; self.colour = colour
         self.icon = icon
-        self.muted = muted; self.paused = paused; self.tabCount = tabCount
+        self.muted = muted; self.paused = paused; self.tabCount = tabCount; self.owner = owner
     }
 }
 public struct BrowserTabInfo: Codable, Identifiable, Equatable, Sendable {
@@ -143,6 +155,8 @@ public struct BrowserRequest: Codable, Sendable {
     /// JSON object encoded as UTF-8 text; never interpreted as JavaScript source.
     public var arguments: String?
     public var profile: BrowserDraft?
+    /// For setOwner; nil clears it.
+    public var owner: BrowserOwner?
     public init(_ operation: BrowserOperation, browserID: UUID? = nil, tabID: UUID? = nil) {
         self.operation = operation; self.browserID = browserID; self.tabID = tabID
     }

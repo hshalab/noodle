@@ -684,6 +684,26 @@ enum ComputerDisplayMode: String {
         do { session.computer = try library.save(computer) } catch { self.error = error.localizedDescription }
     }
 
+    /// Noodle Hub saying whom one of its computers is kept for, or nobody. Only the Hub says.
+    func setHubOwner(_ session: ComputerSession, _ owner: HubOwner?, from caller: String) throws {
+        guard caller == ComputerBuildIdentity.current.hubID else {
+            throw ComputerBridgeError("Only Noodle Hub says whom its computers are for.")
+        }
+        guard session.computer.hubOwner != owner || session.computer.hub != true else { return }
+        var computer = session.computer
+        computer.hub = true
+        computer.hubOwner = owner
+        session.computer = try library.save(computer)
+    }
+
+    /// The Hub's computers under the people they are kept for, by name, then those it names nobody for.
+    static func hubGroups(_ sessions: [ComputerSession]) -> (people: [(owner: HubOwner, sessions: [ComputerSession])], unowned: [ComputerSession]) {
+        let owners = sessions.compactMap(\.computer.hubOwner).reduce(into: [UUID: HubOwner]()) { $0[$1.id] = $1 }
+        let people = owners.values.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+            .map { owner in (owner: owner, sessions: sessions.filter { $0.computer.hubOwner?.id == owner.id }) }
+        return (people, sessions.filter { $0.computer.hubOwner == nil })
+    }
+
     func rename(_ session: ComputerSession, name: String, description: String? = nil, appearance: ComputerAppearance? = nil) {
         var computer = session.computer
         computer.name = name.trimmingCharacters(in: .whitespacesAndNewlines)

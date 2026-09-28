@@ -157,6 +157,12 @@ import WebKit
         // The Hub only reaches browsers it made, so one it uses that says otherwise was
         // made before browsers recorded it.
         if hub, profile.hub != true { profile.hub = true; try library.update(profile) }
+        // Noodle Hub saying whom one of its browsers is kept for, or nobody. Only the Hub says.
+        if request.operation == .setOwner {
+            guard hub else { throw BrowserError("Only Noodle Hub says whom its browsers are for.") }
+            if profile.hubOwner != request.owner { profile.hubOwner = request.owner; try library.update(profile) }
+            return response
+        }
         if request.operation == .update, let draft = request.profile {
             var changed = profile
             changed.name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
