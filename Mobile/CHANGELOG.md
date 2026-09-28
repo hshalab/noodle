@@ -5,10 +5,12 @@
 ### What to Test
 
 - Pull down on the bots list and type in Search: only bots whose name, description or conversation match are listed, in one list without the pinned circles. Accents and capitals do not matter.
+- Touch and hold a bot in the list: a menu offers Pin and Edit Bot…. On a pinned circle it offers Unpin and Edit Bot….
 
 ### Added
 
 - Search the bots list by name, description or what was said, as on the Mac.
+- Touching and holding a bot shows a menu with Pin or Unpin and Edit Bot….
 
 ### Fixed
 
