@@ -18,10 +18,10 @@ public struct AgentKickConfirmation: ViewModifier {
                     openSettings()
                 }
             }
-            Button(recoveryButtonTitle(request)) {
+            Button(request.confirmTitle) {
                 store.runtime.confirmKick(request, repository: store.repository)
             }
-            if request.failure == .safetyStop {
+            if request.offersNewSession {
                 Button("New Session") {
                     store.runtime.startNewSession(agent: request.agent, repository: store.repository)
                 }
@@ -30,12 +30,6 @@ public struct AgentKickConfirmation: ViewModifier {
         } message: { request in
             Text(request.message)
         }
-    }
-
-    private func recoveryButtonTitle(_ request: AgentKickRequest) -> String {
-        if case .missingSession = request.failure { return "Recover Bot" }
-        if request.failure == .safetyStop { return "Resume" }
-        return "Retry Now"
     }
 
     public init(store: any BotSettingsHost, request: Binding<AgentKickRequest?>) {

@@ -116,10 +116,26 @@ private actor FakeHub {
             messages.append(LinkMessage(id: UUID(), conversationID: bot.conversationID, author: .bot(bot.id),
                                         body: "You said: \(outgoing.body)", createdAt: Date(), delivered: true))
             return .message(sent)
+        case .success(.kick(let id)) where id == bot.id:
+            restarts.append("kick")
+            return kickConfirmation.map(LinkResponse.kickConfirmation) ?? .done
+        case .success(.confirmKick(let id, let confirmationID)) where id == bot.id:
+            restarts.append("confirm \(confirmationID)")
+            return .done
+        case .success(.newSession(let id)) where id == bot.id:
+            restarts.append("new session")
+            return .done
         default:
             return .failure("Not in this test.")
         }
     }
+
+    /// Kick, confirmations and new sessions, as the phone asked for them.
+    var restarts: [String] = []
+    /// What Kick asks first, or nil to restart at once.
+    var kickConfirmation: LinkKickConfirmation?
+
+    func askBeforeKick(_ confirmation: LinkKickConfirmation?) { kickConfirmation = confirmation }
 }
 
 /// Stands in for CloudKit, keeping the topics subscribed to.
@@ -153,6 +169,24 @@ private actor RecordedSubscriptions: PushSubscriptions {
         await pairing.join(invitation.url().absoluteString)
         try #require(pairing.hub != nil)
         return (HubChats(pairing: pairing), server)
+    }
+
+    /// Kick restarts at once or brings back the Hub's question, whose answer names it; New Session goes straight through.
+    @Test func kickAndNewSessionReachTheHub() async throws {
+        let hub = FakeHub()
+        let (chats, server) = try await paired(to: hub)
+        defer { server.stop() }
+        let scout = await hub.bot
+
+        #expect(try await chats.kick(scout) == nil)
+        let question = LinkKickConfirmation(id: UUID(), title: "Safeguards stopped Scout", message: "Stopped.",
+                                            confirmTitle: "Resume", offersNewSession: true)
+        await hub.askBeforeKick(question)
+        let asked = try #require(try await chats.kick(scout))
+        #expect(asked == question)
+        try await chats.confirmKick(asked, for: scout)
+        try await chats.startNewSession(scout)
+        #expect(await hub.restarts == ["kick", "kick", "confirm \(question.id)", "new session"])
     }
 
     /// A long conversation opens on its newest page; scrolling back brings the rest.

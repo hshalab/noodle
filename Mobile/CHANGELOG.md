@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### What to Test
+
+- In a conversation, tap the … button at the top right: New Session asks first, then starts the bot with a fresh context. When the bot has failed, Kick is there too and starts it again, asking first when the Mac or Hub would. Try it with a bot on your Mac and one on a Noodle Hub.
+
+### Added
+
+- Kick and New Session, in a conversation's … menu, start a stuck bot again or give it a fresh context, as on the Mac.
+
 ## [0.5.0] - 2026-09-28
 
 ### What to Test

@@ -6,6 +6,10 @@ All notable changes to Noodle are documented here, following
 
 ## [Unreleased]
 
+### Added
+
+- Kick and New Session work from Noodle on iPhone and iPad for the bots on this Mac, as they do in the sidebar, with the same questions first.
+
 ## [0.31.0] - 2026-09-28
 
 ### Added

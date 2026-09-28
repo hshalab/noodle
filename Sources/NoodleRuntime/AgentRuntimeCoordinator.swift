@@ -68,6 +68,16 @@ public struct AgentKickRequest: Identifiable {
         }
     }
 
+    /// The button that agrees.
+    public var confirmTitle: String {
+        if case .missingSession = failure { return "Recover Bot" }
+        if failure == .safetyStop { return "Resume" }
+        return "Retry Now"
+    }
+
+    /// A safety stop can also be left behind with a fresh session.
+    public var offersNewSession: Bool { failure == .safetyStop }
+
     public var message: String {
         switch failure {
         case .missingSession:

@@ -95,6 +95,13 @@ public enum LinkRequest: Codable, Equatable, Sendable {
     case createBot(LinkBotDraft)
     case updateBot(id: UUID, LinkBotDraft)
     case deleteBot(id: UUID)
+    /// Starts a failed bot again, as Kick does in Noodle. Answers `done`, or `kickConfirmation`
+    /// when the failure needs the person to agree first.
+    case kick(botID: UUID)
+    /// Agrees to what a `kickConfirmation` asked, once, while the bot is still failing that way.
+    case confirmKick(botID: UUID, confirmationID: UUID)
+    /// Starts the bot with a fresh context, keeping its workspace, memory and messages.
+    case newSession(botID: UUID)
     /// Messages of one of this user's conversations, from position `after` on.
     case messages(conversationID: UUID, after: Int)
     /// Part of a conversation, answered with `messages`: the newest first, earlier pages as the
@@ -269,6 +276,7 @@ public enum LinkResponse: Codable, Equatable, Sendable {
     /// A picture, or none when there is nothing to show yet.
     case picture(Data?)
     case invitation(LinkInvitation)
+    case kickConfirmation(LinkKickConfirmation)
     case done
     case failure(String)
 }
@@ -665,6 +673,27 @@ public struct LinkReadMark: Codable, Equatable, Sendable {
 }
 
 /// What a bot's harness is doing, as Noodle's runtime reports it.
+/// What Kick asks before restarting a bot whose failure needs the person to agree, in the
+/// Hub's words, so every device asks the same as Noodle does.
+public struct LinkKickConfirmation: Codable, Equatable, Sendable {
+    /// Named in `confirmKick`; it works once, and only while the bot fails the same way.
+    public var id: UUID
+    public var title: String
+    public var message: String
+    /// The button that agrees.
+    public var confirmTitle: String
+    /// Whether New Session is offered beside it.
+    public var offersNewSession: Bool
+
+    public init(id: UUID, title: String, message: String, confirmTitle: String, offersNewSession: Bool) {
+        self.id = id
+        self.title = title
+        self.message = message
+        self.confirmTitle = confirmTitle
+        self.offersNewSession = offersNewSession
+    }
+}
+
 public enum LinkBotPhase: String, Codable, Sendable {
     case offline, starting, ready, working, failed
 }

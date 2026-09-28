@@ -38,6 +38,8 @@ import NoodleRuntime
     private var transcripts: [UUID: (size: Int, modified: Date, count: Int, reactions: Int)] = [:]
     /// What each bot was last reported doing.
     private var phases: [UUID: AgentRuntimePhase] = [:]
+    /// The latest Kick a device was asked to confirm, per bot. The runtime refuses it once stale.
+    private var kickRequests: [UUID: AgentKickRequest] = [:]
     /// How far each conversation's owner has read it, so all their devices agree.
     private let readMarksURL: URL
     private lazy var readMarks: [UUID: Date] = (try? JSONDecoder().decode([UUID: Date].self, from: Data(contentsOf: readMarksURL))) ?? [:]
@@ -238,6 +240,29 @@ import NoodleRuntime
         try remove(try owned(id, by: user))
         onChange?(user.id, .botsChanged)
         onBotsEdited?()
+    }
+
+    /// Kick, as in Noodle, through whichever runtime runs the bot: on the owner's own Mac, Noodle's.
+    /// A failure Noodle would ask about first is kept until the device agrees with `confirmKick`.
+    public func kick(_ id: UUID, for user: HubUser) throws -> LinkKickConfirmation? {
+        let agent = try owned(id, by: user)
+        guard let request = runtime.kick(agent: agent, repository: repository) else { return nil }
+        kickRequests[agent.id] = request
+        return LinkKickConfirmation(id: request.id, title: request.title, message: request.message,
+                                    confirmTitle: request.confirmTitle, offersNewSession: request.offersNewSession)
+    }
+
+    public func confirmKick(_ id: UUID, confirmation: UUID, for user: HubUser) throws {
+        let agent = try owned(id, by: user)
+        guard let request = kickRequests[agent.id], request.id == confirmation else { return }
+        kickRequests[agent.id] = nil
+        runtime.confirmKick(request, repository: repository)
+    }
+
+    public func startNewSession(_ id: UUID, for user: HubUser) throws {
+        let agent = try owned(id, by: user)
+        kickRequests[agent.id] = nil
+        runtime.startNewSession(agent: agent, repository: repository)
     }
 
     /// Deletes every bot of a user who is being removed.
