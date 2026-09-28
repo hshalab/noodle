@@ -6,7 +6,7 @@
 
 **A workspace for you and your AI agents.**
 
-<a href="https://github.com/pdparchitect/noodle/releases/latest/download/Noodle-arm64.dmg"><img alt="Download Noodle for Mac" src="https://img.shields.io/badge/Download%20for%20Mac-0a0a0a?style=for-the-badge&logo=apple&logoColor=white" height="48"></a>
+<a href="https://github.com/pdparchitect/noodle/releases/latest/download/Noodle-arm64.dmg"><img alt="Download Noodle for Mac" src="https://img.shields.io/badge/Download%20for%20Mac-0071e3?style=for-the-badge&logo=apple&logoColor=white" height="48"></a>
 
 <p>
   <img alt="macOS 26+" src="https://img.shields.io/badge/macOS-%E2%89%A526-0a0a0a?style=flat-square&logo=apple&logoColor=white">
