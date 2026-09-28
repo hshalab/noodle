@@ -55,8 +55,12 @@
   const swirlEnd = strokes[0].length;
   // How much of the swirl shows at once; shorter than the word, so its end is in before the pen finishes.
   const body = Math.min(swirlEnd * 0.6, total - swirlEnd);
+  // The swirl fades in over its first stretch rather than appearing at full strength.
+  const fadeIn = swirlEnd * 0.35;
 
   const draw = head => {
+    const shown = Math.min(head / fadeIn, 1);
+    swirl.style.opacity = `${shown * shown * (3 - 2 * shown)}`;
     const tail = Math.min(Math.max(0, head - body), swirlEnd);
     for (const { path, from, length } of strokes) {
       const a = Math.max(tail - from, 0), b = Math.min(head - from, length);
