@@ -16,6 +16,7 @@ All notable changes to Noodle are documented here, following
 ### Changed
 
 - The website writes the Noodle wordmark on as the apps do, with the swirl that rises from the bottom of the window into the word.
+- Local Models scrolls its list of models once it is long, instead of growing taller than the screen.
 
 ### Fixed
 
