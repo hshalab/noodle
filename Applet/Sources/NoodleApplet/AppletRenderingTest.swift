@@ -102,7 +102,8 @@ import WebKit
         <!doctype html><title>Live view</title>
         <style>body{margin:0;background:black}div,canvas{display:block;width:160px;height:120px}</style>
         <div style="background:#ff0000"></div><canvas id="c" width="160" height="120"></canvas>
-        <script>requestAnimationFrame(()=>{const x=c.getContext('2d');x.fillStyle='#00ff00';x.fillRect(0,0,160,120);});</script>
+        <script>requestAnimationFrame(()=>{const x=c.getContext('2d');x.fillStyle='#00ff00';x.fillRect(0,0,160,120);});
+        window.ticks=0;(function tick(){ticks++;requestAnimationFrame(tick);})();</script>
         """.utf8)
     ], to: watched)
     library.scan()
@@ -151,12 +152,22 @@ import WebKit
     print("INFO watched background capture: static red \(redShown), animation-frame green \(greenShown)")
     try require(redShown > 500, "The live view of a background noodlet is blank")
     try require(greenShown > 500, "The live view of a background noodlet lacks what it drew in an animation frame")
+    // A game draws every animation frame, so the page must keep getting them while watched.
+    func ticks() async throws -> Int { Int(try await web.evaluate("return ticks")) ?? 0 }
+    let ticksBefore = try await ticks()
+    try await Task.sleep(for: .milliseconds(500))
+    let ticksAfter = try await ticks()
+    let visibility = try await web.evaluate("return document.visibilityState")
+    print("INFO watched background animation: \(ticksAfter - ticksBefore) frames in 500 ms, visibility \(visibility)")
+    try require(ticksAfter - ticksBefore >= 5, "A watched background noodlet stopped getting animation frames")
+    try require(visibility == "\"visible\"", "A watched background noodlet is hidden from its own page")
     try require(web.window.alphaValue == 0, "A watched background noodlet became visible on this Mac")
     try require(web.window.ignoresMouseEvents, "A watched background noodlet takes clicks on this Mac")
     try require(wasActive || !NSApp.isActive, "A watched background noodlet took focus on this Mac")
     far.close()
     try await Task.sleep(for: .milliseconds(500))
     try require(!web.window.isVisible && web.window.alphaValue == 1, "The noodlet stayed on screen after the live view ended")
+    try require(try await web.evaluate("return document.visibilityState") == "\"hidden\"", "The noodlet still counts as seen after the live view ended")
     _ = try await call(["close"] + watchedTarget)
     print("PASS live view: a noodlet opened only in the background draws for its viewer and stays out of sight on this Mac")
     let open = try await call(["open", "--mode", "headless", "--test-clock"] + target)

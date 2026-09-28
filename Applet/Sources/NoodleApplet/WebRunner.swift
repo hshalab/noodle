@@ -168,11 +168,24 @@ final class WebRunner: NSObject, WKNavigationDelegate, WKUIDelegate,
   private func presentUnseen() {
     window.alphaValue = 0
     window.ignoresMouseEvents = true
+    // A transparent window at the back counts as occluded, which WebKit reports to the page as
+    // hidden, and games stop drawing; with detection off the page is visible while ordered in.
+    setOcclusionDetection(false)
     window.orderBack(nil)
   }
   private func restoreSeen() {
     window.alphaValue = 1
     window.ignoresMouseEvents = false
+    setOcclusionDetection(true)
+  }
+  private func setOcclusionDetection(_ enabled: Bool) {
+    let selector = NSSelectorFromString("_setWindowOcclusionDetectionEnabled:")
+    typealias Setter = @convention(c) (AnyObject, Selector, Bool) -> Void
+    guard let method = class_getInstanceMethod(WKWebView.self, selector) else {
+      if !enabled { log.append("rendering", "This WebKit build reports a noodlet watched from another device as hidden to its page.") }
+      return
+    }
+    unsafeBitCast(method_getImplementation(method), to: Setter.self)(web, selector, enabled)
   }
   /// Page muting is WebKit's own, so media elements and Web Audio go silent
   /// without pausing: a background noodlet keeps running, it just makes no sound.

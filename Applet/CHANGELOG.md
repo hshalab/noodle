@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- A noodlet watched from your iPhone while its window is closed on the Mac keeps running as if seen. Games, such as ones drawn on a canvas, showed only their background because they paused themselves as hidden.
+
 ## [0.13.0] - 2026-09-28
 
 ### Changed
