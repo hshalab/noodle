@@ -11,6 +11,7 @@ struct SidebarView: View {
     @Environment(\.colorScheme) private var colorScheme
     @FocusState private var searchIsFocused: Bool
     @State private var kickRequest: AgentKickRequest?
+    @State private var newSessionAgent: AgentRecord?
 
     var body: some View {
         @Bindable var store = store
@@ -22,6 +23,7 @@ struct SidebarView: View {
         }
         .listStyle(.sidebar)
         .modifier(AgentKickConfirmation(store: store, request: $kickRequest))
+        .modifier(NewSessionConfirmation(store: store, agent: $newSessionAgent))
         .scrollContentBackground(.hidden)
         .modifier(ConversationListKeyboardNavigation(
             hasSelection: store.selectedConversationID != nil,
@@ -93,12 +95,16 @@ struct SidebarView: View {
                 Button("Show Workspace in Finder") {
                     store.revealWorkspace(for: agent)
                 }
-                if store.runtime.snapshot(for: agent.id).phase == .failed {
+                if !store.runtime.remoteAgentIDs.contains(agent.id) {
                     Divider()
-                    Button("Kick") {
-                        kickRequest = store.runtime.kick(agent: agent, repository: store.repository)
+                    if store.runtime.snapshot(for: agent.id).phase == .failed {
+                        Button("Kick") {
+                            kickRequest = store.runtime.kick(agent: agent, repository: store.repository)
+                        }
+                        .disabled(store.runtime.changingAccess.contains(agent.id))
                     }
-                    .disabled(store.runtime.changingAccess.contains(agent.id))
+                    Button("New Session") { newSessionAgent = agent }
+                        .disabled(store.runtime.changingAccess.contains(agent.id))
                 }
             }
         }

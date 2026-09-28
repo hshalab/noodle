@@ -5,6 +5,7 @@
 ### Added
 
 - Settings has Heartbeat and Sandbox tabs, as in Noodle: choose how often idle bots on the Hub wake to check for work, and give each bot unrestricted access or account apps.
+- Settings has a Conversation tab, as in Noodle, for message delivery and when idle bots start a new session. Settings > Bots has New Session for each bot, and a bot stopped by the model's safeguards waits for Kick.
 - Local Models, in Settings > Harness, offers Qwen3.5 9B, gpt-oss 20B, Qwen3.8 27B, Qwen3.6 35B-A3B and Qwen3 Coder Next for Macs with 16 GB to 64 GB of memory, and Import Model accepts Qwen3.5, Qwen3-Next and gpt-oss models.
 
 ### Changed

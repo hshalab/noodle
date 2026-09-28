@@ -280,6 +280,8 @@ public enum AgentRuntimeFailure: Codable, Hashable, Sendable {
     case usageLimit
     case authenticationRequired
     case recoveryFailed
+    /// The model's safeguards stopped a response; the bot waits for Kick or a new session.
+    case safetyStop
 }
 
 public struct AgentRuntimeSnapshot: Codable, Hashable, Sendable {

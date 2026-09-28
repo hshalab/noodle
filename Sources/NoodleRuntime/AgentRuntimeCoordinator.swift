@@ -52,7 +52,7 @@ public struct HarnessHostInspection {
 /// A confirmation is valid only for this bot configuration, runtime, and failure.
 public struct AgentKickRequest: Identifiable {
     public let id = UUID()
-    let agent: AgentRecord
+    public let agent: AgentRecord
     public let failure: AgentRuntimeFailure
     fileprivate let runtimeID: UUID?
     fileprivate let lifecycleID: UUID
@@ -64,6 +64,7 @@ public struct AgentKickRequest: Identifiable {
         case .usageLimit: return "Usage limit reached"
         case .authenticationRequired: return "Sign in to reconnect \(agent.displayName)"
         case .recoveryFailed: return "Retry recovery?"
+        case .safetyStop: return "Safeguards stopped \(agent.displayName)"
         }
     }
 
@@ -77,6 +78,8 @@ public struct AgentKickRequest: Identifiable {
             return "The harness needs you to sign in again. Open Harness settings for sign-in options, then retry. Your session and unfinished work will be kept."
         case .recoveryFailed:
             return "Noodle will retry recovery using your conversation history. Your messages and files will be kept."
+        case .safetyStop:
+            return "The model's safeguards stopped a response. Resume continues the same session. New Session starts with a fresh context and keeps the workspace, memory and messages."
         }
     }
 }
@@ -104,6 +107,10 @@ public final class AgentRuntimeCoordinator {
     public private(set) var preventIdleSleepWhileWorking: Bool
     public private(set) var heartbeatConfiguration: AgentHeartbeatConfiguration
     public private(set) var lastHeartbeatDates: [UUID: Date]
+    @ObservationIgnored private var sessionStartDates: [UUID: Date]
+    /// Messages and the turns that answer them; heartbeats do not count.
+    @ObservationIgnored private var lastInteractionDates: [UUID: Date]
+    @ObservationIgnored private var heartbeatTurns: Set<UUID> = []
     public private(set) var accessConfiguration: AgentAccessConfiguration
     public private(set) var changingAccess: Set<UUID> = []
     @ObservationIgnored private let sleepController = AgentActivitySleepController()
@@ -224,6 +231,8 @@ public final class AgentRuntimeCoordinator {
             lastActivity: Self.loadDates(from: defaults, key: Self.lastActivityDatesKey)
         )
         lastHeartbeatDates = Self.loadLastHeartbeatDates(from: defaults)
+        sessionStartDates = Self.loadDates(from: defaults, key: Self.sessionStartDatesKey)
+        lastInteractionDates = Self.loadDates(from: defaults, key: Self.lastInteractionDatesKey)
         installations = discovery.discover()
     }
 
@@ -340,6 +349,7 @@ public final class AgentRuntimeCoordinator {
     }
 
     private func recordHeartbeat(for agentID: UUID) {
+        heartbeatTurns.insert(agentID)
         lastHeartbeatDates[agentID] = now()
         saveLastHeartbeatDates()
     }
@@ -362,6 +372,20 @@ public final class AgentRuntimeCoordinator {
         )
     }
 
+    private func recordInteraction(for agentID: UUID) {
+        lastInteractionDates[agentID] = now()
+        saveSessionDates()
+    }
+
+    private func saveSessionDates() {
+        for (key, dates) in [(Self.sessionStartDatesKey, sessionStartDates), (Self.lastInteractionDatesKey, lastInteractionDates)] {
+            defaults.set(Dictionary(uniqueKeysWithValues: dates.map { ($0.key.uuidString, $0.value.timeIntervalSince1970) }),
+                         forKey: key)
+        }
+    }
+
+    private static let sessionStartDatesKey = "Noodle.session.startDates"
+    private static let lastInteractionDatesKey = "Noodle.session.lastInteractionDates"
     private static let lastActivityDatesKey = "Noodle.heartbeat.lastActivityDates"
     private static let lastHeartbeatDatesKey = "Noodle.heartbeat.lastDates"
 
@@ -473,6 +497,10 @@ public final class AgentRuntimeCoordinator {
             blockedRecoveries.remove(id)
             heartbeatScheduler.remove(id)
             saveHeartbeatActivityDates()
+            sessionStartDates[id] = nil
+            lastInteractionDates[id] = nil
+            heartbeatTurns.remove(id)
+            saveSessionDates()
         }
 
         for agent in agents {
@@ -697,8 +725,42 @@ public final class AgentRuntimeCoordinator {
         switch request.failure {
         case .missingSession(let sessionID): recovery = .replace(sessionID)
         case .usageLimit, .authenticationRequired, .recoveryFailed: recovery = .retry
+        case .safetyStop:
+            restart(agent: agent, repository: repository, sessionRecovery: nil, retryFailedStop: true)
+            return
         }
         restart(agent: agent, repository: repository, sessionRecovery: recovery)
+    }
+
+    /// Replaces the bot's harness session with a fresh one, keeping its workspace, memory and messages.
+    public func startNewSession(agent: AgentRecord, repository: WorkspaceRepository) {
+        guard !remoteAgentIDs.contains(agent.id) else { return }
+        connectionRecoveryAttempts[agent.id] = nil
+        restart(agent: agent, repository: repository, resetThread: true, sessionRecovery: nil, retryFailedStop: true)
+    }
+
+    /// Starts a fresh session for idle bots whose session is older than the configured age.
+    /// Only a bot that could take a heartbeat is idle: never mid-turn or with work queued.
+    private func checkSessionRollovers(agents: [AgentRecord], repository: WorkspaceRepository) {
+        guard !isStoppingAll else { return }
+        let policy = AgentSessionRollover.load(from: defaults), date = now()
+        var seeded = false
+        for agent in agents {
+            guard let process = processes[agent.id] else { continue }
+            let started: Date
+            if let known = sessionStartDates[agent.id] { started = known } else {
+                // Sessions from before this was tracked count from now.
+                started = date
+                sessionStartDates[agent.id] = date
+                seeded = true
+            }
+            guard policy.isEnabled, process.canReceiveHeartbeat, !changingAccess.contains(agent.id),
+                  !remoteAgentIDs.contains(agent.id),
+                  policy.isDue(sessionStarted: started, lastInteraction: lastInteractionDates[agent.id] ?? started, at: date)
+            else { continue }
+            startNewSession(agent: agent, repository: repository)
+        }
+        if seeded { saveSessionDates() }
     }
 
     public func restart(
@@ -735,6 +797,8 @@ public final class AgentRuntimeCoordinator {
         if !resetThread, old?.hasInterruptedWork == true { recoveryPending.insert(agent.id) }
         if resetThread {
             recoveryPending.remove(agent.id)
+            sessionStartDates[agent.id] = now()
+            saveSessionDates()
             let provider = HarnessProvider(rawValue: agent.harnessIdentifier ?? "") ?? .codex
             let state = repository.storage(for: agent.id).sessionState(provider: provider,
                 extendedAccess: accessConfiguration.isExtended(for: agent))
@@ -790,6 +854,7 @@ public final class AgentRuntimeCoordinator {
     public func notify(_ agents: [AgentRecord], repository: WorkspaceRepository) {
         for agent in agents {
             recordActivity(for: agent.id)
+            recordInteraction(for: agent.id)
             if processes[agent.id] == nil {
                 start(agent: agent, repository: repository)
             }
@@ -883,6 +948,7 @@ public final class AgentRuntimeCoordinator {
                   !blockedRestarts.contains(agent.id), !blockedRecoveries.contains(agent.id) else { continue }
             scheduleRestart(agent: agent, repository: repository, detail: "Runtime connection was lost", immediately: immediately)
         }
+        checkSessionRollovers(agents: agents, repository: repository)
     }
 
     private func runtimeTerminated(
@@ -953,6 +1019,7 @@ public final class AgentRuntimeCoordinator {
             defer { previousPhase = snapshot.phase }
             if previousPhase == .working, snapshot.phase == .ready {
                 self.recordActivity(for: agentID)
+                if self.heartbeatTurns.remove(agentID) == nil { self.recordInteraction(for: agentID) }
                 self.connectionRecoveryAttempts[agentID] = nil
             }
             self.snapshots[agentID] = snapshot

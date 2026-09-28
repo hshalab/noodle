@@ -141,6 +141,19 @@ import XCTest
         XCTAssertEqual((params["prompt"] as? [[String: String]])?.first?["text"], AgentWakeReason.runtimeRecovered.eventText)
     }
 
+    func testRefusalPausesAsSafetyStopWithoutReplayingTheTurn() async throws {
+        let f = try fixture(), wire = HarnessWire(), p = f.acp(wire)
+        p.start(); try await f.openACP(wire); p.notify()
+        try wire.reply("session/prompt", result: ["stopReason": "refusal"])
+        try await f.wait { p.snapshot.phase == .failed }
+        XCTAssertEqual(p.snapshot.failure, .safetyStop)
+        XCTAssertFalse(f.recovery(.fx).hasUnfinishedTurn)
+        p.notify(); await f.drain()
+        XCTAssertTrue(f.failures.isEmpty)
+        XCTAssertEqual(wire.count("session/prompt"), 1)
+        XCTAssertEqual(wire.launches.count, 1)
+    }
+
     func testGrokUsageFailurePausesWithoutRestartAndKeepsUnfinishedWork() async throws {
         let f = try fixture(), wire = HarnessWire(), p = f.acp(wire, provider: .grokBuild)
         p.start(); try await f.openACP(wire, provider: .grokBuild); p.notify()

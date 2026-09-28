@@ -8,7 +8,7 @@ import Observation
 import SwiftUI
 
 enum HubSettingsTab: Hashable {
-    case harnesses, users, plans, bots, network, heartbeats, sandbox, tools, companions, updates
+    case harnesses, users, plans, bots, conversation, network, heartbeats, sandbox, tools, companions, updates
 }
 
 /// Gives the shared Harness, Heartbeat and Sandbox settings what they need from the Hub.
@@ -105,6 +105,10 @@ struct HubSettingsView: View {
                 .hubSettingsSize()
                 .tabItem { Label("Bots", systemImage: "sparkles") }
                 .tag(HubSettingsTab.bots)
+            HubConversationSettingsView()
+                .hubSettingsSize()
+                .tabItem { Label("Conversation", systemImage: "bubble.left.and.bubble.right") }
+                .tag(HubSettingsTab.conversation)
             HeartbeatsSettingsView(store: host)
                 .hubSettingsSize()
                 .tabItem { Label("Heartbeat", systemImage: "waveform.path.ecg") }
@@ -154,5 +158,16 @@ private extension View {
     /// The same pane width as Noodle's settings.
     func hubSettingsSize() -> some View {
         frame(width: 680).fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// Noodle's Conversation settings that apply to the bots the Hub runs; the rest are about how
+/// conversations look, which the Hub does not show.
+struct HubConversationSettingsView: View {
+    var body: some View {
+        Form {
+            ConversationRuntimeSettingsSections()
+        }
+        .formStyle(.grouped)
     }
 }

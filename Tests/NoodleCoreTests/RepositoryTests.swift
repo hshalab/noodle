@@ -61,6 +61,7 @@ final class RepositoryTests: XCTestCase {
         XCTAssertTrue(agentsGuide.contains("## Backstory"))
         XCTAssertTrue(agentsGuide.contains("Do not edit: changes will be overwritten"))
         XCTAssertTrue(agentsGuide.contains("Read `preferences.md` at the start of each session"))
+        XCTAssertTrue(agentsGuide.contains("Do not record safety stops"))
         XCTAssertFalse(agentsGuide.contains("<!-- noodle:managed:"))
         XCTAssertFalse(agentsGuide.contains(MessengerDocumentation.transportInstructions))
         XCTAssertFalse(agentsGuide.contains("TextEncoder"))

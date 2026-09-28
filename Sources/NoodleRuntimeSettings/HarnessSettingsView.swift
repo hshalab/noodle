@@ -96,6 +96,7 @@ public struct HarnessInstallationRow: View {
     @State private var showsProfiles = false
     @State private var confirmsRemoval = false
     @State private var kickRequest: AgentKickRequest?
+    @State private var newSessionAgent: AgentRecord?
     @State private var showsAgentIssues = false
     @Environment(\.openURL) private var openURL
 
@@ -228,6 +229,7 @@ public struct HarnessInstallationRow: View {
         }
         .padding(.vertical, 6)
         .modifier(AgentKickConfirmation(store: store, request: $kickRequest))
+        .modifier(NewSessionConfirmation(store: store, agent: $newSessionAgent))
     }
 
     @ViewBuilder private var statusLabel: some View {
@@ -272,9 +274,15 @@ public struct HarnessInstallationRow: View {
                             .fixedSize(horizontal: false, vertical: true)
                             .textSelection(.enabled)
                     }
-                    Button("Kick") {
-                        showsAgentIssues = false
-                        kickRequest = store.runtime.kick(agent: agent, repository: store.repository)
+                    HStack(spacing: 8) {
+                        Button("Kick") {
+                            showsAgentIssues = false
+                            kickRequest = store.runtime.kick(agent: agent, repository: store.repository)
+                        }
+                        Button("New Session") {
+                            showsAgentIssues = false
+                            newSessionAgent = agent
+                        }
                     }
                     .controlSize(.small)
                     .disabled(store.runtime.changingAccess.contains(agent.id))

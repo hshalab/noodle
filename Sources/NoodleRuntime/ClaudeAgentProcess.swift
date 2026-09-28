@@ -36,6 +36,9 @@ public final class ClaudeAgentProcess: AgentRuntimeProcess {
     private var intentionallyStopped = false
     private var terminationReported = false
     private var lastErrorText: String?
+    private var safetyStopped = false
+    /// Held for Kick after a safety stop; new messages wait instead of starting Claude again.
+    private var paused = false
     private lazy var trace = RuntimeTrace(agentID: configuration.id, provider: .claudeCode, workspace: workspaceURL)
 
 
@@ -74,7 +77,7 @@ public final class ClaudeAgentProcess: AgentRuntimeProcess {
     }
 
     public func start() {
-        guard connection == nil, !shutdown.isPending else { return }
+        guard connection == nil, !paused, !shutdown.isPending else { return }
         intentionallyStopped = false
         terminationReported = false
         lastErrorText = nil
@@ -150,6 +153,7 @@ public final class ClaudeAgentProcess: AgentRuntimeProcess {
         connectionID = nil
         startupTimeout?.cancel()
         intentionallyStopped = true
+        paused = false
         interruptTimeout?.cancel()
         interruptRequestID = nil
         interruptRequested = false
@@ -168,6 +172,7 @@ public final class ClaudeAgentProcess: AgentRuntimeProcess {
     public func notify(immediately: Bool = false) -> UUID {
         RuntimeDiagnostics.notificationQueued(agentID: configuration.id, coalesced: notificationPending)
         let notificationID = notifications.enqueue(immediately: immediately)
+        guard !paused else { return notificationID }
         if connection == nil { start() }
         sendPendingNotificationIfPossible()
         return notificationID
@@ -182,7 +187,7 @@ public final class ClaudeAgentProcess: AgentRuntimeProcess {
         running && snapshot.phase == .ready && !turnIsActive && !notificationPending && interruptRequestID == nil
     }
 
-    public var isAlive: Bool { running }
+    public var isAlive: Bool { running || paused }
 
     public var hasInterruptedWork: Bool {
         recoveryPending || turnIsActive || notificationPending || turnRecovery.hasUnfinishedTurn
@@ -278,6 +283,11 @@ public final class ClaudeAgentProcess: AgentRuntimeProcess {
             return
         }
         if type == "assistant" || type == "result" { trace.outputObserved() }
+        // Claude Code continues once after a refusal, so the turn is held only when it ends.
+        if type == "assistant", turnIsActive,
+           (message["message"] as? [String: Any])?["stop_reason"] as? String == "refusal" {
+            safetyStopped = true
+        }
         guard type == "result" else { return }
         if let rawID = message["session_id"] as? String,
            UUID(uuidString: rawID) != sessionID { return }
@@ -305,6 +315,10 @@ public final class ClaudeAgentProcess: AgentRuntimeProcess {
             return
         }
         turnIsActive = false
+        if safetyStopped {
+            pauseForSafetyStop()
+            return
+        }
         let wasInterrupted = interruptRequested
         interruptRequested = false
         if interruptRequestID == nil { interruptTimeout?.cancel() }
@@ -329,6 +343,15 @@ public final class ClaudeAgentProcess: AgentRuntimeProcess {
         disconnect()
         update(.failed, "Claude Code needs you to sign in. Open Harness settings and sign in, then retry.",
                failure: .authenticationRequired)
+    }
+
+    private func pauseForSafetyStop() {
+        safetyStopped = false
+        trace.finish(.turnFailed)
+        disconnect()
+        paused = true
+        update(.failed, "Claude's safeguards stopped a response. Kick to resume or start a new session.",
+               failure: .safetyStop)
     }
 
     private func reportUnexpectedTermination(_ detail: String) {

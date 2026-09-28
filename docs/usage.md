@@ -132,6 +132,15 @@ Noodle also attempts to resume interrupted work after a restart. Startup errors
 and **Kick** appear beside the affected bot in **Settings → Harness**. Kick is also
 available from the bot's sidebar menu; review any recovery confirmation first.
 
+If the model's safeguards stop a response, the bot stops after that turn and waits.
+**Kick** offers **Resume**, which continues the same session, or **New Session**.
+**New Session** is also in the bot's sidebar menu at any time. It starts the bot with
+a fresh context and keeps its workspace, memory and messages.
+
+Idle bots start a new session on their own once their current one is a day old. Choose
+the age, or **Never**, and how long a bot must be idle first under **New session** in
+**Settings → Conversation**. Heartbeats do not count as activity.
+
 ## Shortcuts and settings
 
 After launching Noodle once, search Spotlight for **Send to Agent**, choose an
@@ -142,7 +151,7 @@ To send selected text or files from another app, choose **Services → Send to A
 and select the agent or group that should receive them.
 
 **Settings → General** includes bot naming and **Keep Mac awake while agents work**.
-**Settings → Conversation** includes message delivery, the recording microphone, bot
+**Settings → Conversation** includes message delivery, new sessions for idle bots, the recording microphone, bot
 descriptions in the @ menu, and link-preview timeout. See [agent access](security.md)
 for permissions and [updates](releases.md#in-app-updates) for update settings.
 

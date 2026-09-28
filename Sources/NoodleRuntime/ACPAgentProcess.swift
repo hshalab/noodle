@@ -360,6 +360,13 @@ public final class ACPAgentProcess: AgentRuntimeProcess {
             interruptRequested = false
             interruptTimeout?.cancel()
             turnIsActive = false
+            if stopReason == "refusal", !reviewHeld {
+                // The refused turn is finished, so Kick resumes without replaying it.
+                do { try turnRecovery.finish() }
+                catch { update(.failed, "Could not record finished \(name) work"); return }
+                pause("\(name)'s safeguards stopped a response. Kick to resume or start a new session.", failure: .safetyStop)
+                return
+            }
             guard !reviewHeld, stopReason == "end_turn" || wasInterrupted else {
                 trace.finish(.turnFailed)
                 update(.failed, reviewHeld ? "\(name) held tool execution: its safety reviewer is unavailable. Retry when the review service recovers." : "\(name) stopped before completing the turn. Choose Kick in Settings → Harness to resume.")

@@ -12,6 +12,8 @@ All notable changes to Noodle are documented here, following
 - Sign FX in to more than one account. Profiles under FX in Settings > Harness adds a profile that signs in with Vercel, and Edit Bot > Harness chooses which one a bot uses. Each profile keeps its login in Noodle's storage, apart from the one in your home folder.
 - Sign OpenCode in to more than one account. Profiles under OpenCode in Settings > Harness adds a profile, and Sign In gives the Terminal command that signs in to it. Each profile keeps its own login, settings and conversations, apart from the ones in your home folder.
 - Apple Intelligence bots can change part of a file without rewriting it, write long files in parts, see the end of long command output where errors usually are, and look at images in their workspace.
+- New Session, in a bot's sidebar menu and beside Kick in Settings > Harness, starts the bot with a fresh context. Its workspace, memory and messages are kept.
+- Idle bots start a new session once a day by default. Settings > Conversation chooses how old a session can get (daily, every 3 days, weekly or never) and how long a bot must be idle first. Heartbeats do not count as activity.
 
 ### Changed
 
@@ -20,6 +22,7 @@ All notable changes to Noodle are documented here, following
 - Apple Intelligence bots now work like Codex and Claude bots: they follow the bot's instructions and skills, and read and answer their messages themselves. The on-device model's small context can keep it from getting through longer tasks; local models have more room.
 - An Apple Intelligence bot that uses up its tool calls in a turn now reports what it got done instead of failing the turn.
 - Apple Intelligence bots with local models read files in larger pages.
+- When the model's safeguards stop a response, the bot now stops after that turn and waits instead of carrying on in the same session. Kick offers Resume or New Session. Bots are also told not to note these stops in their memory or preferences as reasons to avoid a task.
 
 ## [0.30.0] - 2026-09-28
 

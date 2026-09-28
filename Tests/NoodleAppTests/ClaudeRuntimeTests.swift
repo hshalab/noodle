@@ -166,6 +166,36 @@ import XCTest
         XCTAssertTrue(f.failures.isEmpty, "Restarting cannot sign the user in")
     }
 
+    func testSafetyStopPausesAfterTheTurnUntilKicked() async throws {
+        let f = try fixture(), wire = HarnessWire(), p = f.claude(wire)
+        try await ready(f, wire, p); try confirm(wire)
+        p.notify(); try await f.wait { wire.count("user") == 1 }
+        let session = try XCTUnwrap(wire.launches.last?.2).uuidString
+        wire.emit(["type": "assistant", "session_id": session,
+                   "message": ["role": "assistant", "stop_reason": "refusal", "content": []]])
+        await f.drain()
+        XCTAssertEqual(p.snapshot.phase, .working, "Claude Code continues once after a refusal")
+        try complete(wire)
+        try await f.wait { p.snapshot.phase == .failed }
+        XCTAssertEqual(p.snapshot.failure, .safetyStop)
+        XCTAssertTrue(p.isAlive, "A paused bot must not look lost, or the coordinator restarts it")
+        XCTAssertFalse(p.hasInterruptedWork, "Kick must not replay the stopped turn")
+        XCTAssertTrue(f.failures.isEmpty)
+        p.notify(); p.heartbeat(); await f.drain()
+        XCTAssertEqual(wire.launches.count, 1, "New messages wait for Kick")
+        XCTAssertEqual(wire.count("user"), 1)
+
+        var stopped: Bool?
+        p.stop { stopped = $0 }
+        try await f.wait { stopped == true }
+        XCTAssertFalse(p.isAlive)
+        let next = HarnessWire(), resumed = f.claude(next)
+        try await ready(f, next, resumed)
+        XCTAssertEqual(next.launches.first?.2, wire.launches.first?.2, "Resume keeps the session")
+        XCTAssertEqual(next.launches.first?.3, true)
+        XCTAssertFalse(next.writes.contains { $0["type"] as? String == "user" }, "The stopped turn is not replayed")
+    }
+
     func testRestartWaitsForStopConfirmationAndIgnoresDuplicateReply() async throws {
         let f = try fixture(), wire = HarnessWire(), p = f.claude(wire)
         try await ready(f, wire, p)

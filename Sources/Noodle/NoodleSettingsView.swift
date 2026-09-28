@@ -140,7 +140,6 @@ struct ChatSettingsView: View {
     @AppStorage(LinkPreviewSettings.timeoutKey) private var linkPreviewTimeout = LinkPreviewSettings.defaultTimeout
     @AppStorage(WebLinkPreview.defaultsKey) private var previewsWebLinks = true
     @AppStorage(VoiceInputDevice.defaultsKey) private var microphoneUID = ""
-    @AppStorage(MessageDeliveryMode.defaultsKey) private var messageDelivery = MessageDeliveryMode.automatic.rawValue
     @AppStorage(ChatAttachmentLayout.defaultsKey) private var attachmentLayout = ChatAttachmentLayout.defaultValue.rawValue
     @AppStorage(FloatingConversations.keepsOneDefaultsKey) private var keepsOneFloat = false
     @State private var microphones: [VoiceInputDevice] = []
@@ -165,15 +164,7 @@ struct ChatSettingsView: View {
                 .pickerStyle(.segmented)
                 .help((ChatAttachmentLayout(rawValue: attachmentLayout) ?? .defaultValue).explanation)
             }
-            Section {
-                Picker("Message delivery", selection: $messageDelivery) {
-                    ForEach(MessageDeliveryMode.allCases) { mode in
-                        Text(mode.displayName).tag(mode.rawValue)
-                    }
-                }
-            } footer: {
-                Text("Automatic uses Apple Intelligence to decide whether new messages should reach a busy agent immediately or wait until its turn finishes. When Apple Intelligence is unavailable, messages wait.")
-            }
+            ConversationRuntimeSettingsSections()
             Section {
                 Picker("Microphone", selection: $microphoneUID) {
                     Text(microphones.first(where: { $0.audioID == defaultMicrophoneID })

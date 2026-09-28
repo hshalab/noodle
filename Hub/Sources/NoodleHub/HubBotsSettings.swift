@@ -8,6 +8,7 @@ import SwiftUI
 /// Every bot kept on the Hub, whose it is and how it is doing, with its folder and activity a click away.
 struct HubBotsSettingsView: View {
     let host: HubSettingsHost
+    @State private var newSessionAgent: AgentRecord?
 
     var body: some View {
         // Bots come and go from paired devices, so the list is reread while it is open.
@@ -27,6 +28,7 @@ struct HubBotsSettingsView: View {
             }
             .formStyle(.grouped)
         }
+        .modifier(NewSessionConfirmation(store: host, agent: $newSessionAgent))
     }
 
     private func row(_ agent: AgentRecord) -> some View {
@@ -54,6 +56,9 @@ struct HubBotsSettingsView: View {
                     host.activityWindows.show(agent: agent, log: host.runtime.activity.log(for: agent.id))
                 }
                 .buttonStyle(.link)
+                Button("New Session") { newSessionAgent = agent }
+                    .buttonStyle(.link)
+                    .disabled(host.runtime.changingAccess.contains(agent.id))
             }
         }
     }

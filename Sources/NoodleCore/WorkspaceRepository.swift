@@ -486,7 +486,7 @@ public struct WorkspaceRepository: Sendable {
 
         ## Preferences and memory
 
-        Read `preferences.md` at the start of each session and reread it after changes. Apply it as this bot's standing user preferences, such as tone, formatting, and working style; newer explicit user requests take precedence. When the user asks you to remember a preference, update `preferences.md`. Use `memory.md` for durable facts, decisions, and ongoing context. Noodle creates `preferences.md` with only a heading if missing and preserves both files during workspace synchronization; keep persistent notes there, not in generated instructions.
+        Read `preferences.md` at the start of each session and reread it after changes. Apply it as this bot's standing user preferences, such as tone, formatting, and working style; newer explicit user requests take precedence. When the user asks you to remember a preference, update `preferences.md`. Use `memory.md` for durable facts, decisions, and ongoing context. Noodle creates `preferences.md` with only a heading if missing and preserves both files during workspace synchronization; keep persistent notes there, not in generated instructions. Do not record safety stops, refusals or runtime failures in either file as reasons to avoid a task; a new session should be free to try again.
 
         ## Messages
 

@@ -151,6 +151,31 @@ import XCTest
         }
     }
 
+    func testSafetyStopKickResumesTheSessionOrStartsANewOne() throws {
+        let f = try fixture(), agent = try f.agent(harness: .claudeCode), process = try f.start(agent)
+        let url = f.repository.storage(for: agent.id).sessionState(provider: .claudeCode, extendedAccess: false)
+        let original = Data("saved session".utf8)
+        try original.write(to: url)
+        process.transition(.failed, failure: .safetyStop)
+        let request = try XCTUnwrap(f.runtime.kick(agent: agent, repository: f.repository))
+        XCTAssertEqual(request.failure, .safetyStop)
+        XCTAssertEqual(process.stops, 0)
+        f.runtime.confirmKick(request, repository: f.repository)
+        XCTAssertEqual(f.factory.processes.count, 2)
+        XCTAssertEqual(try Data(contentsOf: url), original, "Resume keeps the session")
+        XCTAssertEqual(f.runtime.snapshot(for: agent.id).phase, .ready)
+
+        let resumed = try XCTUnwrap(f.factory.processes.last)
+        resumed.transition(.failed, failure: .safetyStop)
+        let again = try XCTUnwrap(f.runtime.kick(agent: agent, repository: f.repository))
+        XCTAssertEqual(again.failure, .safetyStop)
+        f.runtime.startNewSession(agent: agent, repository: f.repository)
+        XCTAssertEqual(resumed.stops, 1)
+        XCTAssertEqual(f.factory.processes.count, 3)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path), "New Session drops the session pointer")
+        XCTAssertFalse(f.factory.processes.last!.launch.recoverInterruptedWork)
+    }
+
     func testSessionChangedWhileStoppingIsPreservedAndDoesNotEnterSupervision() throws {
         let f = try fixture(), (agent, process, url, _) = try missingSession(f)
         let request = try XCTUnwrap(f.runtime.kick(agent: agent, repository: f.repository))
