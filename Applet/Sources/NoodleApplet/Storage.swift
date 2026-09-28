@@ -21,6 +21,12 @@ import WebKit
     for folder in ["Data", "Homes"] {
       try? FileManager.default.removeItem(at: root.appendingPathComponent("\(folder)/\(key)"))
     }
+    // WebKit crashes when removing a store is the first thing a process asks of it, as launch
+    // does for a noodlet that is gone. A web view with no website data sets WebKit up first.
+    let configuration = WKWebViewConfiguration()
+    configuration.websiteDataStore = .nonPersistent()
+    let bootstrap = WKWebView(frame: .zero, configuration: configuration)
+    defer { withExtendedLifetime(bootstrap) {} }
     for scope in ["user", "test"] {
       let name = "store.\(key).\(scope)"
       if let id = defaults.string(forKey: name).flatMap(UUID.init(uuidString:)) {

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Applet no longer crashes on launch while it deletes what a noodlet that is gone had saved, as it could right after updating.
+
 ## [0.12.0] - 2026-09-28
 
 ### Changed
