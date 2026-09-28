@@ -7,49 +7,14 @@ final class AppleToolsTests: XCTestCase {
     private var root: URL!
     private var repository: WorkspaceRepository!
     private var workspace: URL!
-    private var broker: MessengerBroker!
     override func setUpWithError() throws {
         root = FileManager.default.temporaryDirectory.appendingPathComponent("apple-tools-\(UUID())").resolvingSymlinksInPath()
         repository = WorkspaceRepository(rootURL: root)
         let bot = try repository.createAgent(named: "Apple test")
         workspace = repository.directory(for: bot.agent)
-        broker = MessengerBroker(repository: repository)
-        try broker.start(agents: [bot.agent])
         try FileManager.default.createDirectory(at: workspace.appendingPathComponent(".noodle/tmp"), withIntermediateDirectories: true)
     }
-    override func tearDownWithError() throws { broker.stop(); try FileManager.default.removeItem(at: root) }
-
-    func testImageInputPreservesOrderAndRejectsLinksAndTooManyAttachments() throws {
-        func image(_ name: String) throws -> MessengerAttachment {
-            let file = workspace.appendingPathComponent(name)
-            try Data("synthetic image".utf8).write(to: file)
-            return MessengerAttachment(attachment: .init(conversationID: UUID(), originalFilename: name,
-                storedFilename: name, mediaType: "image/png", byteCount: 15), absolutePath: file.path)
-        }
-        let first = try image("first.png"), second = try image("second.png")
-        XCTAssertEqual(try AppleToolContext.imageURLs([first, second, first]).map(\.lastPathComponent), ["first.png", "second.png"])
-        let more = try (0..<3).map { try image("\($0).png") }
-        XCTAssertThrowsError(try AppleToolContext.imageURLs([first, second] + more))
-        let file = URL(fileURLWithPath: first.absolutePath)
-        try FileManager.default.removeItem(at: file)
-        try FileManager.default.createSymbolicLink(at: file, withDestinationURL: URL(fileURLWithPath: second.absolutePath))
-        XCTAssertThrowsError(try AppleToolContext.imageURLs([first]))
-    }
-
-    func testChatPromptProvidesBoundedUserSourcesWithoutRepeatingAssistantMistakes() {
-        let turn = AppleConversationTurn(conversationID: UUID(), messageIDs: [], history: [
-            .init(isAssistant: false, text: String(repeating: "old", count: 1_000)),
-            .init(isAssistant: true, text: "The answer is password."),
-            .init(isAssistant: false, text: "Remember marigold"),
-            .init(isAssistant: true, text: "Hello!"),
-            .init(isAssistant: false, text: "Hello")
-        ], prompt: "What did I ask you to remember?")
-        XCTAssertTrue(turn.chatPrompt.contains("Remember marigold"))
-        XCTAssertFalse(turn.chatPrompt.contains("password"))
-        XCTAssertFalse(turn.chatPrompt.contains("oldold"))
-        XCTAssertTrue(turn.chatPrompt.hasSuffix(turn.prompt))
-        XCTAssertLessThan(turn.chatPrompt.utf8.count, 2_250)
-    }
+    override func tearDownWithError() throws { try FileManager.default.removeItem(at: root) }
 
     func testReadWriteAndPaginationPreserveFullOutput() async throws {
         let tools = try AppleToolContext(workspace: workspace)
@@ -92,6 +57,63 @@ final class AppleToolsTests: XCTestCase {
         XCTAssertTrue(next.hasPrefix("🍎done"))
     }
 
+    func testCommandOutputKeepsItsEndWhereErrorsAppear() async throws {
+        let tools = try AppleToolContext(workspace: workspace)
+        let output = try await tools.execute(command: "seq 1 5000; echo 'error: final failure'")
+        XCTAssertTrue(output.contains("Exit status: 0\n1\n2\n"))
+        XCTAssertTrue(output.contains("error: final failure"), "The end of a long command's output must reach the model")
+        XCTAssertTrue(output.contains("[Full result saved at "))
+    }
+
+    func testToolCallsAreBoundedByTheTurnNotTheToolContext() async throws {
+        let tools = try AppleToolContext(workspace: workspace)
+        _ = try await tools.write(path: "note.txt", content: "saffron")
+        for _ in 0..<40 { _ = try await tools.read(path: "note.txt") }
+    }
+
+    func testEditReplacesOneExactPassage() async throws {
+        let tools = try AppleToolContext(workspace: workspace)
+        _ = try await tools.write(path: "notes.txt", content: "alpha\nbeta\nalpha\n")
+        _ = try await tools.edit(path: "notes.txt", old: "beta", new: "gamma")
+        XCTAssertEqual(try String(contentsOf: workspace.appendingPathComponent("notes.txt"), encoding: .utf8), "alpha\ngamma\nalpha\n")
+        for (old, reason) in [("alpha", "2 times"), ("delta", "not in")] {
+            do {
+                _ = try await tools.edit(path: "notes.txt", old: old, new: "x")
+                XCTFail("An ambiguous or missing passage must not change the file")
+            } catch { XCTAssertTrue(error.localizedDescription.contains(reason), error.localizedDescription) }
+        }
+        XCTAssertEqual(try String(contentsOf: workspace.appendingPathComponent("notes.txt"), encoding: .utf8), "alpha\ngamma\nalpha\n")
+    }
+
+    func testWriteAppendsSoLongFilesCanBeWrittenInParts() async throws {
+        let tools = try AppleToolContext(workspace: workspace)
+        _ = try await tools.write(path: "long.txt", content: "part one\n", append: true)
+        _ = try await tools.write(path: "long.txt", content: "part two\n", append: true)
+        XCTAssertEqual(try String(contentsOf: workspace.appendingPathComponent("long.txt"), encoding: .utf8), "part one\npart two\n")
+    }
+
+    func testPagesFollowTheModelContext() async throws {
+        let small = try AppleToolContext(workspace: workspace)
+        let large = try AppleToolContext(workspace: workspace, pageBytes: 16_384)
+        _ = try await small.write(path: "big.txt", content: String(repeating: "a", count: 20_000))
+        let smallPage = try await small.read(path: "big.txt")
+        let largePage = try await large.read(path: "big.txt")
+        XCTAssertTrue(smallPage.contains("offset 3072"))
+        XCTAssertTrue(largePage.contains("offset 16384"))
+    }
+
+    func testOnlyImageFilesOpenAsImages() async throws {
+        let tools = try AppleToolContext(workspace: workspace)
+        try Data("not text".utf8).write(to: workspace.appendingPathComponent("photo.png"))
+        _ = try await tools.write(path: "notes.txt", content: "text")
+        let image = try await tools.image(path: "photo.png")
+        let text = try await tools.image(path: "notes.txt")
+        let missing = try await tools.image(path: "absent.png")
+        XCTAssertEqual(image?.lastPathComponent, "photo.png")
+        XCTAssertNil(text)
+        XCTAssertNil(missing)
+    }
+
     func testCommandTimeoutKillsItsDescendants() async throws {
         do {
             _ = try await AppleCommand.run("(sleep 1; touch late.txt) & wait", workspace: workspace, timeout: 0.1)
@@ -107,106 +129,5 @@ final class AppleToolsTests: XCTestCase {
         task.cancel()
         do { _ = try await task.value; XCTFail("Expected cancellation") }
         catch is CancellationError {}
-    }
-
-    func testMessengerCannotSendAsAnotherBotAndReusesInbox() async throws {
-        let original = try repository.loadAgents()[0]
-        let conversation = try repository.loadConversations()[0]
-        let other = try repository.createAgent(named: "Other")
-        let tools = try AppleToolContext(workspace: workspace)
-        let first = try await tools.inbox()
-        let second = try await tools.inbox()
-        XCTAssertEqual(first, second)
-        _ = try await tools.send(conversation: conversation.id.uuidString, body: "--get-latest is literal text")
-        let sent = try XCTUnwrap(repository.loadMessages(conversationID: conversation.id).last)
-        XCTAssertEqual(sent.author, .agent(original.id))
-        XCTAssertEqual(sent.body, "--get-latest is literal text")
-        do {
-            _ = try await tools.send(conversation: other.conversation.id.uuidString, body: "unauthorized")
-            XCTFail("Expected membership check")
-        } catch {}
-    }
-
-    func testConversationRestoresRolesAndRecoversPendingReplyAfterRestart() async throws {
-        let agent = try repository.loadAgents()[0]
-        let chat = try repository.loadConversations()[0]
-        _ = try repository.sendUserMessage(conversationID: chat.id, body: "Remember the secret word avocado")
-        let initial = try AppleToolContext(workspace: workspace)
-        let firstTurns = try await initial.conversationTurns()
-        let first = try XCTUnwrap(firstTurns.first)
-        try await initial.deliverReply("I’ll remember avocado.", to: first)
-
-        _ = try repository.sendUserMessage(conversationID: chat.id, body: "What is the secret word?")
-        let interrupted = try AppleToolContext(workspace: workspace)
-        _ = try await interrupted.conversationTurns()
-        let restarted = try AppleToolContext(workspace: workspace)
-        let recovered = try await restarted.conversationTurns()
-        let turn = try XCTUnwrap(recovered.first)
-        XCTAssertEqual(turn.prompt, "What is the secret word?")
-        XCTAssertEqual(turn.history.map(\.text), ["Remember the secret word avocado", "I’ll remember avocado."])
-        XCTAssertEqual(turn.history.map(\.isAssistant), [false, true])
-        try await restarted.deliverReply("Avocado.", to: turn)
-        XCTAssertEqual(try repository.loadMessages(conversationID: chat.id).last?.author, .agent(agent.id))
-        let finished = try AppleToolContext(workspace: workspace)
-        let pending = try await finished.conversationTurns()
-        XCTAssertTrue(pending.isEmpty)
-    }
-
-    func testDurableReplyPreventsDuplicateAfterInterruptedCleanup() async throws {
-        let agent = try repository.loadAgents()[0]
-        let chat = try repository.loadConversations()[0]
-        _ = try repository.sendUserMessage(conversationID: chat.id, body: "Hello")
-        let interrupted = try AppleToolContext(workspace: workspace)
-        let turnsBeforeSend = try await interrupted.conversationTurns()
-        try await interrupted.prepareReply("Hello!", to: XCTUnwrap(turnsBeforeSend.first))
-        // Simulate a successful send followed by a crash before pending cleanup.
-        _ = try repository.sendAgentMessage(agentID: agent.id, conversationID: chat.id, body: "Hello!")
-        let restarted = try AppleToolContext(workspace: workspace)
-        let turns = try await restarted.conversationTurns()
-        XCTAssertTrue(turns.isEmpty)
-    }
-
-    func testConversationRoutingKeepsChatsSeparateAndPreservesNewArrivals() async throws {
-        let agent = try repository.loadAgents()[0]
-        let direct = try repository.loadConversations()[0]
-        let group = try repository.createGroup(named: "Group", participantIDs: [agent.id], existingAgents: [agent])
-        _ = try repository.sendUserMessage(conversationID: direct.id, body: "Private word avocado")
-        _ = try repository.sendUserMessage(conversationID: group.id, body: "Group word pear")
-        let tools = try AppleToolContext(workspace: workspace)
-        let turns = try await tools.conversationTurns()
-        let privateTurn = try XCTUnwrap(turns.first { $0.conversationID == direct.id })
-        let groupTurn = try XCTUnwrap(turns.first { $0.conversationID == group.id })
-        XCTAssertFalse(groupTurn.prompt.contains("avocado"))
-        XCTAssertFalse(privateTurn.prompt.contains("pear"))
-        _ = try repository.sendUserMessage(conversationID: direct.id, body: "A later request")
-        try await tools.deliverReply("Private answer", to: privateTurn)
-        try await tools.deliverReply("Group answer", to: groupTurn)
-        XCTAssertEqual(try repository.loadMessages(conversationID: group.id).last?.body, "Group answer")
-        let next = try AppleToolContext(workspace: workspace)
-        let pending = try await next.conversationTurns()
-        XCTAssertEqual(pending.count, 1)
-        XCTAssertEqual(pending.first?.prompt, "A later request")
-        // If this new request is interrupted, the earlier turn's late answer
-        // must still not count as a reply to it during recovery.
-        let restarted = try AppleToolContext(workspace: workspace)
-        let recovered = try await restarted.conversationTurns()
-        XCTAssertEqual(recovered.first?.prompt, "A later request")
-    }
-
-    func testLongConversationSeedsOnlyBoundedRecentContext() async throws {
-        let agent = try repository.loadAgents()[0]
-        let chat = try repository.loadConversations()[0]
-        for index in 0..<20 {
-            _ = try repository.sendUserMessage(conversationID: chat.id, body: "Fact \(index): " + String(repeating: "a", count: 200))
-            _ = try repository.sendAgentMessage(agentID: agent.id, conversationID: chat.id, body: "Acknowledged \(index).")
-        }
-        _ = try repository.latestMessages(for: agent.id, consuming: true)
-        _ = try repository.sendUserMessage(conversationID: chat.id, body: "What was fact 19?")
-        let tools = try AppleToolContext(workspace: workspace)
-        let turns = try await tools.conversationTurns()
-        let turn = try XCTUnwrap(turns.first)
-        XCTAssertEqual(turn.prompt, "What was fact 19?")
-        XCTAssertTrue(turn.history.contains { $0.text.hasPrefix("Fact 19:") })
-        XCTAssertFalse(turn.history.contains { $0.text.hasPrefix("Fact 0:") })
     }
 }

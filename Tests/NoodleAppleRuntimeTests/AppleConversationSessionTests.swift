@@ -11,11 +11,10 @@ final class AppleConversationSessionTests: XCTestCase {
         XCTAssertNil(try AppleConversationSession.load(from: file))
         let session = AppleConversationSession(transcript: Transcript(entries: [
             .prompt(.init(segments: [.text(.init(content: "Continue the pending task."))]))
-        ]), messageIDs: [], reply: "")
+        ]))
         try session.save(to: file)
         let loaded = try XCTUnwrap(AppleConversationSession.load(from: file))
         XCTAssertEqual(loaded.transcript, session.transcript)
-        XCTAssertTrue(loaded.messageIDs.isEmpty, "An interrupted session must not pretend it completed a reply")
         try Data("corrupt".utf8).write(to: file)
         XCTAssertThrowsError(try AppleConversationSession.load(from: file), "Unreadable context must not silently start a fresh session")
     }
@@ -42,23 +41,18 @@ final class AppleConversationSessionTests: XCTestCase {
         #endif
     }
 
-    func testCachePreservesNativeMetadataAndCompletedDelivery() throws {
+    func testSavedSessionPreservesNativeMetadata() throws {
         guard #available(macOS 26, *) else { throw XCTSkip("Foundation Models requires macOS 26") }
         let prompt = Transcript.Entry.prompt(.init(id: "user-turn", segments: [.text(.init(content: "Remember saffron"))]))
         let response = Transcript.Entry.response(.init(id: "native-response", assetIDs: ["original-model-asset"],
                                                        segments: [.text(.init(content: "I'll remember saffron."))]))
-        let id = UUID()
-        let original = AppleConversationSession(transcript: Transcript(entries: [prompt, response]), messageIDs: [id], reply: "I'll remember saffron.")
+        let original = AppleConversationSession(transcript: Transcript(entries: [prompt, response]))
         let workspace = FileManager.default.temporaryDirectory.appendingPathComponent("apple-session-\(UUID())")
         defer { try? FileManager.default.removeItem(at: workspace) }
-        let conversation = UUID()
-        try original.save(in: workspace, conversationID: conversation)
-        let restored = try JSONDecoder().decode(AppleConversationSession.self,
-            from: Data(contentsOf: AppleConversationSession.file(in: workspace, conversationID: conversation)))
+        try original.save(to: AppleConversationSession.file(in: workspace))
+        let restored = try XCTUnwrap(AppleConversationSession.load(from: AppleConversationSession.file(in: workspace)))
         XCTAssertEqual(restored.recentEntries(), [prompt, response])
         XCTAssertTrue(restored.recentEntries(reservingPromptBytes: 6_000).isEmpty)
-        XCTAssertEqual(restored.messageIDs, [id])
-        XCTAssertEqual(restored.reply, original.reply)
     }
 
     func testTrimmingKeepsToolExchangesTogetherAndDropsOldInstructions() throws {
@@ -76,7 +70,7 @@ final class AppleConversationSessionTests: XCTestCase {
             .toolOutput(.init(id: "new-call", toolName: "read_file", segments: [.text(.init(content: "saffron"))])),
             .response(.init(assetIDs: ["asset"], segments: [.text(.init(content: "saffron"))]))
         ]
-        let session = AppleConversationSession(transcript: Transcript(entries: [instructions] + older + recent), messageIDs: [UUID()], reply: "saffron")
+        let session = AppleConversationSession(transcript: Transcript(entries: [instructions] + older + recent))
         XCTAssertEqual(session.recentEntries(), recent)
     }
 }

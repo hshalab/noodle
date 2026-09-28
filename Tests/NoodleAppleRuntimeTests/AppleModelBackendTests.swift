@@ -25,7 +25,7 @@ final class AppleModelBackendTests: XCTestCase {
 
     func testSavedModelIdentityAndLegacyTranscriptDecoding() throws {
         guard #available(macOS 26, *) else { return }
-        let session = AppleConversationSession(transcript: Transcript(entries: []), messageIDs: [], reply: "done", modelIdentifier: "default")
+        let session = AppleConversationSession(transcript: Transcript(entries: []), modelIdentifier: "default")
         let data = try JSONEncoder().encode(session)
         XCTAssertEqual(try JSONDecoder().decode(AppleConversationSession.self, from: data).modelIdentifier, "default")
         var json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])

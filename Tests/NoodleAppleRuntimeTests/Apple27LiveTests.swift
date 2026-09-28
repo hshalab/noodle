@@ -3,6 +3,7 @@ import XCTest
 import FoundationModels
 import CoreGraphics
 import ImageIO
+import NoodleCore
 @testable import NoodleAppleRuntime
 
 final class Apple27LiveTests: XCTestCase {
@@ -67,7 +68,7 @@ final class Apple27LiveTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: file) }
         try Self.writeSquare(to: file)
         let session = backend.session(instructions: "Identify the color shown in the attached image. Answer in one word.")
-        let response = try await session.respond(to: backend.prompt("What color is this square?", images: [file]),
+        let response = try await session.respond(to: AppleModelBackend.imagePrompt("What color is this square?", image: file),
             options: .init(samplingMode: .greedy, maximumResponseTokens: 32))
         XCTAssertTrue(response.content.lowercased().contains("red"), response.content)
     }
@@ -82,10 +83,29 @@ final class Apple27LiveTests: XCTestCase {
         let oldPrompt = Transcript.Entry.prompt(.init(segments: [.text(.init(content: String(repeating: "Old unrelated conversation. ", count: 2_000)))]))
         let oldAnswer = Transcript.Entry.response(.init(segments: [.text(.init(content: "Previous reply."))]))
         let session = backend.session(instructions: "Identify the color of the attached image. Answer in one word.", entries: [oldPrompt, oldAnswer])
-        let response = try await session.respond(to: backend.prompt("What color is this square?", images: [file]),
+        let response = try await session.respond(to: AppleModelBackend.imagePrompt("What color is this square?", image: file),
             options: .init(samplingMode: .greedy, maximumResponseTokens: 32))
         XCTAssertTrue(response.content.lowercased().contains("red"), response.content)
         XCTAssertTrue(session.transcript.contains(oldPrompt), "Only the generation input should be compacted")
+    }
+
+    func testReadToolShowsTheModelAnImageFile() async throws {
+        guard #available(macOS 27, *) else { return }
+        let backend = try await backend()
+        guard backend.supportsImages else { throw XCTSkip("This device has no image capability.") }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("apple-read-image-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let repository = WorkspaceRepository(rootURL: root)
+        let workspace = repository.directory(for: try repository.createAgent(named: "Image test").agent)
+        try Self.writeSquare(to: workspace.appendingPathComponent("square.png"), color: CGColor(red: 0, green: 0, blue: 1, alpha: 1))
+        let control = AppleTurnControl()
+        let tools = AppleModel.workspaceTools(context: try AppleToolContext(workspace: workspace), look: { try await backend.describe(image: $0) }, onActivity: {})
+        let session = backend.session(tools: tools, instructions: "Use your tools to look at files.", control: control)
+        let response = try await AppleResponseRecovery.respond(session: session,
+            prompt: Prompt("Open square.png with the read tool. What color is the square? Answer in one word."),
+            responseTokens: 64, control: control)
+        XCTAssertTrue(session.transcript.contains { if case .toolOutput = $0 { return true }; return false })
+        XCTAssertTrue(response.lowercased().contains("blue"), response)
     }
 
     static func writeSquare(to file: URL, color: CGColor = CGColor(red: 1, green: 0, blue: 0, alpha: 1), size: Int = 64) throws {

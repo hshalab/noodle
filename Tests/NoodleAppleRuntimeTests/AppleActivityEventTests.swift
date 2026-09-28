@@ -35,20 +35,17 @@ final class AppleActivityEventTests: XCTestCase {
         XCTAssertEqual(output, text)
     }
 
-    func testCancellationAndToolLimitRemainTerminalAndCloseActivity() async throws {
-        for error in [CancellationError() as Error, AppleToolLimit()] {
-            let events = ActivityEvents()
-            do {
-                _ = try await AppleToolActivity.perform(name: "Bash", input: [:], onEvent: { await events.append($0) }) { throw error }
-                XCTFail("Must preserve terminal errors")
-            } catch is CancellationError { XCTAssertTrue(error is CancellationError) }
-            catch is AppleToolLimit { XCTAssertTrue(error is AppleToolLimit) }
-            let values = await events.values
-            XCTAssertEqual(values.count, 2)
-            guard case .toolFinished(_, _, _, let text, let failed, _) = values.last else { return XCTFail("Missing end event") }
-            XCTAssertTrue(failed)
-            if error is CancellationError { XCTAssertEqual(text, "Cancelled.") }
-        }
+    func testCancellationRemainsTerminalAndClosesActivity() async throws {
+        let events = ActivityEvents()
+        do {
+            _ = try await AppleToolActivity.perform(name: "Bash", input: [:], onEvent: { await events.append($0) }) { throw CancellationError() }
+            XCTFail("Must preserve cancellation")
+        } catch is CancellationError {}
+        let values = await events.values
+        XCTAssertEqual(values.count, 2)
+        guard case .toolFinished(_, _, _, let text, let failed, _) = values.last else { return XCTFail("Missing end event") }
+        XCTAssertTrue(failed)
+        XCTAssertEqual(text, "Cancelled.")
     }
 
     func testCommandExitStatusIsReportedAsFailureWithoutChangingResult() async throws {

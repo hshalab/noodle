@@ -85,19 +85,22 @@ enum AppleResponseRecovery {
 @available(macOS 26, *)
 actor AppleTurnControl {
     let maximumGenerations: Int
+    let maximumToolCalls: Int
     private(set) var recovering = false
     var generations = 0
+    var toolCalls = 0
     var seenCalls = Set<String>()
     var recentExchanges: [String] = []
     var initialized = false
     var finishing = false
     var initialPromptID: String?
 
-    init(maximumGenerations: Int = 32, resuming saved: AppleConversationSession? = nil) {
+    init(maximumGenerations: Int = 32, maximumToolCalls: Int = 32, resuming: Bool = false) {
         self.maximumGenerations = max(2, maximumGenerations)
+        self.maximumToolCalls = max(1, maximumToolCalls)
         // A restarted helper must not spend another full reasoning attempt on
         // the same unfinished task before it can use its recovery settings.
-        recovering = saved.map { !$0.hasCompletedReply && !$0.transcript.isEmpty } ?? false
+        recovering = resuming
     }
     func recover() { recovering = true }
 }

@@ -70,8 +70,14 @@ struct AppleModelBackend {
                 turnModel.control = control
                 turnModel.canDisableReasoning = canDisableReasoning
                 turnModel.checkpoint = checkpoint
+                // A summary costs a generation; wait until history is long
+                // for this model's context.
                 return AppleTurnProfile.session(model: turnModel, summaryModel: summaryModel,
-                    tools: tools, instructions: instructions, requireTool: requireTool, history: entries)
+                    tools: tools, instructions: instructions, requireTool: requireTool, history: entries,
+                    summaryThreshold: max(8, contextSize / 512))
+            }
+            if let custom = local as? AppleCustomModel {
+                return makeSession(base: custom.model, count: custom.count)
             }
             if let local = local as? MLXLanguageModel {
                 return makeSession(base: local) { request in
@@ -96,25 +102,39 @@ struct AppleModelBackend {
         return LanguageModelSession(model: .default, tools: tools, transcript: Transcript(entries: Array(seed.transcript) + entries))
     }
 
-    func prompt(_ text: String, images: [URL]) throws -> Prompt {
-        guard !images.isEmpty else { return Prompt(text) }
-        guard supportsImages else { throw HarnessSetupError("The selected model cannot read images. Select an Apple model with image support on macOS 27.") }
+    /// Tool results arrive in pages sized to the context: a 4K model keeps
+    /// room to act on a page, a 32K model is not held to 4K paging.
+    var pageBytes: Int { min(16_384, max(3_072, contextSize * 3 / 4)) }
+
+    /// The on-device model sees images in a prompt but not in a tool result,
+    /// so a tool that opens an image asks the model about it separately.
+    func describe(image url: URL) async throws -> String {
+        #if canImport(FoundationModels, _version: 2)
+        if #available(macOS 27, *), supportsImages {
+            let response = try await session(instructions: "Describe images accurately.").respond(
+                to: Self.imagePrompt("Describe this image in detail. Quote any text it shows exactly.", image: url),
+                options: GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 384))
+            return response.content
+        }
+        #endif
+        throw HarnessSetupError("The selected model cannot view images.")
+    }
+
+    /// Decode within the helper's workspace grant. Passing a file URL through
+    /// the model service can leave it unable to read the image.
+    static func imagePrompt(_ text: String, image url: URL) throws -> Prompt {
         #if canImport(FoundationModels, _version: 2)
         if #available(macOS 27, *) {
-            // Decode within the helper's workspace grant. Passing a file URL
-            // through the model service can leave it unable to read the image.
-            let attachments = try images.enumerated().map { index, url -> Attachment<ImageAttachmentContent> in
-                let options: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
-                    kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: 2_048]
-                guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-                      let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
-                    throw HarnessSetupError("Could not decode image \(url.lastPathComponent). Use a supported image file.")
-                }
-                return Attachment(image).label("Image \(index + 1)")
+            let options: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: 2_048]
+            guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+                  let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
+                throw HarnessSetupError("Could not decode image \(url.lastPathComponent). Use a supported image file.")
             }
+            let attachment = Attachment(image).label(url.lastPathComponent)
             return Prompt {
                 text
-                for attachment in attachments { attachment }
+                attachment
             }
         }
         #endif
@@ -151,6 +171,22 @@ struct AppleModelBackend {
 }
 
 #if canImport(FoundationModels, _version: 2)
+/// Lets tests drive a whole turn with a scripted model.
+@available(macOS 27, *)
+struct AppleCustomModel {
+    let model: any FoundationModels.LanguageModel
+    let count: @Sendable (LanguageModelExecutorGenerationRequest) async throws -> Int
+}
+
+@available(macOS 27, *)
+extension AppleModelBackend {
+    static func custom(_ model: any FoundationModels.LanguageModel, contextSize: Int, responseTokens: Int = 768,
+                       count: @escaping @Sendable (LanguageModelExecutorGenerationRequest) async throws -> Int) -> Self {
+        .init(identifier: "custom", contextSize: contextSize, supportsImages: model.capabilities.contains(.vision),
+              responseTokens: responseTokens, local: AppleCustomModel(model: model, count: count))
+    }
+}
+
 @available(macOS 27, *)
 private enum AppleToolCalledKey: SessionPropertyKey { static let defaultValue = false }
 
@@ -169,12 +205,13 @@ struct AppleTurnProfile<Model: FoundationModels.LanguageModel>: LanguageModelSes
     let tools: [any FoundationModels.Tool]
     let instructions: String
     let requireTool: Bool
+    var summaryThreshold = 8
     @SessionProperty(\.appleToolCalled) private var called
 
     static func session(model: Model, summaryModel: Model? = nil, tools: [any FoundationModels.Tool] = [], instructions: String,
-                        requireTool: Bool = false, history: [Transcript.Entry] = []) -> LanguageModelSession {
+                        requireTool: Bool = false, history: [Transcript.Entry] = [], summaryThreshold: Int = 8) -> LanguageModelSession {
         LanguageModelSession(profile: Self(model: model, summaryModel: summaryModel ?? model, tools: tools, instructions: instructions,
-                                          requireTool: requireTool), history: history)
+                                          requireTool: requireTool, summaryThreshold: summaryThreshold), history: history)
     }
 
     var body: some LanguageModelSession.DynamicProfile {
@@ -190,7 +227,7 @@ struct AppleTurnProfile<Model: FoundationModels.LanguageModel>: LanguageModelSes
         .onPrompt { called = false }
         // Required mode must end after a call, or the framework keeps calling tools.
         .onToolOutput { called = true }
-        .summarizeHistory(entryThreshold: 8, model: summaryModel,
+        .summarizeHistory(entryThreshold: summaryThreshold, model: summaryModel,
             instructions: Instructions("""
                 Summarize the conversation in at most 100 words. Preserve the current task,
                 user facts and decisions, file paths, completed actions and their results,

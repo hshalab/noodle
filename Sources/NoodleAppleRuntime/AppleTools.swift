@@ -1,88 +1,30 @@
 import Darwin
 import Foundation
 import NoodleCore
-
-struct AppleConversationTurn: Sendable {
-    struct Message: Sendable {
-        let isAssistant: Bool
-        let text: String
-    }
-    let conversationID: UUID
-    let messageIDs: Set<UUID>
-    let history: [Message]
-    let prompt: String
-    var images: [URL] = []
-
-    /// Give follow-ups immediate grounding without requiring the model to
-    /// discover that it needs history. Old assistant mistakes are not facts.
-    var chatPrompt: String {
-        var budget = 2_048
-        var messages: [String] = []
-        for message in history.reversed() where !message.isAssistant {
-            let text = message.text
-            guard text.utf8.count <= budget else { break }
-            messages.append(text)
-            budget -= text.utf8.count
-        }
-        guard !messages.isEmpty else { return prompt }
-        return "Earlier user messages, oldest first (quoted reference):\n"
-            + messages.reversed().joined(separator: "\n\n")
-            + "\n\nLatest user message to answer:\n" + prompt
-    }
-
-
-}
+import UniformTypeIdentifiers
 
 /// Tool implementations are independent of the model API so bounds, cancellation,
 /// and real filesystem behavior can be tested without making an inference request.
 public actor AppleToolContext {
     public let workspace: URL
-    private let messenger: MessengerClient
-    private let agentID: UUID
-    private var remainingCalls = 32
-    private var inboxResult: String?
-    private var inboxDeliveries: [MessengerDelivery] = []
+    private let pageBytes: Int
     private let outputDirectory: URL
-    private let pendingRepliesFile: URL
-    private var pendingReplies: [String: Set<UUID>]
-    private struct ReplyReceipt: Codable {
-        let messageIDs: Set<UUID>
-        let body: String
-    }
-    private let replyReceiptsFile: URL
-    private var replyReceipts: [String: ReplyReceipt]
 
-    public init(workspace: URL, messenger: MessengerClient? = nil) throws {
+    public init(workspace: URL, pageBytes: Int = 3_072) throws {
         let layout = try AgentStorageLayout.containing(workspace)
         self.workspace = layout.workspace
-        guard let id = UUID(uuidString: layout.package.lastPathComponent) else { throw WorkspaceError.invalidAgentDirectory }
-        agentID = id
-        self.messenger = messenger ?? MessengerClient(workspace: layout.workspace)
+        self.pageBytes = max(1_024, pageBytes)
         outputDirectory = layout.workspace.appendingPathComponent(".noodle/apple/outputs")
-        pendingRepliesFile = layout.workspace.appendingPathComponent(".noodle/apple/pending-replies.json")
-        if FileManager.default.fileExists(atPath: pendingRepliesFile.path) {
-            pendingReplies = try JSONDecoder().decode([String: Set<UUID>].self, from: Data(contentsOf: pendingRepliesFile))
-        } else { pendingReplies = [:] }
-        replyReceiptsFile = layout.workspace.appendingPathComponent(".noodle/apple/reply-receipts.json")
-        if FileManager.default.fileExists(atPath: replyReceiptsFile.path) {
-            replyReceipts = try JSONDecoder().decode([String: ReplyReceipt].self, from: Data(contentsOf: replyReceiptsFile))
-        } else { replyReceipts = [:] }
         try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
     }
 
-    private func beginCall() throws {
-        try Task.checkCancellation()
-        guard remainingCalls > 0 else { throw AppleToolLimit() }
-        remainingCalls -= 1
-    }
-
     private func url(_ path: String) throws -> URL {
+        try Task.checkCancellation()
         guard !path.isEmpty, !path.utf8.contains(0) else { throw HarnessSetupError("Provide a nonempty file path.") }
         return (path.hasPrefix("/") ? URL(fileURLWithPath: path) : workspace.appendingPathComponent(path)).standardizedFileURL
     }
 
     public func read(path: String, offset: Int = 0) throws -> String {
-        try beginCall()
         guard offset >= 0 else { throw HarnessSetupError("The byte offset must be nonnegative.") }
         let file = try url(path)
         let attributes: [FileAttributeKey: Any]
@@ -95,25 +37,62 @@ public actor AppleToolContext {
         let handle = try FileHandle(forReadingFrom: file)
         defer { try? handle.close() }
         try handle.seek(toOffset: UInt64(offset))
-        let bytes = try handle.read(upToCount: 3_072) ?? Data()
+        let bytes = try handle.read(upToCount: pageBytes) ?? Data()
         let size = (attributes[.size] as? NSNumber)?.intValue ?? 0
         let page = try textPage(bytes)
         let end = offset + page.count
         return page.text + "\n[bytes \(offset)..<\(end) of \(size)\(end < size ? "; call read with offset \(end) to continue" : "; end")]"
     }
 
-    public func write(path: String, content: String) throws -> String {
-        try beginCall()
+    /// An image file the model can look at, or nil for anything else.
+    func image(path: String) throws -> URL? {
+        let file = try url(path)
+        guard let type = UTType(filenameExtension: file.pathExtension), type.conforms(to: .image),
+              let attributes = try? FileManager.default.attributesOfItem(atPath: file.path),
+              attributes[.type] as? FileAttributeType == .typeRegular else { return nil }
+        guard let size = attributes[.size] as? NSNumber, size.int64Value <= 20_971_520 else {
+            throw HarnessSetupError("Open images smaller than 20 MiB.")
+        }
+        return file
+    }
+
+    public func write(path: String, content: String, append: Bool = false) throws -> String {
         guard content.utf8.count <= 65_536 else { throw HarnessSetupError("Write at most 64 KiB per call.") }
         let destination = try url(path)
         // Atomic replacement of regular files. The OS sandbox remains the final
         // authority for both native tools and command descendants, including links.
-        if FileManager.default.fileExists(atPath: destination.path) {
+        let exists = FileManager.default.fileExists(atPath: destination.path)
+        if exists {
             let type = try FileManager.default.attributesOfItem(atPath: destination.path)[.type] as? FileAttributeType
             guard type == .typeRegular else { throw HarnessSetupError("Write requires a regular file, not a directory or symbolic link.") }
         }
-        try AtomicFile.write(Data(content.utf8), to: destination)
-        return "Wrote \(content.utf8.count) bytes to \(destination.path)."
+        guard append && exists else {
+            try AtomicFile.write(Data(content.utf8), to: destination)
+            return "Wrote \(content.utf8.count) bytes to \(destination.path)."
+        }
+        let handle = try FileHandle(forWritingTo: destination)
+        defer { try? handle.close() }
+        let end = try handle.seekToEnd()
+        try handle.write(contentsOf: Data(content.utf8))
+        return "Appended \(content.utf8.count) bytes to \(destination.path); it now has \(end + UInt64(content.utf8.count)) bytes."
+    }
+
+    public func edit(path: String, old: String, new: String) throws -> String {
+        guard !old.isEmpty else { throw HarnessSetupError("Give the exact text to replace.") }
+        let file = try url(path)
+        let type = try FileManager.default.attributesOfItem(atPath: file.path)[.type] as? FileAttributeType
+        guard type == .typeRegular else { throw HarnessSetupError("Edit requires a regular file, not a directory or symbolic link.") }
+        guard let text = String(data: try Data(contentsOf: file), encoding: .utf8) else {
+            throw HarnessSetupError("\(file.path) is not UTF-8 text.")
+        }
+        let matches = text.ranges(of: old)
+        guard matches.count == 1, let match = matches.first else {
+            throw HarnessSetupError(matches.isEmpty
+                ? "The text to replace is not in \(file.path). Read the file and copy the exact text."
+                : "The text to replace appears \(matches.count) times in \(file.path). Include more of the surrounding text so it appears once.")
+        }
+        try AtomicFile.write(Data(text.replacingCharacters(in: match, with: new).utf8), to: file)
+        return "Replaced the text in \(file.path)."
     }
 
     public func execute(command: String) async throws -> String {
@@ -121,184 +100,29 @@ public actor AppleToolContext {
     }
 
     func executeResult(command: String) async throws -> AppleToolResult {
-        try beginCall()
+        try Task.checkCancellation()
         guard !command.isEmpty, command.utf8.count <= 16_384, !command.utf8.contains(0) else {
             throw HarnessSetupError("Provide a command of at most 16 KiB.")
         }
         let result = try await AppleCommand.run(command, workspace: workspace)
-        return AppleToolResult(text: try present("Exit status: \(result.status)\n\(result.output)"), failed: result.status != 0)
+        // Failures and summaries usually come last; keep the end in view.
+        return AppleToolResult(text: try present("Exit status: \(result.status)\n\(result.output)", keepingEnd: true), failed: result.status != 0)
     }
 
-    public func inbox() throws -> String {
-        try beginCall()
-        // A repeated tool call in one turn never consumes a second inbox batch.
-        if let inboxResult { return inboxResult }
-        let deliveries: [MessengerDelivery] = try messenger.call(.getLatest(consumes: true))
-        inboxDeliveries = deliveries
-        for delivery in deliveries where delivery.message.author == .user && delivery.reactionChange == nil {
-            pendingReplies[delivery.conversation.id.uuidString.lowercased(), default: []].insert(delivery.message.id)
-        }
-        try savePendingReplies()
-        RuntimeDiagnostics.inboxRead(agentID: agentID, workspace: workspace, count: deliveries.count, consuming: true)
-        let result = try present(json(deliveries), alwaysSave: true)
-        inboxResult = result
-        return result
-    }
-
-    public func inboxPrompt() throws -> String {
-        _ = try inbox()
-        let messages = try inboxDeliveries.map { delivery in
-            var text = "Conversation: \(delivery.conversation.id.uuidString.lowercased()) (\(delivery.conversation.kind.rawValue))\nFrom: \(delivery.sender.displayName) (\(delivery.sender.handle.rawValue))\nMessage: \(delivery.message.body)"
-            if delivery.conversation.kind == .group { text += "\nParticipants: " + (try json(delivery.participants)) }
-            if !delivery.attachments.isEmpty { text += "\nAttachments: " + (try json(delivery.attachments)) }
-            if delivery.reactionChange != nil { text += "\nReaction details: " + (try json(delivery)) }
-            return text
-        }
-        return try present(messages.isEmpty ? "No unread messages." : messages.joined(separator: "\n\n"))
-    }
-
-    func backgroundInboxPrompt() throws -> String? {
-        _ = try inbox()
-        inboxDeliveries.removeAll { $0.message.author == .user && $0.reactionChange == nil }
-        inboxResult = try present(json(inboxDeliveries))
-        guard !inboxDeliveries.isEmpty else { return nil }
-        return try inboxPrompt()
-    }
-
-    /// Rebuild ordinary chat from durable messages, preserving user/assistant
-    /// roles. Each conversation gets its own bounded context and reply target.
-    func conversationTurns() throws -> [AppleConversationTurn] {
-        _ = try inbox()
-        var turns: [AppleConversationTurn] = []
-        for key in pendingReplies.keys.sorted() {
-            let conversation = try conversationID(key)
-            let deliveries: [MessengerDelivery] = try messenger.call(.listMessages(conversationID: conversation))
-            // Reconcile only the exact reply prepared for these messages. An
-            // unrelated reply may follow a new arrival while another turn runs.
-            if let receipt = replyReceipts[key],
-               let last = deliveries.lastIndex(where: { receipt.messageIDs.contains($0.message.id) }),
-               deliveries.dropFirst(last + 1).contains(where: {
-                   $0.message.author == .agent(agentID) && $0.message.body == receipt.body
-               }) {
-                pendingReplies[key]?.subtract(receipt.messageIDs)
-                replyReceipts[key] = nil
-            }
-            let ids = pendingReplies[key, default: []]
-            let indices = deliveries.indices.filter { ids.contains(deliveries[$0].message.id) }
-            guard let first = indices.first, let last = indices.last else {
-                pendingReplies[key] = nil
-                continue
-            }
-            let pending = Array(deliveries[first...last])
-            let prompt = try present(pending.map { try conversationText($0, compactImages: true) }.joined(separator: "\n\n"))
-            var budget = max(0, 6_000 - prompt.utf8.count)
-            var history: [AppleConversationTurn.Message] = []
-            for delivery in deliveries[..<first].suffix(16).reversed() {
-                let text = try conversationText(delivery)
-                guard text.utf8.count <= budget else { break }
-                budget -= text.utf8.count
-                history.append(.init(isAssistant: delivery.message.author == .agent(agentID), text: text))
-            }
-            let imageAttachments = pending.flatMap(\.attachments).filter { $0.url == nil && $0.mediaType.hasPrefix("image/") }
-            let images = try Self.imageURLs(imageAttachments)
-            turns.append(.init(conversationID: conversation, messageIDs: ids, history: history.reversed(), prompt: prompt, images: images))
-        }
-        try savePendingReplies()
-        try saveReplyReceipts()
-        return turns
-    }
-
-    static func imageURLs(_ attachments: [MessengerAttachment]) throws -> [URL] {
-        var seen = Set<UUID>()
-        let images = attachments.filter { seen.insert($0.id).inserted }
-        guard images.count <= 4 else { throw HarnessSetupError("Send at most four images in one Apple model turn.") }
-        var bytes: Int64 = 0
-        return try images.map { attachment in
-            let url = URL(fileURLWithPath: attachment.absolutePath).standardizedFileURL
-            let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
-            guard url.resolvingSymlinksInPath() == url,
-                  attributes[.type] as? FileAttributeType == .typeRegular,
-                  let size = attributes[.size] as? NSNumber, size.int64Value > 0, size.int64Value <= 20_971_520 else {
-                throw HarnessSetupError("Images must be regular files smaller than 20 MiB.")
-            }
-            bytes += size.int64Value
-            guard bytes <= 41_943_040 else { throw HarnessSetupError("Send at most 40 MiB of images in one turn.") }
-            return url
-        }
-    }
-
-    func deliverReply(_ body: String, to turn: AppleConversationTurn) throws {
-        try Task.checkCancellation()
-        try prepareReply(body, to: turn)
-        _ = try send(conversation: turn.conversationID.uuidString, body: body)
-        let key = turn.conversationID.uuidString.lowercased()
-        pendingReplies[key]?.subtract(turn.messageIDs)
-        if pendingReplies[key]?.isEmpty == true { pendingReplies[key] = nil }
-        try savePendingReplies()
-        replyReceipts[key] = nil
-        try saveReplyReceipts()
-    }
-
-    func prepareReply(_ body: String, to turn: AppleConversationTurn) throws {
-        let body = body.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !body.isEmpty else { throw HarnessSetupError("The model returned an empty reply.") }
-        replyReceipts[turn.conversationID.uuidString.lowercased()] = .init(messageIDs: turn.messageIDs, body: body)
-        try saveReplyReceipts()
-    }
-
-    private func saveReplyReceipts() throws {
-        try AtomicFile.write(JSONEncoder().encode(replyReceipts), to: replyReceiptsFile)
-    }
-
-    private func savePendingReplies() throws {
-        try AtomicFile.write(JSONEncoder().encode(pendingReplies), to: pendingRepliesFile)
-    }
-
-    private func conversationText(_ delivery: MessengerDelivery, compactImages: Bool = false) throws -> String {
-        var text = delivery.message.body
-        if delivery.conversation.kind == .group || delivery.message.author == .system {
-            text = "\(delivery.sender.displayName): \(text)"
-        }
-        var attachments = delivery.attachments
-        if compactImages {
-            for image in attachments where image.url == nil && image.mediaType.hasPrefix("image/") {
-                text += "\nAttached image: \(image.originalFilename)"
-                if let annotation = image.annotation { text += "\nImage annotation: " + (try json(annotation)) }
-            }
-            attachments.removeAll { $0.url == nil && $0.mediaType.hasPrefix("image/") }
-        }
-        if !attachments.isEmpty { text += "\nAttachments: " + (try json(attachments)) }
-        return text
-    }
-
-    public func send(conversation: String, body: String) throws -> String {
-        try beginCall()
-        guard !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw HarnessSetupError("A reply cannot be empty.") }
-        let message: ChatMessage = try messenger.call(.send(conversationID: conversationID(conversation), body: body, attachmentURLs: []))
-        return "Sent message \(message.id.uuidString.lowercased())."
-    }
-
-    private func conversationID(_ value: String) throws -> UUID {
-        guard let id = UUID(uuidString: value) else { throw HarnessSetupError("Use the exact conversation UUID from Messenger.") }
-        return id
-    }
-
-    private func present(_ value: String, alwaysSave: Bool = false) throws -> String {
+    private func present(_ value: String, keepingEnd: Bool = false) throws -> String {
         let data = Data(value.utf8)
-        guard alwaysSave || data.count > 3_072 else { return value }
+        guard data.count > pageBytes else { return value }
         let file = outputDirectory.appendingPathComponent("\(UUID().uuidString.lowercased()).txt")
         try AtomicFile.write(data, to: file)
-        if data.count <= 3_072 { return value }
-        let page = try textPage(Data(data.prefix(3_072)))
-        return page.text
-            + "\n[Full result saved at \(file.path); \(data.count) bytes.\(data.count > page.count ? " Read remaining bytes with read offset \(page.count) before considering this result complete." : "")]"
-    }
-
-    private func json<T: Encodable>(_ value: T) throws -> String {
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        encoder.outputFormatting = [.withoutEscapingSlashes]
-        return String(decoding: try encoder.encode(value), as: UTF8.self)
+        guard keepingEnd else {
+            let page = try textPage(Data(data.prefix(pageBytes)))
+            return page.text
+                + "\n[Full result saved at \(file.path); \(data.count) bytes. Read remaining bytes with read offset \(page.count) before considering this result complete.]"
+        }
+        let head = try textPage(Data(data.prefix(pageBytes / 2)))
+        let tail = textTail(Data(data.suffix(pageBytes / 2)))
+        return head.text + "\n[\(data.count - head.count - tail.count) bytes left out here]\n" + tail.text
+            + "\n[Full result saved at \(file.path); \(data.count) bytes. Read it from offset \(head.count) for the part left out.]"
     }
 
     private func textPage(_ bytes: Data) throws -> (text: String, count: Int) {
@@ -309,10 +133,13 @@ public actor AppleToolContext {
         }
         throw HarnessSetupError("This is not UTF-8 text, or the offset splits a character. Use the next offset returned by read.")
     }
-}
 
-struct AppleToolLimit: LocalizedError {
-    var errorDescription: String? { "Apple reached the 32-tool limit for this turn. Unfinished work is preserved; retry to continue." }
+    private func textTail(_ bytes: Data) -> (text: String, count: Int) {
+        // Start at a character boundary, past any UTF-8 continuation bytes.
+        let start = bytes.prefix(3).prefix { $0 & 0xC0 == 0x80 }.count
+        let tail = bytes.dropFirst(start)
+        return (String(decoding: tail, as: UTF8.self), tail.count)
+    }
 }
 
 public enum AppleCommand {

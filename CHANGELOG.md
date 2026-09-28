@@ -11,11 +11,15 @@ All notable changes to Noodle are documented here, following
 - Local Models offers Qwen3.5 9B, gpt-oss 20B, Qwen3.8 27B, Qwen3.6 35B-A3B and Qwen3 Coder Next for Macs with 16 GB to 64 GB of memory, and Import Model accepts Qwen3.5, Qwen3-Next and gpt-oss models. Qwen3.5 models are used for text only.
 - Sign FX in to more than one account. Profiles under FX in Settings > Harness adds a profile that signs in with Vercel, and Edit Bot > Harness chooses which one a bot uses. Each profile keeps its login in Noodle's storage, apart from the one in your home folder.
 - Sign OpenCode in to more than one account. Profiles under OpenCode in Settings > Harness adds a profile, and Sign In gives the Terminal command that signs in to it. Each profile keeps its own login, settings and conversations, apart from the ones in your home folder.
+- Apple Intelligence bots can change part of a file without rewriting it, write long files in parts, see the end of long command output where errors usually are, and look at images in their workspace.
 
 ### Changed
 
 - The app icon uses Apple's system blue, the same flat blue as the other Noodle apps.
 - The website's buttons, links and icon use the same system blue as the apps, in light and dark appearance.
+- Apple Intelligence bots now work like Codex and Claude bots: they follow the bot's instructions and skills, and read and answer their messages themselves. The on-device model's small context can keep it from getting through longer tasks; local models have more room.
+- An Apple Intelligence bot that uses up its tool calls in a turn now reports what it got done instead of failing the turn.
+- Apple Intelligence bots with local models read files in larger pages.
 
 ## [0.30.0] - 2026-09-28
 

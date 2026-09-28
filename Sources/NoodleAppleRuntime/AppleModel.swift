@@ -66,79 +66,53 @@ public enum AppleModel {
         onActivity()
         await onEvent(.status("Preparing turn"))
         let backend = try await AppleModelBackend.prepare(identifier: modelIdentifier, workspace: workspace)
-        let context = try AppleToolContext(workspace: workspace)
-        let layout = try AgentStorageLayout.containing(workspace)
+        try await run(workspace: workspace, backend: backend, wake: wake, onEvent: onEvent, onActivity: onActivity)
+    }
+
+    /// Like Codex and Claude, the model gets AGENTS.md, the workspace skills
+    /// and the wake event. It reads and answers its messages with its tools.
+    @available(macOS 26, *)
+    static func run(workspace: URL, backend: AppleModelBackend, wake: String,
+                    onEvent: @escaping @Sendable (AppleActivityEvent) async -> Void,
+                    onActivity: @escaping @Sendable () -> Void) async throws {
+        let context = try AppleToolContext(workspace: workspace, pageBytes: backend.pageBytes)
         let unfinished = workspace.appendingPathComponent(".noodle/apple/unfinished")
         let recovering = FileManager.default.fileExists(atPath: unfinished.path)
         try AtomicFile.write(Data("unfinished".utf8), to: unfinished)
-        let repository = WorkspaceRepository(rootURL: layout.package.deletingLastPathComponent().deletingLastPathComponent())
-        let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
-        let agent = try decoder.decode(AgentRecord.self, from: Data(contentsOf: layout.configuration))
-        let preferences = try repository.loadAgentPreferences(agent)
-        let identityInstructions = """
-        You are \(agent.displayName), an agent running in Noodle on macOS.
-        Carry out the user's requests. Use tools to perform actions and inspect current system or workspace state. Return the observed results. Do not merely explain how the user could do the work unless they ask for instructions. Do only the requested work.
-
-        Standing user preferences from preferences.md (newer explicit user requests take precedence):
-        \(String(preferences.prefix(1_600)))
-        """
-        let workspaceInstructions = try AppleWorkspaceInstructions.text(workspace: workspace)
+        let instructions = try AppleWorkspaceInstructions.text(workspace: workspace)
         await onEvent(.status("Loaded AGENTS.md and skill catalogue"))
-        let conversationTurns = try await context.conversationTurns()
-        if !conversationTurns.isEmpty {
-            do {
-                for turn in conversationTurns {
-                    try await reply(to: turn, context: context, instructions: identityInstructions, workspaceInstructions: workspaceInstructions,
-                                    workspace: workspace, backend: backend, recovering: recovering, onEvent: onEvent, onActivity: onActivity)
-                }
-            } catch is CancellationError { throw CancellationError() }
-            catch {
-                if Task.isCancelled { throw CancellationError() }
-                saveFailure(error, in: workspace)
-                throw HarnessSetupError("The selected model could not finish this turn: \(failureDescription(error)). Unfinished work is preserved; retry to continue.")
-            }
-        }
-        // Event wakes use the same tools and explicit Messenger CLI sends
-        // so a quiet heartbeat stays quiet.
-        let inbox = try await context.backgroundInboxPrompt()
-        if inbox == nil && (!conversationTurns.isEmpty || wake == AgentWakeReason.inboxChanged.eventText) {
-            try FileManager.default.removeItem(at: unfinished)
-            return
-        }
-        let instructions = identityInstructions + "\n" + workspaceInstructions + "\n" + MessengerDocumentation.appleRuntimeInstructions
-        let tools = workspaceTools(context: context, onEvent: onEvent, onActivity: onActivity)
-        let prompt = """
-        \(recovering ? wake + "\n" + AgentWakeReason.runtimeRecovered.eventText : wake)
-        Noodle has already read your inbox. These are the messages to handle now:
-        \(inbox ?? "No unread messages.")
-        Carry out the requests using your tools, then send any needed replies through the Messenger CLI to their original conversations.
-        """
-        let eventFile = workspace.appendingPathComponent(".noodle/apple/events.json")
-        let saved = try AppleConversationSession.load(from: eventFile)
-        let entries = try await backend.recentEntries(saved, prompt: prompt, instructions: instructions, tools: tools)
-        let control = AppleTurnControl(resuming: recovering ? saved : nil)
+        var look: (@Sendable (URL) async throws -> String)?
+        if backend.supportsImages { look = { url in try await backend.describe(image: url) } }
+        let tools = workspaceTools(context: context, look: look, onEvent: onEvent, onActivity: onActivity)
+        let file = AppleConversationSession.file(in: workspace)
+        let saved = try AppleConversationSession.load(from: file)
+        let entries = try await backend.recentEntries(saved, prompt: wake, instructions: instructions, tools: tools)
+        let control = AppleTurnControl(resuming: recovering && saved?.transcript.isEmpty == false)
         let session = backend.session(tools: tools, instructions: instructions, entries: entries, control: control) { transcript in
             try AppleConversationSession(transcript: AppleConversationSession.persistable(transcript),
-                messageIDs: [], reply: "", modelIdentifier: backend.identifier).save(to: eventFile)
+                modelIdentifier: backend.identifier).save(to: file)
         }
-        var eventSaved = false
+        var stored = false
         defer {
             // Private local diagnostics and a recovery aid, like other harness
             // transcripts. Never sent to the app's visible conversation stream.
-            try? AtomicFile.write(JSONEncoder().encode(session.transcript), to: workspace.appendingPathComponent(".noodle/apple/last-transcript.json"))
-            if !eventSaved {
-                try? AppleConversationSession(transcript: session.transcript, messageIDs: [], reply: "", modelIdentifier: backend.identifier)
-                    .save(to: eventFile)
+            try? AtomicFile.write(JSONEncoder().encode(AppleConversationSession.persistable(session.transcript)),
+                to: workspace.appendingPathComponent(".noodle/apple/last-transcript.json"))
+            if !stored {
+                try? AppleConversationSession(transcript: AppleConversationSession.persistable(session.transcript),
+                    modelIdentifier: backend.identifier).save(to: file)
             }
         }
         onActivity()
         do {
-            _ = try await AppleResponseRecovery.respond(session: session, prompt: Prompt(prompt),
+            // The final text is private, as for other harnesses; replies go
+            // through Messenger.
+            _ = try await AppleResponseRecovery.respond(session: session, prompt: Prompt(wake),
                 responseTokens: backend.responseTokens, control: control, allowsEmptyReply: true, onEvent: onEvent, onActivity: onActivity)
             try Task.checkCancellation()
-            try AppleConversationSession(transcript: session.transcript, messageIDs: [], reply: "", modelIdentifier: backend.identifier)
-                .save(to: eventFile)
-            eventSaved = true
+            try AppleConversationSession(transcript: AppleConversationSession.persistable(session.transcript),
+                modelIdentifier: backend.identifier).save(to: file)
+            stored = true
             try FileManager.default.removeItem(at: unfinished)
         } catch is CancellationError { throw CancellationError() }
         catch {
@@ -149,70 +123,13 @@ public enum AppleModel {
     }
 
     @available(macOS 26, *)
-    private static func reply(to turn: AppleConversationTurn, context: AppleToolContext, instructions: String,
-                              workspaceInstructions: String, workspace: URL, backend: AppleModelBackend, recovering: Bool,
-                              onEvent: @escaping @Sendable (AppleActivityEvent) async -> Void,
-                              onActivity: @escaping @Sendable () -> Void) async throws {
-        onActivity()
-        let file = AppleConversationSession.file(in: workspace, conversationID: turn.conversationID)
-        let saved = try AppleConversationSession.load(from: file)
-        // Generation finished before an interrupted delivery: reuse its result
-        // instead of running the tools a second time.
-        if let saved, saved.hasCompletedReply, saved.messageIDs.isSubset(of: turn.messageIDs) {
-            await onEvent(.status("Delivering saved reply"))
-            let completed = AppleConversationTurn(conversationID: turn.conversationID, messageIDs: saved.messageIDs,
-                                                   history: [], prompt: "")
-            try await context.deliverReply(saved.reply, to: completed)
-            if saved.messageIDs != turn.messageIDs,
-               let remaining = try await context.conversationTurns().first(where: { $0.conversationID == turn.conversationID }) {
-                try await reply(to: remaining, context: context, instructions: instructions,
-                                workspaceInstructions: workspaceInstructions, workspace: workspace,
-                                backend: backend, recovering: recovering, onEvent: onEvent, onActivity: onActivity)
-            }
-            return
-        }
-        let tools = workspaceTools(context: context, onEvent: onEvent, onActivity: onActivity)
-        let instructions = instructions + "\n" + workspaceInstructions + "\n"
-            + MessengerDocumentation.appleConversationInstructions
-            + "\nCurrent conversation UUID: " + turn.conversationID.uuidString.lowercased()
-            + (recovering ? "\nAn earlier attempt was interrupted. Check Messenger history before repeating work." : "")
-        // Every conversation resumes its saved native session. The backend
-        // manages its context budget while supplying current instructions/tools.
-        let prompt = saved == nil ? turn.chatPrompt : turn.prompt
-        let entries = try await backend.recentEntries(saved, prompt: prompt, instructions: instructions, tools: tools)
-        let control = AppleTurnControl(resuming: recovering ? saved : nil)
-        let session = backend.session(tools: tools, instructions: instructions, entries: entries, control: control) { transcript in
-            try AppleConversationSession(transcript: AppleConversationSession.persistable(transcript),
-                messageIDs: [], reply: "", modelIdentifier: backend.identifier).save(to: file)
-        }
-        var completed = false
-        defer {
-            try? AtomicFile.write(JSONEncoder().encode(AppleConversationSession.persistable(session.transcript)), to: workspace.appendingPathComponent(".noodle/apple/last-transcript.json"))
-            if !completed {
-                // Keep interrupted work in the managed session without marking
-                // the unanswered messages as having a completed reply.
-                try? AppleConversationSession(transcript: AppleConversationSession.persistable(session.transcript),
-                    messageIDs: [], reply: "", modelIdentifier: backend.identifier).save(to: file)
-            }
-        }
-        onActivity()
-        let response = try await AppleResponseRecovery.respond(session: session,
-            prompt: backend.prompt(prompt, images: turn.images), responseTokens: backend.responseTokens,
-            control: control, onEvent: onEvent, onActivity: onActivity)
-        let receipt = AppleConversationSession(transcript: AppleConversationSession.persistable(session.transcript), messageIDs: turn.messageIDs,
-                                                 reply: response, modelIdentifier: backend.identifier)
-        try receipt.save(in: workspace, conversationID: turn.conversationID)
-        completed = true
-        try await context.deliverReply(response, to: turn)
-        await onEvent(.status("Reply delivered"))
-    }
-
-    @available(macOS 26, *)
-    static func workspaceTools(context: AppleToolContext,
+    static func workspaceTools(context: AppleToolContext, look: (@Sendable (URL) async throws -> String)? = nil,
                                onEvent: @escaping @Sendable (AppleActivityEvent) async -> Void = { _ in },
                                onActivity: @escaping @Sendable () -> Void) -> [any Tool] {
-        [Bash(context: context, activity: onActivity, onEvent: onEvent), Read(context: context, activity: onActivity, onEvent: onEvent),
-         Write(context: context, activity: onActivity, onEvent: onEvent)]
+        [Bash(context: context, activity: onActivity, onEvent: onEvent),
+         Read(context: context, look: look, activity: onActivity, onEvent: onEvent),
+         Write(context: context, activity: onActivity, onEvent: onEvent),
+         Edit(context: context, activity: onActivity, onEvent: onEvent)]
     }
 
     @available(macOS 26, *)
@@ -263,15 +180,27 @@ public enum AppleModel {
 @available(macOS 26, *)
 private struct Read: Tool {
     let context: AppleToolContext
+    let look: (@Sendable (URL) async throws -> String)?
     let activity: @Sendable () -> Void
     let onEvent: @Sendable (AppleActivityEvent) async -> Void
     let name = "read"
-    let description = "Read a text file in 3072-byte pages, or list a directory. Paths may be relative to the workspace."
-    @Generable struct Arguments { var path: String; var offset: Int }
+    var description: String {
+        "Read a text file one page at a time, or list a directory." + (look == nil ? "" : " For an image file, returns what it shows.")
+    }
+    @Generable struct Arguments {
+        @Guide(description: "File or directory path, absolute or relative to the working directory.")
+        var path: String
+        @Guide(description: "Byte offset to start from. Omit for the start; use the offset the previous page gives.")
+        var offset: Int?
+    }
     func call(arguments: Arguments) async throws -> String {
         activity()
-        return try await AppleToolActivity.perform(name: "Read file", input: ["path": arguments.path, "offset": String(arguments.offset)], onEvent: onEvent) {
-            AppleToolResult(text: try await context.read(path: arguments.path, offset: arguments.offset))
+        let offset = arguments.offset ?? 0
+        return try await AppleToolActivity.perform(name: "Read file", input: ["path": arguments.path, "offset": String(offset)], onEvent: onEvent) {
+            if let look, let image = try await context.image(path: arguments.path) {
+                return AppleToolResult(text: "Image \(image.path) shows:\n" + (try await look(image)))
+            }
+            return AppleToolResult(text: try await context.read(path: arguments.path, offset: offset))
         }
     }
 }
@@ -282,12 +211,44 @@ private struct Write: Tool {
     let activity: @Sendable () -> Void
     let onEvent: @Sendable (AppleActivityEvent) async -> Void
     let name = "write"
-    let description = "Create or replace a UTF-8 file. Parent directories must exist."
-    @Generable struct Arguments { var path: String; var content: String }
+    let description = "Create or replace a UTF-8 file, or append to it. Parent directories must exist."
+    @Generable struct Arguments {
+        @Guide(description: "File path, absolute or relative to the working directory.")
+        var path: String
+        @Guide(description: "The text to write.")
+        var content: String
+        @Guide(description: "True to add the text to the end of the file, for writing a long file in parts.")
+        var append: Bool?
+    }
     func call(arguments: Arguments) async throws -> String {
         activity()
-        return try await AppleToolActivity.perform(name: "Write file", input: ["path": arguments.path, "bytes": String(arguments.content.utf8.count)], onEvent: onEvent) {
-            AppleToolResult(text: try await context.write(path: arguments.path, content: arguments.content))
+        let append = arguments.append ?? false
+        return try await AppleToolActivity.perform(name: "Write file", input: ["path": arguments.path, "bytes": String(arguments.content.utf8.count)]
+            .merging(append ? ["append": "true"] : [:]) { $1 }, onEvent: onEvent) {
+            AppleToolResult(text: try await context.write(path: arguments.path, content: arguments.content, append: append))
+        }
+    }
+}
+
+@available(macOS 26, *)
+private struct Edit: Tool {
+    let context: AppleToolContext
+    let activity: @Sendable () -> Void
+    let onEvent: @Sendable (AppleActivityEvent) async -> Void
+    let name = "edit"
+    let description = "Replace one exact piece of text in a UTF-8 file, without rewriting the whole file."
+    @Generable struct Arguments {
+        @Guide(description: "File path, absolute or relative to the working directory.")
+        var path: String
+        @Guide(description: "The exact text to replace. It must appear exactly once in the file.")
+        var old: String
+        @Guide(description: "The replacement text.")
+        var new: String
+    }
+    func call(arguments: Arguments) async throws -> String {
+        activity()
+        return try await AppleToolActivity.perform(name: "Edit file", input: ["path": arguments.path], onEvent: onEvent) {
+            AppleToolResult(text: try await context.edit(path: arguments.path, old: arguments.old, new: arguments.new))
         }
     }
 }
@@ -298,8 +259,11 @@ private struct Bash: Tool {
     let activity: @Sendable () -> Void
     let onEvent: @Sendable (AppleActivityEvent) async -> Void
     let name = "bash"
-    let description = "Run a Bash command in the workspace, with the bot’s access policy. Quote paths and arguments."
-    @Generable struct Arguments { var command: String }
+    let description = "Run a Bash command in the working directory. Quote paths and arguments."
+    @Generable struct Arguments {
+        @Guide(description: "The command line to run with bash -c.")
+        var command: String
+    }
     func call(arguments: Arguments) async throws -> String {
         activity()
         return try await AppleToolActivity.perform(name: "Bash", input: ["command": arguments.command], onEvent: onEvent) {
