@@ -21,7 +21,7 @@ public struct AppleLocalModelsView: View {
     @State private var editingAgent: AgentRecord?
     @State private var returnToModelID: String?
     @State private var modelPendingRemoval: AppleLocalModel?
-    @State private var installedHeight: CGFloat = 0
+    @State private var listHeight: CGFloat = 0
     private let checkSupport: @MainActor () async throws -> Bool
 
     init(store: any BotSettingsHost, checkSupport: @escaping @MainActor () async throws -> Bool = {
@@ -56,19 +56,29 @@ public struct AppleLocalModelsView: View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 18) {
                 Text("Local Models").font(.title2.bold())
+                    .padding(.horizontal, 24)
 
-                modelContent
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                availableContent
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        modelContent
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        availableContent
+                    }
+                    .padding(.horizontal, 24)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { listHeight = $0 }
+                }
+                .scrollBounceBehavior(.basedOnSize)
+                // Grows with the list up to a height that fits any screen, then scrolls.
+                .frame(height: min(listHeight, 520))
 
                 if let error {
                     Label(error, systemImage: "exclamationmark.triangle")
                         .font(.callout).foregroundStyle(.red).textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 24)
                 }
             }
-            .padding(24)
+            .padding(.vertical, 24)
 
             Divider()
             HStack {
@@ -127,36 +137,28 @@ public struct AppleLocalModelsView: View {
         } else if !installed.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Installed").font(.headline)
-                ScrollView {
-                    VStack(spacing: 12) {
-                        ForEach(installed) { model in
-                            let users = botsUsing(model)
-                            let source = AppleDownloadableModel.available.first { $0.repository == model.sourceRepository }
-                            modelRow(name: model.name, summary: source?.summary, byteCount: model.byteCount, sourceURL: source?.sourceURL) {
-                                Button("Remove", role: .destructive) { requestRemoval(model) }
-                                    .disabled(busy)
-                                    .help(users.isEmpty ? "Remove Noodle’s copy of this model."
-                                          : "Used by \(users.map(\.displayName).joined(separator: ", ")).")
-                                    .popover(isPresented: Binding(
-                                        get: { modelUsageID == model.id },
-                                        set: { if !$0, modelUsageID == model.id { modelUsageID = nil } }
-                                    ), arrowEdge: .trailing) {
-                                        AppleModelUsagePopover(model: model, agents: botsUsing(model), edit: { agent in
-                                            returnToModelID = model.id
-                                            modelUsageID = nil
-                                            editingAgent = agent
-                                        }, remove: { requestRemoval(model) }, close: { modelUsageID = nil })
-                                    }
+                ForEach(installed) { model in
+                    let users = botsUsing(model)
+                    let source = AppleDownloadableModel.available.first { $0.repository == model.sourceRepository }
+                    modelRow(name: model.name, summary: source?.summary, byteCount: model.byteCount, sourceURL: source?.sourceURL) {
+                        Button("Remove", role: .destructive) { requestRemoval(model) }
+                            .disabled(busy)
+                            .help(users.isEmpty ? "Remove Noodle’s copy of this model."
+                                  : "Used by \(users.map(\.displayName).joined(separator: ", ")).")
+                            .popover(isPresented: Binding(
+                                get: { modelUsageID == model.id },
+                                set: { if !$0, modelUsageID == model.id { modelUsageID = nil } }
+                            ), arrowEdge: .trailing) {
+                                AppleModelUsagePopover(model: model, agents: botsUsing(model), edit: { agent in
+                                    returnToModelID = model.id
+                                    modelUsageID = nil
+                                    editingAgent = agent
+                                }, remove: { requestRemoval(model) }, close: { modelUsageID = nil })
                             }
-                            .padding(12)
-                            .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 10))
-                        }
                     }
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { installedHeight = $0 }
+                    .padding(12)
+                    .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 10))
                 }
-                .scrollBounceBehavior(.basedOnSize)
-                // Leave the sheet room for the models still on offer.
-                .frame(height: min(installedHeight, max(200, 560 - CGFloat(available.count) * 96)))
             }
         }
     }
