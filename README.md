@@ -14,7 +14,7 @@
   <img alt="Individual and team work" src="https://img.shields.io/badge/work-individual%20%2B%20teams-0a0a0a?style=flat-square">
 </p>
 
-[Website](https://pdparchitect.github.io/noodle/) · [Apps](#apps) · [Documentation](docs/README.md) · [Enterprise](docs/enterprise.md) · [Security](docs/security.md)
+[Website](https://usenoodle.app) · [Apps](#apps) · [Documentation](docs/README.md) · [Enterprise](docs/enterprise.md) · [Security](docs/security.md)
 
 </div>
 
