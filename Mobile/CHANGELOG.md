@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### What to Test
+
+- Pull down on the bots list and type in Search: only bots whose name, description or conversation match are listed, in one list without the pinned circles. Accents and capitals do not matter.
+
+### Added
+
+- Search the bots list by name, description or what was said, as on the Mac.
+
 ## [0.5.0] - 2026-09-28
 
 ### What to Test
