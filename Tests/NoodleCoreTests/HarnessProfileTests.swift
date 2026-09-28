@@ -1,4 +1,5 @@
 import CryptoKit
+import SQLite3
 import XCTest
 @testable import NoodleCore
 
@@ -35,7 +36,7 @@ final class HarnessProfileTests: XCTestCase {
         XCTAssertEqual(try store.load().map(\.displayName), ["Client"])
         XCTAssertFalse(FileManager.default.fileExists(atPath: store.loginHome(personal).path))
 
-        XCTAssertThrowsError(try store.create(provider: .openCode, named: "Other"))
+        XCTAssertThrowsError(try store.create(provider: .apple, named: "Other"))
         XCTAssertThrowsError(try store.create(provider: .codex, named: " \n "))
     }
 
@@ -98,6 +99,66 @@ final class HarnessProfileTests: XCTestCase {
         try FileManager.default.moveItem(at: config, to: moved)
         try FileManager.default.createSymbolicLink(at: config, withDestinationURL: moved)
         XCTAssertThrowsError(try store.validated(muse.id))
+    }
+
+    func testOpenCodeProfileKeepsItsLoginDatabaseInItsOwnFolder() throws {
+        let profile = try store.create(provider: .openCode, named: "Work")
+        let home = store.loginHome(profile)
+        // The background service is found through the state folder, so every folder moves.
+        XCTAssertEqual(store.environment(profile), [
+            "XDG_CONFIG_HOME": home.appendingPathComponent(".config").path,
+            "XDG_DATA_HOME": home.appendingPathComponent(".local/share").path,
+            "XDG_STATE_HOME": home.appendingPathComponent(".local/state").path,
+            "XDG_CACHE_HOME": home.appendingPathComponent(".cache").path])
+        XCTAssertEqual(store.accountHome(profile).path, home.appendingPathComponent(".local/share/opencode").path)
+        XCTAssertEqual(try store.validated(profile.id), profile)
+    }
+
+    func testOpenCodeProfileIsSignedInOnlyByItsOwnDatabase() throws {
+        let work = try store.create(provider: .openCode, named: "Work"), other = try store.create(provider: .openCode, named: "Other")
+        XCTAssertFalse(try store.openCodeSignedIn(work))
+        // The database OpenCode writes under XDG_DATA_HOME is the one read for status.
+        let data = URL(fileURLWithPath: try XCTUnwrap(store.environment(work)["XDG_DATA_HOME"]))
+        try openCodeLogin(data.deletingLastPathComponent().deletingLastPathComponent(), key: "work-key")
+        XCTAssertTrue(try store.openCodeSignedIn(work))
+        XCTAssertFalse(try store.openCodeSignedIn(other))
+    }
+
+    func testRestrictedOpenCodeBotIsSeededFromItsProfileNotTheSystemLogin() throws {
+        let agent = try repository.createAgent(named: "OpenCode Bot", harnessIdentifier: "opencode").agent
+        let workspace = repository.storage(for: agent.id).workspace
+        try OpenCodeStorage.prepareDirectories(workspace: workspace)
+        let system = root.deletingLastPathComponent().appendingPathComponent("system-home", isDirectory: true)
+        try openCodeLogin(system, key: "system-key")
+        let profile = try store.create(provider: .openCode, named: "Work")
+        try openCodeLogin(store.loginHome(profile), key: "work-key")
+        // Stands in for OpenCode creating its schema; the host then writes the rows.
+        let executable = root.deletingLastPathComponent().appendingPathComponent("opencode")
+        try Data(#"""
+            #!/bin/sh
+            exec /usr/bin/sqlite3 "$XDG_DATA_HOME/opencode/opencode.db" "CREATE TABLE IF NOT EXISTS credential (id TEXT, integration_id TEXT, label TEXT, value TEXT, active INT, time_created INT, time_updated INT);"
+            """#.utf8).write(to: executable)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
+        func seed(_ harnessProfile: HarnessProfile?) throws -> String {
+            _ = try OpenCodeStorage.seed(workspace: workspace, harnessProfile: harnessProfile, profiles: store, system: system,
+                executable: executable, environment: OpenCodeStorage.environment(workspace: workspace),
+                profile: "(version 1)(allow default)")
+            return String(describing: try OpenCodeStorage.credentials(home: RestrictedHarnessStorage.home(workspace: workspace)))
+        }
+        XCTAssertTrue(try seed(profile).contains("work-key"))
+        XCTAssertFalse(try seed(profile).contains("system-key"))
+        XCTAssertTrue(try seed(nil).contains("system-key"))
+    }
+
+    private func openCodeLogin(_ home: URL, key: String) throws {
+        let url = home.appendingPathComponent(".local/share/opencode/opencode.db")
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        var db: OpaquePointer?
+        defer { sqlite3_close(db) }
+        guard sqlite3_open(url.path, &db) == SQLITE_OK, sqlite3_exec(db, """
+            CREATE TABLE credential (id TEXT, integration_id TEXT, value TEXT, active INT, time_created INT);
+            INSERT INTO credential VALUES ('cred_\(key.prefix(4))', 'anthropic', '{"type":"key","key":"\(key)"}', 1, 10);
+            """, nil, nil, nil) == SQLITE_OK else { throw HarnessSetupError("Fixture database failed") }
     }
 
     func testSignInChallengeAcceptsOnlyTheVendorsDevicePage() throws {

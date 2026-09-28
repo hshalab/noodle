@@ -37,7 +37,7 @@ import XCTest
     func testSignInNeedsAnInstalledHarnessThatProfilesSupport() throws {
         let (controller, _) = try controller()
         let codex = try controller.create(provider: .codex, named: "Work")
-        XCTAssertThrowsError(try controller.create(provider: .openCode, named: "Other"))
+        XCTAssertThrowsError(try controller.create(provider: .apple, named: "Other"))
         XCTAssertEqual(controller.profiles.map(\.id), [codex.id])
         controller.signIn(codex, installation: HarnessInstallation(provider: .codex, executablePath: nil))
         XCTAssertTrue(controller.activity.isEmpty)
@@ -67,6 +67,18 @@ import XCTest
         let error = try XCTUnwrap(controller.errors[profile.id])
         XCTAssertTrue(error.contains("Agent Host"), error)
         XCTAssertFalse(error.contains("Terminal"), error)
+    }
+
+    func testOpenCodeSignInSendsThePersonToTerminalWithTheProfilesFolders() async throws {
+        let (controller, store) = try controller()
+        let profile = try controller.create(provider: .openCode, named: "Work")
+        controller.signIn(profile, installation: HarnessInstallation(provider: .openCode, executablePath: "/fixtures/opencode"))
+        await settle(controller, profile)
+        XCTAssertNil(controller.authentication[profile.id])
+        let error = try XCTUnwrap(controller.errors[profile.id])
+        let home = store.loginHome(profile).path
+        XCTAssertTrue(error.contains("XDG_CACHE_HOME='\(home)/.cache' XDG_CONFIG_HOME='\(home)/.config' XDG_DATA_HOME='\(home)/.local/share' XDG_STATE_HOME='\(home)/.local/state' '/fixtures/opencode' auth login --standalone"), error)
+        XCTAssertTrue(error.contains("Check Again"), error)
     }
 
     func testRefreshWithoutAnInstallationClearsStatusAndDeleteClearsErrors() async throws {

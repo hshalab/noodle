@@ -107,7 +107,15 @@ public final class HarnessProfilesController {
         switch profile.provider {
         case .codex: CodexAccountProvider(codexHome: store.accountHome(profile), profile: profile.id)
         case .grokBuild, .muse, .claudeCode, .fx: HostProfileSetupProvider(profile: profile)
-        case .antigravity: HostProfileSetupProvider(profile: profile, loginHome: store.loginHome(profile))
+        case .antigravity:
+            HostProfileSetupProvider(profile: profile) { [home = store.loginHome(profile)] in
+                AntigravitySetupProvider.command(for: $0, home: home)
+            }
+        // A private server, so no background service is left running for the profile.
+        case .openCode:
+            HostProfileSetupProvider(profile: profile) { [environment = store.environment(profile)] in
+                OpenCodeSetupProvider.command(for: $0, environment: environment) + " auth login --standalone"
+            }
         default: nil
         }
     }
@@ -124,20 +132,20 @@ extension CodexAccountProvider: HarnessProfileAccount {}
 
 /// Grok Build, Muse Code, Claude Code and FX sign in through the Agent Host, which
 /// resolves the profile's folder itself and runs the harness's own login.
-/// Antigravity has no such login: the host checks the profile, and the user
-/// signs in from Terminal with the profile's home, given here as `loginHome`.
+/// Antigravity and OpenCode have no such login: the host checks the profile, and
+/// the user signs in from Terminal with the command given here as `terminal`.
 @MainActor private final class HostProfileSetupProvider: HarnessProfileAccount {
     private let profile: HarnessProfile
-    private let loginHome: URL?
-    init(profile: HarnessProfile, loginHome: URL? = nil) { self.profile = profile; self.loginHome = loginHome }
+    private let terminal: ((HarnessInstallation) -> String)?
+    init(profile: HarnessProfile, terminal: ((HarnessInstallation) -> String)? = nil) { self.profile = profile; self.terminal = terminal }
 
     func status(for installation: HarnessInstallation) async throws -> HarnessAuthenticationStatus {
         try await run(installation, signIn: false, onChallenge: nil)
     }
     func signIn(for installation: HarnessInstallation,
                 onChallenge: @escaping @MainActor (HarnessSignInChallenge) -> Void) async throws -> HarnessAuthenticationStatus {
-        if let loginHome {
-            throw HarnessSetupError("Run \(AntigravitySetupProvider.command(for: installation, home: loginHome)) in Terminal, complete sign-in, then choose Check Again here.")
+        if let terminal {
+            throw HarnessSetupError("Run \(terminal(installation)) in Terminal, complete sign-in, then choose Check Again here.")
         }
         return try await run(installation, signIn: true, onChallenge: onChallenge)
     }
