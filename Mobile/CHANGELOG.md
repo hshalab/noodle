@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### What to Test
+
+- Touch and hold a message: as in Messages, the conversation blurs, the message lifts, reactions float above it and Copy below. Tap a reaction to add or take it back, or tap outside to close. Try messages near the top and bottom of the screen, and a long one.
+
+### Changed
+
+- Touching and holding a message lifts it with reactions above and actions below, as in Messages.
+
 ## [0.4.0] - 2026-09-28
 
 ### What to Test

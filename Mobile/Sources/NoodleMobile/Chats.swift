@@ -673,6 +673,8 @@ struct ChatView: View {
     /// The live link open full screen. Held here, not by its card: the conversation unloads rows it
     /// lays out again, as on rotating the phone, and a cover presented by a row would close with it.
     @State private var watching: LinkAttachment?
+    /// The message lifted by a long press, with its reactions and actions.
+    @State private var focused: MessageFocus?
     /// Whether the panel of things to attach is open over the conversation.
     @State private var attaching = false
     @Namespace private var attachGlass
@@ -778,6 +780,22 @@ struct ChatView: View {
             attach { try result.get().map(PickedFiles.copy) }
         }
         .environment(\.watchLive) { watching = $0 }
+        .environment(\.focusMessage) { focus in
+            var instant = Transaction()
+            instant.disablesAnimations = true
+            withTransaction(instant) { focused = focus }
+        }
+        // Over the whole screen, bars included, as in Messages; the overlay animates itself in and out.
+        .fullScreenCover(item: $focused) { focus in
+            MessageActions(focus: focus) { emoji in
+                Task { try? await chats.toggleReaction(emoji, on: focus.message, in: agent) }
+            } close: {
+                var instant = Transaction()
+                instant.disablesAnimations = true
+                withTransaction(instant) { focused = nil }
+            }
+            .presentationBackground(.clear)
+        }
         .fullScreenCover(item: $watching) { attachment in
             LiveSurfaceScreen(chats: chats, agent: agent, attachment: attachment)
         }
@@ -1009,6 +1027,9 @@ private struct Bubble: View {
     /// Shown under your latest message only.
     let delivery: String?
     @State private var expanded = false
+    @State private var pressing = false
+    @State private var textFrame = CGRect.zero
+    @Environment(\.focusMessage) private var focusMessage
 
     var body: some View {
         switch message.author {
@@ -1034,9 +1055,6 @@ private struct Bubble: View {
             }
         }
     }
-
-    /// The Mac's quick reactions.
-    static let quickReactions = [["❤️", "👍", "👎", "😂", "🎉", "❓"], ["👀", "⏳", "✅", "🙏", "🔥", "💡"]]
 
     private func react(_ emoji: String) {
         Task { try? await chats.toggleReaction(emoji, on: message, in: agent) }
@@ -1067,16 +1085,13 @@ private struct Bubble: View {
             AttachmentView(chats: chats, agent: agent, attachment: attachment, group: message.attachments)
         }
         if showsText {
-            text.foregroundStyle(foreground)
-                .background(background, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .contextMenu {
-                    // One strip across the top of the menu, which scrolls sideways.
-                    ControlGroup {
-                        ForEach(Self.quickReactions.flatMap { $0 }, id: \.self) { emoji in Button(emoji) { react(emoji) } }
-                    }
-                    .controlGroupStyle(.palette)
-                    Button("Copy", systemImage: "doc.on.doc") { UIPasteboard.general.string = message.body }
-                }
+            MessageText(text: message.body, folded: folded, foreground: foreground, background: background) { expanded = true }
+                .scaleEffect(pressing ? 0.96 : 1)
+                .animation(.spring(duration: 0.25), value: pressing)
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { textFrame = $0 }
+                .onLongPressGesture(minimumDuration: 0.35) { lift() } onPressingChanged: { pressing = $0 }
+                .accessibilityAction(named: "React") { lift() }
+                .accessibilityAction(named: "Copy") { UIPasteboard.general.string = message.body }
         }
         reactions
         if let url = LinkPreview.firstURL(in: message.body) {
@@ -1090,32 +1105,10 @@ private struct Bubble: View {
             && !(message.attachments.contains { $0.voice != nil } && message.body == HubChats.voiceBody)
     }
 
-    private var text: some View {
-        let folded = !expanded && MessageFolding.isLong(message.body)
-        return VStack(alignment: .leading, spacing: 4) {
-            Text(Self.markdown(message.body))
-                .lineLimit(folded ? MessageFolding.foldedLines : nil)
-                .textSelection(.enabled)
-            if folded {
-                Button("Read more") { expanded = true }
-                    .font(.subheadline.weight(.semibold))
-                    .buttonStyle(.plain)
-            }
-        }
-        .padding(.horizontal, 12).padding(.vertical, 8)
-    }
+    private var folded: Bool { !expanded && MessageFolding.isLong(message.body) }
 
-    /// Inline markdown, with only web and mail links left tappable, as on the Mac.
-    static func markdown(_ body: String) -> AttributedString {
-        guard var text = try? AttributedString(markdown: body, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) else {
-            return AttributedString(body)
-        }
-        for run in text.runs {
-            if let link = run.link, !["http", "https", "mailto"].contains(link.scheme?.lowercased() ?? "") {
-                text[run.range].link = nil
-            }
-        }
-        return text
+    private func lift() {
+        focusMessage(MessageFocus(message: message, frame: textFrame, folded: folded))
     }
 }
 
