@@ -17,7 +17,7 @@ enum HubSettingsTab: Hashable {
     let hub: Hub
     let setup: HarnessSetupController
     let mcp: MCPController
-    var selectedTab: HubSettingsTab = .harnesses
+    var selectedTab: HubSettingsTab = .network
     let activityWindows = AgentActivityWindows()
 
     init(hub: Hub) {
@@ -56,9 +56,8 @@ enum HubSettingsTab: Hashable {
 }
 
 struct HubSettingsView: View {
-    /// Heartbeat, Sandbox and Tools configure bots the way Noodle does, which the Hub's bots
-    /// do not follow yet; until then their tabs stay out of Settings. Companions always shows,
-    /// since the Hub's bots run on the companion apps of this Mac.
+    /// Tools configures connections the way Noodle does, but the Hub's bots use the ones their
+    /// owners add from Noodle, so its tab stays out of Settings.
     static let showsAgentSettings = false
 
     @Bindable var host: HubSettingsHost
@@ -86,6 +85,10 @@ struct HubSettingsView: View {
 
     var body: some View {
         TabView(selection: $host.selectedTab.animation(.easeInOut(duration: 0.22))) {
+            HubNetworkSettingsView(link: host.hub.link)
+                .hubSettingsSize()
+                .tabItem { Label("Network", systemImage: "network") }
+                .tag(HubSettingsTab.network)
             HarnessesSettingsView(store: host, setup: host.setup)
                 .hubSettingsSize()
                 .tabItem { Label("Harness", systemImage: "terminal") }
@@ -102,19 +105,15 @@ struct HubSettingsView: View {
                 .hubSettingsSize()
                 .tabItem { Label("Bots", systemImage: "sparkles") }
                 .tag(HubSettingsTab.bots)
-            HubNetworkSettingsView(link: host.hub.link)
+            HeartbeatsSettingsView(store: host)
                 .hubSettingsSize()
-                .tabItem { Label("Network", systemImage: "network") }
-                .tag(HubSettingsTab.network)
+                .tabItem { Label("Heartbeat", systemImage: "waveform.path.ecg") }
+                .tag(HubSettingsTab.heartbeats)
+            AgentAccessSettingsView(store: host)
+                .hubSettingsSize()
+                .tabItem { Label("Sandbox", systemImage: "lock.shield") }
+                .tag(HubSettingsTab.sandbox)
             if Self.showsAgentSettings {
-                HeartbeatsSettingsView(store: host)
-                    .hubSettingsSize()
-                    .tabItem { Label("Heartbeat", systemImage: "waveform.path.ecg") }
-                    .tag(HubSettingsTab.heartbeats)
-                AgentAccessSettingsView(store: host)
-                    .hubSettingsSize()
-                    .tabItem { Label("Sandbox", systemImage: "lock.shield") }
-                    .tag(HubSettingsTab.sandbox)
                 MCPSettingsView(store: host)
                     .hubSettingsSize()
                     .tabItem { Label("Tools", systemImage: "puzzlepiece.extension") }

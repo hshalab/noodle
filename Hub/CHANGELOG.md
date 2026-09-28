@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- Settings has Heartbeat and Sandbox tabs, as in Noodle: choose how often idle bots on the Hub wake to check for work, and give each bot unrestricted access or account apps.
+
+### Changed
+
+- Settings opens on Network, now its first tab. Bots comes after Plans, next to the Heartbeat and Sandbox tabs.
+
 ## [0.5.0] - 2026-09-28
 
 ### Added
