@@ -636,17 +636,6 @@ struct AgentsView: View {
             let pinned = searching ? [] : found.filter { $0.chats.isPinned($0.thread) }
             let others = searching ? found : found.filter { !$0.chats.isPinned($0.thread) }
             List {
-                // Only above bots: with none, the empty list says it instead.
-                if !rows.isEmpty {
-                    ForEach(chats.filter { HubConnection($0.pairing) == .notConnected }, id: \.pairing.id) { hub in
-                        Button { showingProfile = true } label: {
-                            Label(chats.count > 1 ? "\(hub.pairing.hubName) is not connected" : "Not connected",
-                                  systemImage: "wifi.exclamationmark")
-                                .font(.subheadline).foregroundStyle(.orange)
-                        }
-                        .listRowSeparator(.hidden)
-                    }
-                }
                 if !pinned.isEmpty {
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 3), spacing: 16) {
                         ForEach(pinned) { row in
