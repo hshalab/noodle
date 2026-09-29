@@ -1031,7 +1031,10 @@ struct ChatView: View {
                     .transition(.opacity)
             }
         }
-        .safeAreaInset(edge: .bottom) { composer }
+        // The conversation keeps room for a one-line composer at its end. A longer message grows the
+        // composer over the conversation, as in Messages, instead of moving it.
+        .safeAreaInset(edge: .bottom) { Color.clear.frame(height: Self.controlHeight + 16) }
+        .overlay(alignment: .bottom) { composer }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .principal) {

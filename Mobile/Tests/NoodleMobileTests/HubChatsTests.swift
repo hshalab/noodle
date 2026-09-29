@@ -4,6 +4,7 @@ import HubLink
 import NoodleWallpaperCore
 import UIKit
 @testable import NoodleMobile
+import SwiftUI
 import Testing
 
 /// A Hub with one bot that answers every message, reached over QUIC like the real one.
@@ -829,5 +830,43 @@ private actor RecordedSubscriptions: PushSubscriptions {
         let image = try #require(UIImage(data: stored)?.cgImage)
         #expect(max(image.width, image.height) == 512)
         #expect(stored.starts(with: [0xFF, 0xD8]))
+    }
+
+    /// A longer message grows the field over the conversation, as in Messages; the conversation keeps
+    /// its place and its gap at the end.
+    @Test func typingMoreLinesLeavesTheConversationWhereItIs() async throws {
+        let hub = FakeHub()
+        for index in 1..<40 { await hub.botSays(String(repeating: "Message \(index) says something. ", count: 1 + index % 4)) }
+        let (chats, server) = try await paired(to: hub)
+        defer { server.stop() }
+        try await chats.reload()
+        let scout = try #require(chats.agents.first)
+
+        let scene = try #require(UIApplication.shared.connectedScenes.lazy.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.rootViewController = UIHostingController(rootView: NavigationStack { ChatView(chats: chats, threadID: scout.id) })
+        window.isHidden = false
+        defer { window.isHidden = true }
+        try await Task.sleep(for: .seconds(1))
+
+        let conversation = try #require(Self.view(UIScrollView.self, in: window) { !($0 is UITextView) && $0.contentSize.height > window.bounds.height })
+        let field = try #require(Self.view(PastingTextView.self, in: window) { _ in true })
+        field.becomeFirstResponder()
+        field.insertText("Hello")
+        try await Task.sleep(for: .milliseconds(300))
+        let (offset, gap, height) = (conversation.contentOffset.y, conversation.adjustedContentInset.bottom, field.bounds.height)
+
+        field.insertText("\n\n\n")
+        try await Task.sleep(for: .milliseconds(300))
+
+        #expect(field.bounds.height > height)
+        #expect(conversation.adjustedContentInset.bottom == gap)
+        #expect(conversation.contentOffset.y == offset)
+    }
+
+    private static func view<V: UIView>(_ type: V.Type, in view: UIView, where test: (V) -> Bool) -> V? {
+        if let match = view as? V, test(match) { return match }
+        for subview in view.subviews { if let match = self.view(type, in: subview, where: test) { return match } }
+        return nil
     }
 }

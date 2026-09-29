@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### What to Test
+
+- Type a message of several lines, or press return a few times: the field grows over the conversation, and the conversation and its scroll bar stay where they are.
+
+### Fixed
+
+- Adding lines to a message no longer moves the conversation or its scroll bar.
+
 ## [0.8.0] - 2026-09-29
 
 ### What to Test
