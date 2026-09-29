@@ -64,11 +64,19 @@ import AppKit
 
     private func window() throws -> NSWindow {
         if let window = view.window { return window }
-        let panel = host ?? NSPanel(contentRect: view.frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        let panel = host ?? QuietPanel(contentRect: view.frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.isReleasedWhenClosed = false
         panel.contentView = view
         host = panel
         return panel
+    }
+
+    /// Holds a view nobody at this Mac sees, so a key or command its page leaves alone has no one to beep at.
+    private final class QuietPanel: NSPanel {
+        override func noResponder(for eventSelector: Selector) {
+            if eventSelector != #selector(NSResponder.keyDown(with:)) { super.noResponder(for: eventSelector) }
+        }
+        override func doCommand(by selector: Selector) {}
     }
 
     private func locationInWindow(x: Double, y: Double) -> NSPoint {

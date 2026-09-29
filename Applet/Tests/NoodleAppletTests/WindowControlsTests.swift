@@ -96,8 +96,39 @@ final class WindowControlsTests: XCTestCase {
     }
 }
 
+extension WindowControlsTests {
+    /// Escape the page did not cancel comes back up as a cancel command, which AppKit answers with
+    /// a beep of its own; a game paused with Escape beeped every time. The page had that key too.
+    @MainActor func testCommandsAPageLeftUnhandledDoNotBeep() throws {
+        let original = try XCTUnwrap(class_getInstanceMethod(NSResponder.self, #selector(NSResponder.doCommand(by:))))
+        let recording = try XCTUnwrap(class_getInstanceMethod(NSResponder.self, #selector(NSResponder.recordingDoCommand(by:))))
+        method_exchangeImplementations(original, recording)
+        defer { method_exchangeImplementations(original, recording) }
+        let cancel = #selector(NSResponder.cancelOperation(_:))
+        for extra in ["", #","cornerRadius":12"#, #","type":"preview""#] {
+            let window = try window(titlebar: "true", extra: extra)
+            let page = WKWebView(frame: CGRect(x: 0, y: 0, width: 100, height: 100))
+            let field = NSTextView()
+            window.contentView?.addSubview(page)
+            window.contentView?.addSubview(field)
+            unhandledCommands = 0
+            XCTAssertTrue(window.makeFirstResponder(page), extra)
+            window.doCommand(by: cancel)
+            XCTAssertEqual(unhandledCommands, 0, "a command the page had beeped\(extra)")
+
+            XCTAssertTrue(window.makeFirstResponder(field), extra)
+            window.doCommand(by: cancel)
+            XCTAssertEqual(unhandledCommands, 1, extra)
+        }
+    }
+}
+
+@MainActor private var unhandledCommands = 0
 @MainActor private var unhandledKeys = 0
 extension NSResponder {
+    /// Stands in for AppKit's handling, and its beep, of a command nothing took.
+    @MainActor @objc fileprivate func recordingDoCommand(by selector: Selector) { unhandledCommands += 1 }
+
     /// Stands in for AppKit's beep while the test runs.
     @MainActor @objc fileprivate func recordingNoResponder(for selector: Selector) {
         if selector == #selector(NSResponder.keyDown(with:)) { unhandledKeys += 1 }

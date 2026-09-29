@@ -366,6 +366,7 @@ private struct Pixels {
 
 #if os(macOS)
 import AppKit
+import ObjectiveC
 
 /// A held key reaches the page as a key going down and, later, coming up, as a game reads it.
 @MainActor final class GamepadKeyHoldTests: XCTestCase {
@@ -387,5 +388,45 @@ import AppKit
         XCTAssertEqual(view.events.map(\.1), ["z", "\u{f702}", "z", "7"])
         XCTAssertEqual(view.events.map(\.2), [6, 123, 6, 26])
     }
+
+    /// A view shown only to someone watching from elsewhere has nobody at this Mac to beep at,
+    /// so a key its page leaves alone ends quietly instead of in AppKit's beep.
+    func testAKeyNobodyTakesOutOfSightDoesNotBeep() throws {
+        let original = try XCTUnwrap(class_getInstanceMethod(NSResponder.self, #selector(NSResponder.noResponder(for:))))
+        let recording = try XCTUnwrap(class_getInstanceMethod(NSResponder.self, #selector(NSResponder.recordingNoResponder(for:))))
+        method_exchangeImplementations(original, recording)
+        defer { method_exchangeImplementations(original, recording) }
+        unhandledKeys = 0
+        let injector = SurfaceEventInjector(view: NSView(frame: CGRect(x: 0, y: 0, width: 100, height: 100)))
+        try injector.deliver(.hold(key: "c", pressed: true))
+        try injector.deliver(.key(.escape))
+        XCTAssertEqual(unhandledKeys, 0)
+    }
+
+    /// Escape a page leaves alone comes back as a cancel command, which AppKit beeps at too.
+    func testACommandNobodyTakesOutOfSightDoesNotBeep() throws {
+        final class Page: NSView {
+            override var acceptsFirstResponder: Bool { true }
+            override func keyDown(with event: NSEvent) { window?.doCommand(by: #selector(NSResponder.cancelOperation(_:))) }
+        }
+        let original = try XCTUnwrap(class_getInstanceMethod(NSResponder.self, #selector(NSResponder.doCommand(by:))))
+        let recording = try XCTUnwrap(class_getInstanceMethod(NSResponder.self, #selector(NSResponder.recordingDoCommand(by:))))
+        method_exchangeImplementations(original, recording)
+        defer { method_exchangeImplementations(original, recording) }
+        unhandledCommands = 0
+        try SurfaceEventInjector(view: Page(frame: CGRect(x: 0, y: 0, width: 100, height: 100))).deliver(.key(.escape))
+        XCTAssertEqual(unhandledCommands, 0)
+    }
+}
+
+@MainActor private var unhandledCommands = 0
+
+@MainActor private var unhandledKeys = 0
+extension NSResponder {
+    /// Stands in for AppKit's beep while the test runs.
+    @MainActor @objc fileprivate func recordingNoResponder(for selector: Selector) {
+        if selector == #selector(NSResponder.keyDown(with:)) { unhandledKeys += 1 }
+    }
+    @MainActor @objc fileprivate func recordingDoCommand(by selector: Selector) { unhandledCommands += 1 }
 }
 #endif

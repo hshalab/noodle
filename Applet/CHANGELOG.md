@@ -8,6 +8,7 @@
 
 ### Fixed
 
+- Pressing Escape in an HTML noodlet no longer makes the Mac beep, on screen or while someone plays it from a phone.
 - Closing a game no longer leaves its sound playing until you quit Applet. The menu bar kept the closed noodlet running out of sight; a stopped noodlet's page now always ends.
 
 ## [0.15.0] - 2026-09-29

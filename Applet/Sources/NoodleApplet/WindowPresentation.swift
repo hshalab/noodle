@@ -128,9 +128,9 @@ extension WindowPresentation {
 }
 
 /// WebKit passes a key the page did not cancel back up to the window, where AppKit beeps, so a game
-/// reading the arrow keys without preventDefault beeped on every press. The page had the key.
-@MainActor private func pageHadKey(_ selector: Selector, in window: NSWindow) -> Bool {
-  guard selector == #selector(NSResponder.keyDown(with:)) else { return false }
+/// reading the arrow keys without preventDefault beeped on every press. Escape comes back as a
+/// cancel command instead, which AppKit beeps at too. The page had the key either way.
+@MainActor private func pageHasKeys(in window: NSWindow) -> Bool {
   var view = window.firstResponder as? NSView
   while let current = view, !(current is WKWebView) { view = current.superview }
   return view != nil
@@ -138,13 +138,19 @@ extension WindowPresentation {
 
 @MainActor private class PageWindow: NSWindow {
   override func noResponder(for eventSelector: Selector) {
-    if !pageHadKey(eventSelector, in: self) { super.noResponder(for: eventSelector) }
+    if eventSelector != #selector(NSResponder.keyDown(with:)) || !pageHasKeys(in: self) { super.noResponder(for: eventSelector) }
+  }
+  override func doCommand(by selector: Selector) {
+    if !pageHasKeys(in: self) { super.doCommand(by: selector) }
   }
 }
 
 @MainActor private final class PagePanel: NSPanel {
   override func noResponder(for eventSelector: Selector) {
-    if !pageHadKey(eventSelector, in: self) { super.noResponder(for: eventSelector) }
+    if eventSelector != #selector(NSResponder.keyDown(with:)) || !pageHasKeys(in: self) { super.noResponder(for: eventSelector) }
+  }
+  override func doCommand(by selector: Selector) {
+    if !pageHasKeys(in: self) { super.doCommand(by: selector) }
   }
 }
 
