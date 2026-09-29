@@ -175,7 +175,7 @@ actor ContainerComputer {
     /// Only images built for the native display can start their desktop; older ones need an image update.
     static func requireNativeDesktop(labels: [String: String]?) throws {
         guard labels?["im.noodle.desktop.contract"] == "2" else {
-            throw ComputerError("This desktop’s image is out of date. Update its image to start it. Your files are kept.")
+            throw ComputerError("This desktop’s image is out of date. Upgrade its image to start it. Your files are kept.")
         }
     }
 

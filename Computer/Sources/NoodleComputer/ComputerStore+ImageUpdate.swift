@@ -38,7 +38,7 @@ extension ComputerStore {
             let previous = try ContainerDiskState.load(in: directory)
             if session.container != nil || session.virtual != nil { await stop(session, force: true) }
             guard session.container == nil, session.virtual == nil else {
-                throw ComputerError("Stop this computer before updating its image.")
+                throw ComputerError("Stop this computer before upgrading its image.")
             }
             session.phase = .updating
             session.updateStatus = "Checking for a new image…"
@@ -72,7 +72,7 @@ extension ComputerStore {
                     let old = directory.appendingPathComponent("Layers").appendingPathComponent(obsolete.uuidString.lowercased())
                     try? FileManager.default.removeItem(at: old)
                 }
-                session.append("\nUpdated the computer image. Your writable layer was preserved.\n")
+                session.append("\nUpgraded the computer image. Your writable layer was preserved.\n")
                 session.updateResult = "The computer image is up to date."
                 session.imageUpdateAvailable = false
             } else {
@@ -93,7 +93,7 @@ extension ComputerStore {
             }
             if session.container == nil, session.virtual == nil { session.phase = .stopped }
             if !Task.isCancelled {
-                self.error = "The image could not be updated. Your current disk is unchanged.\n\(error.localizedDescription)"
+                self.error = "The image could not be upgraded. Your current disk is unchanged.\n\(error.localizedDescription)"
                 if wasRunning && !committed { await start(session) }
             }
         }

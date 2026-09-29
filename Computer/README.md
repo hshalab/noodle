@@ -41,7 +41,7 @@ agent's own session. Closing the window leaves the computer running.
 
 Shell and Desktop images use the non-root `agent` account, with passwordless
 `sudo` for administrative work (for example, `sudo apk add jq` in Shell).
-Older images may still use root; choose **Update** to get the current
+Older images may still use root; choose **Upgrade** to get the current
 account setup. Files created earlier by root keep their owner; use `sudo` to
 manage them.
 
@@ -79,7 +79,7 @@ Previews support files up to 20 MiB. Editing a preview copy does not update the 
 
 Right-click to rename, duplicate, or permanently delete a file or empty folder.
 
-## Customize and update
+## Customize and upgrade
 
 Edit a computer to change its name, description, icon, background, and terminal
 colours. Backgrounds support images, animated HEIC, and muted looping video.
@@ -94,12 +94,12 @@ A Desktop computer keeps its own screen resolution and scales to fit its window.
 Turn on **Resize desktop with window**, when creating the computer or in its editor,
 to make the desktop follow the window's size instead.
 
-Choose **Update** from the computer's context menu or editor to fetch its latest
-image. The computer stops during the update and restarts afterward. Your files
-and installed software are preserved; modified system files can override updated
-defaults. A failed update leaves the computer as it was. Some older computers
-cannot be updated this way. A Desktop computer on an older image must be updated
-before it starts.
+Choose **Upgrade** from the computer's context menu or editor to fetch its latest
+image; the list shows **Upgrade available** when there is one. The computer stops
+during the upgrade and restarts afterward. Your files and installed software are
+preserved; modified system files can override upgraded defaults. A failed upgrade
+leaves the computer as it was. Some older computers cannot be upgraded this way.
+A Desktop computer on an older image must be upgraded before it starts.
 
 App updates are separate, under **Settings → Update**. Save guest work first;
 computers are stopped and are not automatically restarted after the app relaunches.
@@ -109,7 +109,7 @@ computers are stopped and are not automatically restarted after the app relaunch
 The Desktop computer's browser keeps its sign-ins across restarts. Sign in to a
 website there and an assigned agent can work in the same tabs from the computer's
 terminal. Every agent assigned to that computer can use those sign-ins. Pause
-agents while you sign in, and choose **Update** on older computers to get this.
+agents while you sign in, and choose **Upgrade** on older computers to get this.
 
 ## Local Mac (experimental)
 

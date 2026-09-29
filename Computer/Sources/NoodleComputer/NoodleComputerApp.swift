@@ -565,7 +565,7 @@ struct ComputerRow: View {
         Text(session.computer.displayType).font(.system(size: 12.5)).foregroundStyle(.secondary)
           .lineLimit(1)
         if session.imageUpdateAvailable {
-          Text("Update available").font(.system(size: 11.5)).foregroundStyle(.orange).lineLimit(1)
+          Text("Upgrade available").font(.system(size: 11.5)).foregroundStyle(.orange).lineLimit(1)
         }
       }.frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -633,7 +633,7 @@ struct ComputerDetailView: View {
       if session.phase == .updating {
         VStack(spacing: 16) {
           ProgressView(value: session.updateProgress).frame(width: 240)
-          Text(session.updateStatus ?? "Updating the computer image…")
+          Text(session.updateStatus ?? "Upgrading the computer image…")
           Button("Cancel") { store.cancelImageUpdate(session) }
         }.frame(maxWidth: .infinity, maxHeight: .infinity)
       } else if case .setupRequired(let registration) = session.phase {
@@ -877,9 +877,9 @@ struct EditComputerView: View {
           Text("A newer image is available.").font(.caption).foregroundStyle(.orange)
         }
         if session.phase == .updating {
-          Button("Cancel Update") { store.cancelImageUpdate(session) }
+          Button("Cancel Upgrade") { store.cancelImageUpdate(session) }
           ProgressView(value: session.updateProgress)
-          Text(session.updateStatus ?? "Updating…").font(.caption).foregroundStyle(.secondary)
+          Text(session.updateStatus ?? "Upgrading…").font(.caption).foregroundStyle(.secondary)
         }
         ComputerAppearanceRow(appearance: $appearance, directory: store.library.directory(for: session.id))
         if session.computer.usesVirtualMachine && !session.computer.installationComplete && session.phase == .stopped {

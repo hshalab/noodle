@@ -15,7 +15,7 @@ enum ComputerPhase: Equatable {
         case .starting: "Starting…"
         case .running: "Running"
         case .stopping: "Stopping…"
-        case .updating: "Updating…"
+        case .updating: "Upgrading…"
         case .setupRequired(let status): status == .requiresApproval ? "Approval required" : "Setup required"
         case .failed: "Needs attention"
         }

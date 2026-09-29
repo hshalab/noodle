@@ -23,7 +23,7 @@ public struct ContainerDiskState: Codable, Equatable, Sendable {
     public static func load(in directory: URL) throws -> Self {
         let path = directory.appendingPathComponent("ContainerDisk.json")
         guard FileManager.default.fileExists(atPath: path.path) else {
-            throw ComputerError("This computer has no overlay disk. Create a new computer to use image updates.")
+            throw ComputerError("This computer has no overlay disk. Create a new computer to use image upgrades.")
         }
         return try JSONDecoder().decode(Self.self, from: Data(contentsOf: path))
     }

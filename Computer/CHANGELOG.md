@@ -4,7 +4,11 @@
 
 ### Added
 
-- Linux containers show **Update available** in the list when their image has a newer version.
+- Linux containers show **Upgrade available** in the list when their image has a newer version.
+
+### Changed
+
+- Getting a computer's latest image is now called **Upgrade** instead of **Update**, so it is not confused with saving settings.
 
 ## [0.18.0] - 2026-09-29
 
