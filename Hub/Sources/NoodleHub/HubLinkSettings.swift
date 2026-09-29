@@ -1,6 +1,7 @@
 import AppKit
 import HubCore
 import HubLink
+import ServiceManagement
 import SwiftUI
 
 /// Whether devices can reach the Hub, and the addresses invitations carry.
@@ -8,6 +9,7 @@ struct HubNetworkSettingsView: View {
     @Bindable var link: HubLinkService
     @State private var editingAddress = false
     @State private var address = ""
+    @State private var opensAtLogin = SMAppService.mainApp.status
 
     var body: some View {
         Form {
@@ -29,6 +31,15 @@ struct HubNetworkSettingsView: View {
                 }
             }
             Section {
+                Toggle("Open at Login", isOn: Binding(
+                    get: { opensAtLogin == .enabled || opensAtLogin == .requiresApproval },
+                    set: { setOpensAtLogin($0) }))
+                    .help("Opens the Hub in the menu bar when you log in, so devices can reach it after the Mac restarts")
+                if opensAtLogin == .requiresApproval {
+                    LabeledContent("Needs approval in Login Items") {
+                        Button("Open System Settings") { SMAppService.openSystemSettingsLoginItems() }
+                    }
+                }
                 Toggle("Open Port on Router", isOn: $link.opensRouterPort)
                     .help("Asks the router, through UPnP or NAT-PMP, to forward the Hub’s port so devices can reach it away from home")
                 Picker("Largest File", selection: $link.uploadLimit) {
@@ -65,5 +76,18 @@ struct HubNetworkSettingsView: View {
         } message: {
             Text("A domain, public address or forwarded port that reaches this Mac from outside your network.")
         }
+        // Login Items can be changed in System Settings while this is open.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            opensAtLogin = SMAppService.mainApp.status
+        }
+    }
+
+    private func setOpensAtLogin(_ on: Bool) {
+        do {
+            if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
+        } catch {
+            NSLog("Noodle Hub could not change Open at Login: \(error.localizedDescription)")
+        }
+        opensAtLogin = SMAppService.mainApp.status
     }
 }

@@ -122,6 +122,22 @@ public enum HubQuit {
     }
 }
 
+/// The Hub is server software, so it opens at login by default. It registers once, so turning
+/// Open at Login off, in Settings or in Login Items, lasts.
+public enum HubLoginItem {
+    static let registeredKey = "HubRegisteredLoginItem"
+
+    public static func registerByDefault(defaults: UserDefaults = .standard, register: () throws -> Void) {
+        guard !defaults.bool(forKey: registeredKey) else { return }
+        do {
+            try register()
+            defaults.set(true, forKey: registeredKey)
+        } catch {
+            NSLog("Noodle Hub could not open at login: \(error.localizedDescription)")
+        }
+    }
+}
+
 /// How the Hub opens live views in Noodle Computer, Browser and Applet; nil for each app's own.
 public struct SurfaceOpeners {
     public var computer: (@Sendable (ComputerRequest) async throws -> SurfaceSocket)?

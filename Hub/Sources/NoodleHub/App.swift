@@ -3,6 +3,7 @@ import HubCore
 import HubLink
 import NoodleLaunchChecks
 import NoodleRuntimeSettings
+import ServiceManagement
 import SwiftUI
 
 /// "Noodle Hub Dev" in development builds, so they are told apart from a released Hub running beside them.
@@ -79,6 +80,10 @@ struct NoodleHubApp: App {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         HubUpdater.shared.start()
+        // Noodle Hub Dev is not added to the login items.
+        #if !DEBUG
+        HubLoginItem.registerByDefault { try SMAppService.mainApp.register() }
+        #endif
         do { try settings.hub.bots.start() }
         catch { NSLog("Noodle Hub could not start its bots: \(error.localizedDescription)") }
         Task { await settings.hub.link.start() }
