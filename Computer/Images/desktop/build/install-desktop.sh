@@ -2,8 +2,8 @@
 set -euo pipefail
 arch="${TARGETARCH:-$(dpkg --print-architecture)}"
 case "$arch" in
-    arm64) kasm_sum="$KASMVNC_SHA256_ARM64"; cortile_sum="$CORTILE_SHA256_ARM64" ;;
-    amd64) kasm_sum="$KASMVNC_SHA256_AMD64"; cortile_sum="$CORTILE_SHA256_AMD64" ;;
+    arm64) cortile_sum="$CORTILE_SHA256_ARM64" ;;
+    amd64) cortile_sum="$CORTILE_SHA256_AMD64" ;;
     *) echo "Unsupported architecture: $arch" >&2; exit 1 ;;
 esac
 curl -fsSL --retry 3 "https://github.com/leukipp/cortile/releases/download/v${CORTILE_VERSION}/cortile_${CORTILE_VERSION}_linux_${arch}.tar.gz" -o /tmp/cortile.tar.gz
@@ -15,11 +15,6 @@ mkdir -p /usr/share/doc/cortile
 # Preserve the release's license alongside the executable.
 find /tmp/cortile -iname '*license*' -exec cp {} /usr/share/doc/cortile/ \;
 rm -rf /tmp/cortile /tmp/cortile.tar.gz
-curl -fsSL --retry 3 "https://github.com/kasmtech/KasmVNC/releases/download/v${KASMVNC_VERSION}/kasmvncserver_noble_${KASMVNC_VERSION}_${arch}.deb" -o /tmp/kasmvnc.deb
-printf '%s  /tmp/kasmvnc.deb\n' "$kasm_sum" | sha256sum -c -
-apt-get update
-DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends /tmp/kasmvnc.deb
-rm /tmp/kasmvnc.deb
 
 # Ubuntu Chromium is a Snap launcher. Use Debian's signed native package on
 # ARM64, including security updates, and Google's native Chrome on AMD64.

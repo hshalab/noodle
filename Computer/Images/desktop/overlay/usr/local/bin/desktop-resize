@@ -1,0 +1,15 @@
+#!/bin/bash
+# Follows the virtio GPU's preferred mode. The Mac changes it only while the
+# computer's "Resize desktop with window" setting is on; otherwise it never moves.
+# There is no udev to announce the change, and asking for the outputs is what
+# makes the server probe the GPU again.
+set -uo pipefail
+. /usr/local/lib/desktop-environment
+while sleep 1; do
+    state="$(xrandr --query 2>/dev/null)" || continue
+    output="$(awk '/ connected/ { print $1; exit }' <<< "$state")"
+    # The preferred mode is marked "+" in the list below its output; the current one "*".
+    preferred="$(awk '/ connected/ { found = 1; next } found && /^[^ ]/ { exit } found && /\+/ { print $1; exit }' <<< "$state")"
+    current="$(awk '/ connected/ { found = 1; next } found && /^[^ ]/ { exit } found && /\*/ { print $1; exit }' <<< "$state")"
+    [ -n "$output" ] && [ -n "$preferred" ] && [ "$preferred" != "$current" ] && xrandr --output "$output" --auto
+done

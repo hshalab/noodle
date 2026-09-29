@@ -17,9 +17,14 @@ case "${1:-}" in
     ;;
   desktop)
     test -x /init
-    test -x /usr/local/bin/desktop-prepare
-    test -x /usr/local/bin/desktop-start
-    for program in Xvnc openbox picom feh kitty xterm openssl kasmvncpasswd node chromium runuser flock; do command -v "$program" >/dev/null; done
+    test -x /usr/local/bin/desktop-resize
+    test -x /usr/local/bin/desktop-surface
+    test -x /usr/lib/xorg/Xorg
+    test -f /usr/lib/xorg/modules/drivers/modesetting_drv.so
+    test -f /usr/lib/xorg/modules/input/evdev_drv.so
+    for program in openbox picom feh kitty xterm xauth mcookie xrandr xdpyinfo xclip node chromium runuser flock; do command -v "$program" >/dev/null; done
+    id -nG agent | grep -qw video
+    id -nG agent | grep -qw input
     test -x /usr/local/lib/noodle-chromium-base
     test -x /etc/desktop/session.d/noodle-browser
     node -e 'if (typeof require("/opt/noodle-browser").connect !== "function") process.exit(1)'
@@ -31,7 +36,6 @@ case "${1:-}" in
     test -s /etc/xdg/kitty/theme.conf
     grep -q '^background #000000$' /etc/xdg/kitty/theme.conf
     grep -q '^rounded = 12$' /etc/xdg/tint2/tint2rc
-    grep -q 'margin: 0 !important;' /usr/share/kasmvnc/www/assets/custom.css
     grep -q '^window.active.border.color: #000000$' /usr/share/themes/Desktop/openbox-3/themerc
     grep -q 'DESKTOP_WALLPAPER' /etc/xdg/openbox/autostart
     grep -q '/etc/xdg/kitty/theme.conf' /etc/xdg/kitty/kitty.conf

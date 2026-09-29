@@ -43,14 +43,14 @@ enum ComputerToolGuidance {
 
         Current Shell and Desktop images run commands as the non-root `agent` account
         with HOME=/home/agent. Use `sudo` for package installation and other
-        administrative work. Older/custom images use their configured account; check
-        `id` instead of assuming root. Uploaded files use that same account. Existing
-        root-owned files may need sudo to manage.
+        administrative work. Older images may use another account; check `id` instead
+        of assuming root. Uploaded files use that same account. Existing root-owned
+        files may need sudo to manage.
 
         For website automation in a Desktop computer, use its visible Chromium
         session. In the guest, check for `/opt/noodle-browser/index.cjs`; older images
-        need the user to choose Update in Computer, and Shell/custom images may not
-        provide this feature. The desktop opens Browser automatically. If the user
+        need the user to choose Update in Computer, and Shell images do not provide
+        this feature. The desktop opens Browser automatically. If the user
         closed it, run `chromium` in a guest terminal to reopen the same profile.
         Upload a .cjs script to /workspace and run it with the guest's `node`:
         ```js

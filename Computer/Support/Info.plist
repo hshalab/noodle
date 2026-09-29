@@ -33,15 +33,8 @@
 	<string>public.app-category.developer-tools</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>26.0</string>
-	<key>NSAppTransportSecurity</key>
-	<dict>
-		<key>NSAllowsLocalNetworking</key>
-		<true/>
-	</dict>
 	<key>NSHighResolutionCapable</key>
 	<true/>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>Noodle Computer connects to the virtual desktops running on this Mac to display their screens.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>NoodleAcceptsUpdateCheck</key>

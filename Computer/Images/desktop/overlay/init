@@ -1,33 +1,20 @@
 #!/bin/bash
-# Authenticated desktop supervisor, contract v1. Configuration and hooks belong
-# to the image; no host rewriting, external bridge or fixed-mount root fallback.
+# Desktop supervisor, contract v2: an X server on the VM's virtio GPU. The Mac
+# shows that GPU natively, so there is no network display service or password.
+# Configuration and hooks belong to the image; no host rewriting.
 set -euo pipefail
 [ "$(id -u)" = 0 ] || { echo '/init must run as root' >&2; exit 1; }
 . /usr/local/lib/desktop-environment
-[[ "$DESKTOP_PORT" =~ ^[0-9]{1,5}$ ]] && ((10#$DESKTOP_PORT > 0 && 10#$DESKTOP_PORT < 65536))
 [[ "$DISPLAY" =~ ^:[0-9]{1,3}$ ]]
-[[ "$DESKTOP_GEOMETRY" =~ ^[0-9]{3,5}x[0-9]{3,5}$ ]]
-[[ "$DESKTOP_FRAME_RATE" =~ ^[0-9]{1,3}$ ]] && ((10#$DESKTOP_FRAME_RATE > 0))
-if [ ! -s "$HOME/.vnc/self.pem" ] || [ ! -s "$HOME/.kasmpasswd" ] || [ ! -s /run/desktop/health.curl ]; then
-    echo 'Run desktop-prepare before /init (or use desktop-start).' >&2
-    exit 1
-fi
-unset DESKTOP_PASSWORD NOODLE_DESKTOP_PASSWORD DESKTOP_PASSWORD_FILE
-# KasmVNC requires the UTS hostname to resolve even in an offline container.
-# The native app already supplies it; standalone runtimes may not.
-if ! getent hosts "$(hostname)" >/dev/null; then
-    printf '127.0.0.1 %s\n' "$(hostname)" >> /etc/hosts
-fi
+
 install -d -m 1777 /tmp/.X11-unix
 install -d -m 0700 -o agent -g agent "$XDG_RUNTIME_DIR"
-install -d -o agent -g agent /run/desktop /var/log/desktop "$HOME/.config" "$HOME/.local/share" /workspace
+install -d -o agent -g agent /run/desktop /var/log/desktop "$HOME/.cache" "$HOME/.config" "$HOME/.local/share" /workspace
 # Refuse to become root merely because a mounted workspace cannot be written.
 runuser -u agent -- test -w /workspace
 : > /run/desktop/dbus-session-address
 chown agent:agent /run/desktop/dbus-session-address
 chmod 0644 /run/desktop/dbus-session-address
-runuser -u agent -- touch "$XAUTHORITY"
-chmod 0600 "$XAUTHORITY"
 
 # Copy only missing workspace seeds as the desktop user, preserving existing
 # files (including dotfiles) and avoiding recursive ownership changes on boot.
@@ -43,58 +30,85 @@ if [ ! -e "$XDG_CONFIG_HOME/cortile/config.toml" ]; then
     install -m 0644 -o agent -g agent /etc/xdg/cortile/config.toml "$XDG_CONFIG_HOME/cortile/config.toml"
 fi
 
-cat > "$HOME/.vnc/kasmvnc.yaml" <<YAML
-network:
-  protocol: http
-  ssl:
-    require_ssl: true
-    pem_certificate: /home/agent/.vnc/self.pem
-    pem_key: /home/agent/.vnc/self.pem
-  interface: 0.0.0.0
-  websocket_port: $DESKTOP_PORT
-desktop:
-  pixel_depth: 24
-  gpu:
-    hw3d: false
-encoding:
-  max_frame_rate: $DESKTOP_FRAME_RATE
-YAML
-cat > "$HOME/.vnc/xstartup" <<'XSTARTUP'
-#!/bin/bash
-exec dbus-run-session -- openbox-session
-XSTARTUP
-chmod 0755 "$HOME/.vnc/xstartup"
-touch "$HOME/.vnc/.de-was-selected"
-chown agent:agent "$HOME/.vnc/"*
-
-cleanup() {
-    trap - EXIT INT TERM
-    runuser -u agent -- kasmvncserver -kill "$DISPLAY" >/dev/null 2>&1 || true
-    jobs -pr | xargs -r kill 2>/dev/null || true
-}
-trap cleanup EXIT
-trap 'exit 0' INT TERM
 # Startup hooks run in lexical order as root and must return. A failed hook
 # fails startup; long-running services should background their child process.
 for hook in "$DESKTOP_STARTUP_DIR"/*; do
     [ ! -x "$hook" ] || "$hook"
 done
-runuser -u agent -- kasmvncserver -kill "$DISPLAY" >/dev/null 2>&1 || true
-rm -f "/tmp/.X${DISPLAY#:}-lock" "/tmp/.X11-unix/X${DISPLAY#:}"
-runuser -u agent -- kasmvncserver "$DISPLAY" \
-    -interface 0.0.0.0 -websocketPort "$DESKTOP_PORT" -publicIP 127.0.0.1 \
-    -geometry "$DESKTOP_GEOMETRY" -depth 24 -httpd /usr/share/kasmvnc/www \
-    -FreeKeyMappings >>/var/log/desktop/kasmvnc.log 2>&1 &
-health() { curl --config /run/desktop/health.curl --max-time 2 "https://127.0.0.1:$DESKTOP_PORT/" >/dev/null; }
-for attempt in $(seq 1 40); do
-    if health; then break; fi
-    if [ "$attempt" = 40 ]; then
-        tail -n 100 /var/log/desktop/kasmvnc.log >&2
+# An image may supply its own server configuration; otherwise drive the GPU.
+if [ -r /etc/desktop/xorg.conf ]; then
+    cp /etc/desktop/xorg.conf /run/desktop/xorg.conf
+else
+    card="$(ls -d /dev/dri/card* 2>/dev/null | head -n 1 || true)"
+    if [ -z "$card" ]; then
+        echo 'This desktop needs a virtual GPU (/dev/dri/card*); start it from Noodle Computer.' >&2
         exit 1
     fi
-    sleep 1
+    # The Mac's USB keyboard and pointer can appear a moment after boot, and the
+    # server cannot pick up a device added later, so wait for both.
+    keyboard='' pointer=''
+    for attempt in $(seq 1 40); do
+        keyboard='' pointer=''
+        for device in /sys/class/input/event*; do
+            [ -e "$device" ] || continue
+            if grep -q 'kbd' "$device/device/uevent" 2>/dev/null || grep -qi 'keyboard' "$device/device/name" 2>/dev/null; then
+                keyboard="${device##*/}"
+            else
+                pointer="${device##*/}"
+            fi
+        done
+        [ -n "$keyboard" ] && [ -n "$pointer" ] && break
+        sleep 0.25
+    done
+    if [ -z "$keyboard" ] || [ -z "$pointer" ]; then
+        echo 'The virtual keyboard or pointer did not appear.' >&2
+        exit 1
+    fi
+    # There is no udev: give the desktop user's groups the devices it may use.
+    chgrp video /dev/dri/*
+    chmod 0660 /dev/dri/*
+    chgrp input "/dev/input/$keyboard" "/dev/input/$pointer"
+    chmod 0660 "/dev/input/$keyboard" "/dev/input/$pointer"
+
+    # Without udev the server cannot discover devices, so name each one.
+    {
+        printf 'Section "ServerFlags"\n    Option "AutoAddDevices" "false"\n    Option "AutoEnableDevices" "false"\nEndSection\n'
+        printf 'Section "Device"\n    Identifier "gpu"\n    Driver "modesetting"\n    Option "kmsdev" "%s"\nEndSection\n' "$card"
+        printf 'Section "Screen"\n    Identifier "screen"\n    Device "gpu"\n    DefaultDepth 24\nEndSection\n'
+        printf 'Section "ServerLayout"\n    Identifier "layout"\n    Screen "screen"\n'
+        printf '    InputDevice "keyboard" "CoreKeyboard"\n    InputDevice "pointer" "CorePointer"\nEndSection\n'
+        printf 'Section "InputDevice"\n    Identifier "keyboard"\n    Driver "evdev"\n    Option "Device" "/dev/input/%s"\nEndSection\n' "$keyboard"
+        printf 'Section "InputDevice"\n    Identifier "pointer"\n    Driver "evdev"\n    Option "Device" "/dev/input/%s"\nEndSection\n' "$pointer"
+    } > /run/desktop/xorg.conf
+fi
+runuser -u agent -- sh -c 'umask 077; : > "$XAUTHORITY"; xauth -q add "$DISPLAY" . "$(mcookie)"'
+
+cleanup() {
+    trap - EXIT INT TERM
+    jobs -pr | xargs -r kill 2>/dev/null || true
+}
+trap cleanup EXIT
+trap 'exit 0' INT TERM
+rm -f "/tmp/.X${DISPLAY#:}-lock" "/tmp/.X11-unix/X${DISPLAY#:}"
+# The server runs as root: give it root's home, or its caches take over the desktop user's.
+HOME=/root XDG_CACHE_HOME=/root/.cache /usr/lib/xorg/Xorg "$DISPLAY" -config /run/desktop/xorg.conf -auth "$XAUTHORITY" -nolisten tcp \
+    -novtswitch -sharevts vt1 -logfile /var/log/desktop/Xorg.log >/dev/null 2>&1 &
+server=$!
+for attempt in $(seq 1 40); do
+    if runuser -u agent -- xdpyinfo >/dev/null 2>&1; then break; fi
+    if [ "$attempt" = 40 ] || ! kill -0 "$server" 2>/dev/null; then
+        tail -n 100 /var/log/desktop/Xorg.log >&2
+        exit 1
+    fi
+    sleep 0.5
 done
-printf '[desktop] ready on HTTPS port %s\n' "$DESKTOP_PORT"
-while health; do sleep 5; done
+# The Mac changes the GPU's preferred mode when "Resize desktop with window" is
+# on. The server has no udev to hear about it, so apply each new mode here.
+runuser -u agent -- /usr/local/bin/desktop-resize >>/var/log/desktop/resize.log 2>&1 &
+# Agents and remote viewers see and use the desktop through this, not a window.
+runuser -u agent -- /usr/local/bin/desktop-surface >>/var/log/desktop/surface.log 2>&1 &
+runuser -u agent -- dbus-run-session -- openbox-session >>/var/log/desktop/session.log 2>&1 &
+printf '[desktop] ready on %s\n' "$DISPLAY"
+wait "$server" || true
 echo '[desktop] display stopped unexpectedly' >&2
 exit 1

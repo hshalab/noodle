@@ -222,24 +222,6 @@ import SwiftUI
         _ = try await cli(["read"] + terminalA)
         print("PASS: discovery, two assignments, separate PTYs, shared guest files, CLI input/read/resize, typed card, membership checks and revocation")
 
-        if LaunchChecks.current.contains(DevelopmentHook.computerWeb) {
-            _ = try await cli(["write"] + terminalA + ["--text", "apk add --no-cache busybox-extras && printf '__HTTP_%s__\\n' READY"])
-            var httpReady = false
-            for _ in 0..<60 {
-                if (try await cli(["read"] + terminalA)["text"] as? String)?.contains("__HTTP_READY__") == true { httpReady = true; break }
-                try await Task.sleep(for: .seconds(1))
-            }
-            guard httpReady else { throw ComputerBridgeError("Fixture HTTP server package did not install.") }
-            _ = try await cli(["write"] + terminalA + ["--text", "mkdir -p /workspace/web; printf '%s' '<html><body style=\"background:#132d35;color:white;font:20px sans-serif;padding:40px\"><h1>Computer live display</h1><input placeholder=\"Type here\"><button onclick=\"document.body.dataset.done=1;this.textContent=String(1+1)\">Click to verify</button></body></html>' > /workspace/web/index.html; busybox httpd -p 8080 -h /workspace/web"])
-            _ = try await cli(["write"] + terminalA + ["--text", "busybox-extras httpd -p 8080 -h /workspace/web"])
-            try await Task.sleep(for: .seconds(1))
-            await controller.refresh()
-            _ = try await cli(["present"] + base + ["--conversation", a.conversation.id.uuidString])
-            guard case .computer(_, let terminal, let view)? = try repository.loadAttachments(conversationID: a.conversation.id).last!.companion,
-                  view == "web", terminal == nil else { throw ComputerBridgeError("Web link unexpectedly requires a terminal.") }
-            _ = try await controller.call(.init(.display, computerID: computer.id, agentID: a.agent.id))
-            print("PASS: web presentation reference resolves through the authorized broker")
-        }
         _ = try await cli(["write"] + terminalA + ["--text", "exit"])
         try await Task.sleep(for: .milliseconds(300))
         guard try await cli(["read"] + terminalA)["exited"] as? Bool == true else { throw ComputerBridgeError("Exit status not reported.") }

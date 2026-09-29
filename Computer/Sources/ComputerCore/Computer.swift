@@ -47,16 +47,14 @@ public enum DefaultLinuxInstaller {
 public struct Computer: Codable, Identifiable, Equatable, Sendable {
     public static var desktopImage: String { ComputerTemplate.desktop.imageReference }
     public static var shellImage: String { ComputerTemplate.shell.imageReference }
-    public var isCustomContainer: Bool { kind == .container && customImage == true }
     public var hasDesktop: Bool { template?.type == .desktop }
-    public var hasWebDisplay: Bool { hasDesktop || (isCustomContainer && webPort != nil) }
-    public var hasDisplay: Bool { hasWebDisplay || kind == .localMac }
+    public var hasDisplay: Bool { hasDesktop || kind == .localMac }
     public var usesVirtualMachine: Bool { kind == .macOS || kind == .linux }
     public var template: ComputerTemplate? {
         ContainerRegistry.bundled.template(for: self)
     }
-    public var displayType: String { isCustomContainer ? "Custom Container" : template?.name ?? kind.title }
-    public var displaySymbol: String { isCustomContainer ? "shippingbox" : template?.symbol ?? kind.symbol }
+    public var displayType: String { template?.name ?? kind.title }
+    public var displaySymbol: String { template?.symbol ?? kind.symbol }
     public static let maximumDescriptionLength = 500
     public var id: UUID
     public var name: String
@@ -72,20 +70,20 @@ public struct Computer: Codable, Identifiable, Equatable, Sendable {
     public var installationComplete: Bool
     public var imageReference: String
     public var macAddress: String?
-    public var customImage: Bool?
-    public var webPort: Int?
     public var appearance: ComputerAppearance?
     public var localMacSetupRequested: Bool?
     /// Kept for Noodle Hub's bots rather than this Mac's own; listed apart.
     public var hub: Bool?
     /// Whom Noodle Hub keeps it for, as the Hub last said; listed under them.
     public var hubOwner: HubOwner?
+    /// A Linux desktop follows its window's size instead of keeping its own resolution.
+    public var resizesDesktopWithWindow: Bool?
+    public var resizesDesktop: Bool { resizesDesktopWithWindow ?? false }
 
     public init(id: UUID = UUID(), name: String, kind: ComputerKind, cpuCount: Int = 4,
                 memoryGiB: Int = 4, diskGiB: Int = 64, networkEnabled: Bool = true,
                 createdAt: Date = .now, installationComplete: Bool = false,
-                imageReference: String = Computer.shellImage, macAddress: String? = nil,
-                customImage: Bool = false, webPort: Int? = nil) {
+                imageReference: String = Computer.shellImage, macAddress: String? = nil) {
         self.id = id
         self.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         self.kind = kind
@@ -97,8 +95,6 @@ public struct Computer: Codable, Identifiable, Equatable, Sendable {
         self.installationComplete = installationComplete
         self.imageReference = imageReference
         self.macAddress = macAddress
-        self.customImage = customImage
-        self.webPort = webPort
     }
 
     public func validate() throws {
@@ -121,12 +117,6 @@ public struct Computer: Codable, Identifiable, Equatable, Sendable {
         if let template, (template.requiresNetworking && !networkEnabled)
             || memoryGiB < template.minimumMemoryGiB || diskGiB < template.minimumDiskGiB {
             throw ComputerError("\(template.name) needs at least \(template.minimumMemoryGiB) GB memory and a \(template.minimumDiskGiB) GB disk\(template.requiresNetworking ? ", with networking enabled" : "").")
-        }
-        if let webPort, !isCustomContainer || !(1...65535).contains(webPort) || !networkEnabled {
-            throw ComputerError("A web display needs networking and a port between 1 and 65535 on a custom container.")
-        }
-        if isCustomContainer, imageReference.contains(where: \.isWhitespace) || imageReference.contains("://") {
-            throw ComputerError("Enter a container image reference, such as docker.io/library/nginx:alpine, not a web URL.")
         }
     }
 }

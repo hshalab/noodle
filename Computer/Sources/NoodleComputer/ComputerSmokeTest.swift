@@ -4,8 +4,8 @@ import ComputerBridge
 import CryptoKit
 import Foundation
 import Virtualization
+import Surface
 import SwiftUI
-import WebKit
 
 /// Opt-in signed-app integration fixture. Never opens the user's computer library.
 @MainActor enum ComputerSmokeTest {
@@ -46,9 +46,6 @@ import WebKit
         let snapshotTest = ComputerLaunchCheck.requested(ComputerLaunchCheck.providerSnapshot)
         var computer = (snapshotTest ? ComputerTemplate.desktop : .shell).makeComputer(name: "Isolated Provider Test")
         computer.networkEnabled = snapshotTest
-        if ComputerLaunchCheck.requested(ComputerLaunchCheck.providerWeb) {
-            computer.customImage = true; computer.webPort = 8080; computer.networkEnabled = true
-        }
         print("PROVIDER TEST: preparing isolated \(snapshotTest ? "desktop snapshot" : "Alpine shell")")
         guard await store.create(computer, source: nil), let session = store.selected else {
             throw ComputerError(store.error ?? "Could not create the fixture.")
@@ -67,60 +64,26 @@ import WebKit
             }
             if snapshotTest {
                 await store.start(session)
-                guard session.phase == .running, let browser = session.browser else {
+                guard session.phase == .running, let display = session.display, let runtime = session.container else {
                     throw ComputerError("The isolated desktop did not start.")
                 }
-                // Exercise real remote pixels, not just a synthetic HTML canvas.
-                guard let runtime = session.container else { throw ComputerError("Missing fixture runtime") }
                 let fixture = try await runtime.execute(#"""
                     command -v xterm && for n in 1 2 3 4 5 6 7 8 9 10; do pgrep -x openbox >/dev/null && break; sleep 1; done
-                    DISPLAY=:1 XAUTHORITY=${XAUTHORITY:-/run/desktop/Xauthority} xterm -geometry 70x20+40+60 -title 'Preview Verification' -e /bin/sh -c 'printf "Native desktop preview\nNo grey browser bands\nCorrect text proportions\n"; sleep 180' >/tmp/noodle-preview-xterm.log 2>&1 &
+                    setsid xterm -geometry 70x20+40+60 -title 'Preview Verification' -e /bin/sh -c 'printf "Native desktop preview\nServed from the guest\n"; sleep 180' </dev/null >/tmp/noodle-preview-xterm.log 2>&1 &
                     """#)
                 print("SNAPSHOT FIXTURE: \(fixture)")
-                var connected = false
-                for _ in 0..<60 {
-                    if (try? await browser.view.evaluateJavaScript("document.documentElement.classList.contains('noVNC_connected')")) as? Bool == true {
-                        connected = true; break
-                    }
-                    try await Task.sleep(for: .seconds(1))
-                }
-                guard connected else { throw ComputerError("Real desktop canvas never connected") }
-                try await Task.sleep(for: .seconds(3))
-                let state = try await browser.view.evaluateJavaScript("JSON.stringify([...document.querySelectorAll('canvas')].map(c=>({pixels:[c.width,c.height],rect:[c.getBoundingClientRect().width,c.getBoundingClientRect().height]})))")
-                print("REAL CANVAS: \(String(describing: state))")
                 let began = ProcessInfo.processInfo.systemUptime
-                var nativeSize: NSSize?
-                var nativeCorner: NSColor?
-                if let image = await ComputerPreviewSnapshot.capture(browser.view, desktop: true) {
-                    guard let bitmap = NSBitmapImageRep(data: image) else { throw ComputerError("Invalid native snapshot") }
-                    nativeSize = NSSize(width: bitmap.pixelsWide, height: bitmap.pixelsHigh)
-                    nativeCorner = bitmap.colorAt(x: 0, y: 0)?.usingColorSpace(.deviceRGB)
-                    let ext = image.starts(with: [137, 80, 78, 71]) ? "png" : "jpg"
-                    let output = FileManager.default.temporaryDirectory.appendingPathComponent("noodle-desktop-snapshot-test.\(ext)")
-                    try image.write(to: output)
-                    print("PASS: real background desktop snapshot saved to \(output.path)")
-                } else {
+                // The Mac's view of the desktop cannot be captured; this is the guest's own frame.
+                guard let image = await ComputerPreviewSnapshot.capture(frame: { try await display.surface.frame().image }) else {
                     throw ComputerError("Ready real desktop must produce a snapshot, not a fallback")
                 }
                 guard ProcessInfo.processInfo.systemUptime - began < 9 else {
                     throw ComputerError("Desktop snapshot exceeded its deadline.")
                 }
-                // Reproduce the reported CSS letterbox/stretch without changing guest pixels.
-                _ = try await browser.view.evaluateJavaScript("document.body.style.background='#272727';for(const c of document.querySelectorAll('canvas')){c.style.setProperty('margin-top','140px','important');c.style.setProperty('width','500px','important');c.style.setProperty('height','250px','important');}")
-                guard let cropped = await ComputerPreviewSnapshot.capture(browser.view, desktop: true) else {
-                    throw ComputerError("Letterboxed real desktop did not produce a snapshot")
-                }
-                guard let bitmap = NSBitmapImageRep(data: cropped),
-                      NSSize(width: bitmap.pixelsWide, height: bitmap.pixelsHigh) == nativeSize,
-                      let corner = bitmap.colorAt(x: 0, y: 0)?.usingColorSpace(.deviceRGB),
-                      let nativeCorner,
-                      abs(corner.redComponent - nativeCorner.redComponent) < 0.02,
-                      abs(corner.greenComponent - nativeCorner.greenComponent) < 0.02,
-                      abs(corner.blueComponent - nativeCorner.blueComponent) < 0.02 else {
-                    throw ComputerError("Native framebuffer dimensions changed or grey browser margin entered the snapshot")
-                }
-                try cropped.write(to: FileManager.default.temporaryDirectory.appendingPathComponent("noodle-real-letterbox-result.png"))
-                print("PASS: real remote canvas captured after forced letterboxing and CSS stretching")
+                let ext = image.starts(with: [137, 80, 78, 71]) ? "png" : "jpg"
+                let output = FileManager.default.temporaryDirectory.appendingPathComponent("noodle-desktop-snapshot-test.\(ext)")
+                try image.write(to: output)
+                print("PASS: real background desktop snapshot saved to \(output.path)")
             }
             for _ in 0..<(snapshotTest ? 0 : 600) {
                 if FileManager.default.fileExists(atPath: finished.path) {
@@ -139,8 +102,9 @@ import WebKit
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("NoodleLibraryLayout-\(UUID().uuidString)")
         let store = try ComputerStore(root: root)
         defer { try? FileManager.default.removeItem(at: root) }
-        let session = ComputerSession(ComputerTemplate.desktop.makeComputer())
-        session.desktop = DesktopConnection(url: URL(string: "https://127.0.0.1:1/")!)
+        let session = ComputerSession(ComputerTemplate.shell.makeComputer())
+        session.phase = .running
+        session.terminal = GuestTerminal()
         store.sessions = [session]
         store.selection = session.id
         let host = NSHostingView(rootView: ComputerLibraryView(store: store))
@@ -155,42 +119,23 @@ import WebKit
             if predicate(view) { return view }
             return view.subviews.compactMap { find(in: $0, matching: predicate) }.first
         }
-        session.terminal = GuestTerminal()
         for size in [NSSize(width: 1000, height: 650), NSSize(width: 1001, height: 651)] {
             window.setContentSize(size)
-            for terminal in [false, true] {
-                session.showingTerminal = terminal
-                try await Task.sleep(for: .milliseconds(400))
-                host.layoutSubtreeIfNeeded()
-                guard let glass = find(in: host, matching: { String(describing: type(of: $0)).contains("ConcentricGlassEffectView") }),
-                      let display = find(in: host, matching: { terminal ? $0 is ComputerTerminalSurface : $0 is WKWebView }) else {
-                    throw ComputerError("Native sidebar or display missing from full-library fixture")
-                }
-                let sidebarFrame = glass.convert(glass.bounds, to: nil)
-                let displayFrame = display.convert(display.bounds, to: nil)
-                guard abs(sidebarFrame.minY - displayFrame.minY) < 0.01 else {
-                    throw ComputerError("Sidebar/display bottom bounds differ: \(sidebarFrame), \(displayFrame)")
-                }
-                print("PASS: full-library \(terminal ? "terminal" : "web") bottom matches native glass at \(displayFrame.minY), size \(size)")
+            try await Task.sleep(for: .milliseconds(400))
+            host.layoutSubtreeIfNeeded()
+            guard let glass = find(in: host, matching: { String(describing: type(of: $0)).contains("ConcentricGlassEffectView") }) else {
+                throw ComputerError("Native sidebar missing from full-library fixture")
             }
+            guard let display = find(in: host, matching: { $0 is ComputerTerminalSurface }) else {
+                throw ComputerError("Terminal missing from full-library fixture")
+            }
+            let sidebarFrame = glass.convert(glass.bounds, to: nil)
+            let displayFrame = display.convert(display.bounds, to: nil)
+            guard abs(sidebarFrame.minY - displayFrame.minY) < 0.01 else {
+                throw ComputerError("Sidebar/display bottom bounds differ: \(sidebarFrame), \(displayFrame)")
+            }
+            print("PASS: full-library terminal bottom matches native glass at \(displayFrame.minY), size \(size)")
         }
-        session.showingTerminal = false
-        let browser = session.browser!
-        browser.view.loadHTMLString("""
-          <html><head><style>html,body{margin:0;width:100%;height:100%}
-          #noVNC_container{display:flex;width:100%;height:100%;background:black}</style></head>
-          <body><div id="noVNC_container"><canvas style="margin:auto" width="100" height="100"></canvas></div></body></html>
-          """, baseURL: browser.connection.url)
-        var anchored = false
-        for _ in 0..<50 {
-            if (try? await browser.view.evaluateJavaScript("""
-              (() => {const c=document.querySelector('canvas');if(!c)return false;
-              const r=c.getBoundingClientRect();return r.top===0 && r.left===0;})()
-              """)) as? Bool == true { anchored = true; break }
-            try await Task.sleep(for: .milliseconds(100))
-        }
-        guard anchored else { throw ComputerError("Remote canvas was centered instead of anchored at the viewport origin") }
-        print("PASS: embedded desktop canvas has no top/left auto-margin")
     }
 
     static func checkEmptyLibraryBackground() async throws {
@@ -274,96 +219,6 @@ import WebKit
         print("APPEARANCE WINDOW: \(window.windowNumber)")
         print("APPEARANCE: terminal=\(terminal.view.backgroundOpacity), layer=\(terminal.view.layer?.backgroundColor?.alpha ?? -1), opaque=\(window.isOpaque)")
         try await Task.sleep(for: .seconds(45))
-    }
-
-    static func checkCustomContainer() async throws {
-        setbuf(stdout, nil)
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent("NoodleCustom-Verification")
-        let store = try ComputerStore(root: root)
-        let monitor = Task { @MainActor in
-            while !Task.isCancelled {
-                print("CUSTOM: \(store.creationStatus ?? "starting/testing") \(store.creationDetail ?? "")")
-                try? await Task.sleep(for: .seconds(5))
-            }
-        }
-        defer { monitor.cancel() }
-        var computer = Computer(name: "Custom Web Test", kind: .container, cpuCount: 2,
-            memoryGiB: 1, diskGiB: 8, imageReference: "docker.io/library/nginx:alpine", customImage: true, webPort: 80)
-        var appearance = ComputerAppearance()
-        appearance.backgroundPreset = "ocean"
-        appearance.iconSymbol = "globe"
-        appearance.iconColour = 1
-        appearance.terminalOpacity = 0
-        appearance.terminalForeground = "33FF99"
-        computer.appearance = appearance
-        let created = store.sessions.isEmpty ? await store.create(computer, source: nil) : true
-        guard created, let session = store.selected else { throw ComputerError(store.error ?? "Custom creation failed.") }
-        await store.start(session)
-        guard session.phase == .running, session.desktop?.url.scheme == "http" else {
-            throw ComputerError("Custom image did not start: \(session.console)")
-        }
-        let host = NSHostingView(rootView: ComputerLibraryView(store: store))
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1000, height: 700),
-            styleMask: [.titled, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
-        window.titlebarAppearsTransparent = true
-        window.toolbar = NSToolbar(identifier: "custom-verification")
-        window.contentView = host
-        window.orderBack(nil)
-        defer { window.orderOut(nil) }
-        func webView(in view: NSView) -> WKWebView? {
-            if let web = view as? WKWebView { return web }
-            return view.subviews.compactMap { webView(in: $0) }.first
-        }
-        var rendered = false
-        for _ in 0..<30 {
-            try await Task.sleep(for: .seconds(1))
-            if let web = webView(in: host),
-               let text = try? await web.evaluateJavaScript("document.body.innerText") as? String,
-               text.contains("Welcome to nginx!") { rendered = true; break }
-        }
-        guard rendered else {
-            if let web = webView(in: host) {
-                print("CUSTOM WEB: url=\(web.url?.absoluteString ?? "nil") loading=\(web.isLoading)")
-                print("CUSTOM WEB HTML: \((try? await web.evaluateJavaScript("document.documentElement.outerHTML")) ?? "unavailable")")
-            }
-            await store.execute("ps aux; wget -qO- http://127.0.0.1:80/", in: session)
-            print("CUSTOM GUEST: \(session.console)")
-            await store.stop(session, force: true)
-            throw ComputerError("Custom HTTP port did not render its nginx page.")
-        }
-        await store.toggleTerminal(session)
-        guard let terminal = session.terminal, session.showingTerminal else {
-            throw ComputerError("Custom web image recovery terminal did not open.")
-        }
-        terminal.io.send(Data("printf '\\n__CUSTOM_%s__\\n' READY\r".utf8))
-        try await Task.sleep(for: .seconds(1))
-        host.layoutSubtreeIfNeeded()
-        let screen = String(decoding: terminal.view.getTerminal().getBufferAsData(), as: UTF8.self)
-        guard screen.contains("__CUSTOM_READY__"), terminal.view.backgroundOpacity == 0 else {
-            throw ComputerError("Custom terminal or transparent appearance failed.")
-        }
-        do { try await checkTerminalReconnection(store: store, session: session) }
-        catch { await store.stop(session, force: true); throw error }
-        if let bitmap = host.bitmapImageRepForCachingDisplay(in: host.bounds) {
-            host.cacheDisplay(in: host.bounds, to: bitmap)
-            try bitmap.representation(using: .png, properties: [:])?.write(
-                to: FileManager.default.temporaryDirectory.appendingPathComponent("NoodleCustom-Appearance.png"))
-        }
-        await store.stop(session, force: true)
-        guard session.phase == .stopped else { throw ComputerError("Custom computer did not stop.") }
-        var shell = ComputerTemplate.shell.makeComputer(name: "Custom Shell Test")
-        shell.customImage = true
-        shell.networkEnabled = false
-        guard await store.create(shell, source: nil), let shellSession = store.selected else {
-            throw ComputerError("Custom shell creation failed.")
-        }
-        await store.start(shellSession)
-        guard shellSession.phase == .running, shellSession.terminal != nil, shellSession.desktop == nil else {
-            throw ComputerError("An image without a web port did not default to a terminal.")
-        }
-        await store.stop(shellSession, force: true)
-        print("CUSTOM TEST PASSED: image startup command, HTTP web display, recovery terminal, transparent colours, and no-port shell workspace")
-        try? FileManager.default.removeItem(at: root)
     }
 
     static func checkCreationForm() async throws {
@@ -552,11 +407,16 @@ import WebKit
     }
 
     private static func checkDesktopToolbarLayout(store: ComputerStore) async throws {
-        let session = ComputerSession(ComputerTemplate.desktop.makeComputer())
-        // Layout needs a WebKit surface, not a running guest or image download.
-        session.desktop = DesktopConnection(url: URL(string: "https://127.0.0.1:1/")!,
-                                             certificate: Data(), password: "layout-test")
-        let host = NSHostingView(rootView: ComputerDetailView(store: store, session: session))
+        func terminalSurface(in view: NSView) -> ComputerTerminalSurface? {
+            if let terminal = view as? ComputerTerminalSurface { return terminal }
+            return view.subviews.compactMap { terminalSurface(in: $0) }.first
+        }
+        let shell = ComputerSession(ComputerTemplate.shell.makeComputer())
+        var appearance = ComputerAppearance()
+        appearance.terminalOpacity = 0.5
+        shell.computer.appearance = appearance
+        shell.terminal = GuestTerminal()
+        let host = NSHostingView(rootView: ComputerDetailView(store: store, session: shell))
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 900, height: 650),
                               styleMask: [.titled, .resizable, .fullSizeContentView],
                               backing: .buffered, defer: false)
@@ -565,29 +425,16 @@ import WebKit
         window.contentView = host
         window.orderBack(nil)
         defer { window.orderOut(nil) }
-        func webView(in view: NSView) -> WKWebView? {
-            if let web = view as? WKWebView { return web }
-            return view.subviews.compactMap { webView(in: $0) }.first
-        }
-        func terminalSurface(in view: NSView) -> ComputerTerminalSurface? {
-            if let terminal = view as? ComputerTerminalSurface { return terminal }
-            return view.subviews.compactMap { terminalSurface(in: $0) }.first
-        }
-        let browser = session.browser!
-        let shell = ComputerSession(ComputerTemplate.shell.makeComputer())
-        var appearance = ComputerAppearance()
-        appearance.terminalOpacity = 0.5
-        shell.computer.appearance = appearance
-        shell.terminal = GuestTerminal()
         for size in [NSSize(width: 900, height: 650), NSSize(width: 700, height: 480)] {
             window.setContentSize(size)
+            host.rootView = ComputerDetailView(store: store, session: shell)
             try await Task.sleep(for: .milliseconds(300))
             host.layoutSubtreeIfNeeded()
-            guard let web = webView(in: host) else { throw ComputerError("Desktop surface is missing.") }
-            let frame = web.convert(web.bounds, to: nil)
+            guard let surface = terminalSurface(in: host) else { throw ComputerError("Shell surface is missing.") }
+            let frame = surface.convert(surface.bounds, to: nil)
             let usable = window.contentLayoutRect
             guard frame.height > 100, abs(usable.maxY - frame.maxY - 4) < 1 else {
-                throw ComputerError("Desktop overlaps native toolbar: \(frame), usable \(usable)")
+                throw ComputerError("Display overlaps native toolbar: \(frame), usable \(usable)")
             }
             guard abs(frame.minY - 7) < 0.5 else {
                 throw ComputerError("Display bottom plus its 1-point clip must match the sidebar's 8-point inset: \(frame)")
@@ -595,72 +442,34 @@ import WebKit
             guard abs(usable.maxX - frame.maxX - 8) < 1, abs(frame.minX - usable.minX - 12) < 1 else {
                 throw ComputerError("Display must keep an 8-point outer margin and 12-point panel gap: \(frame)")
             }
-            host.rootView = ComputerDetailView(store: store, session: shell)
-            try await Task.sleep(for: .milliseconds(200))
-            host.layoutSubtreeIfNeeded()
-            guard let surface = terminalSurface(in: host) else { throw ComputerError("Shell surface is missing.") }
-            let shellFrame = surface.convert(surface.bounds, to: nil)
             guard surface.layer?.backgroundColor?.alpha == 0.5,
                   surface.terminal.backgroundOpacity == 0,
-                  surface.terminal.layer?.backgroundColor?.alpha == 0 else {
-                throw ComputerError("Terminal background must be composited exactly once.")
-            }
-            guard abs(shellFrame.minX - frame.minX) < 1, abs(shellFrame.minY - frame.minY) < 1,
-                  abs(shellFrame.width - frame.width) < 1, abs(shellFrame.height - frame.height) < 1,
+                  surface.terminal.layer?.backgroundColor?.alpha == 0,
                   abs(surface.terminal.frame.minX - 12) < 1,
                   abs(surface.terminal.frame.minY - 12) < 1 else {
-                throw ComputerError("Shell and WebKit geometry differ: \(shellFrame), \(frame); text \(surface.terminal.frame)")
+                throw ComputerError("Terminal background must be composited exactly once, with its inset: \(surface.terminal.frame)")
             }
-            // Collapsing changes only the outer left inset, for both surfaces.
-            for candidate in [shell, session] {
-                host.rootView = ComputerDetailView(store: store, session: candidate, sidebarCollapsed: true)
-                try await Task.sleep(for: .milliseconds(200))
-                host.layoutSubtreeIfNeeded()
-                guard let display: NSView = candidate === shell ? terminalSurface(in: host) : webView(in: host) else {
-                    throw ComputerError("Collapsed display is missing.")
-                }
-                let collapsed = display.convert(display.bounds, to: nil)
-                guard abs(collapsed.minX - usable.minX - 8) < 1,
-                      abs(usable.maxX - collapsed.maxX - 8) < 1,
-                      abs(collapsed.minY - frame.minY) < 1,
-                      abs(collapsed.height - frame.height) < 1 else {
-                    throw ComputerError("Collapsed sidebar must give both displays matching 8-point side insets: \(collapsed)")
-                }
-            }
-            host.rootView = ComputerDetailView(store: store, session: session)
+            // Collapsing changes only the outer left inset.
+            host.rootView = ComputerDetailView(store: store, session: shell, sidebarCollapsed: true)
             try await Task.sleep(for: .milliseconds(200))
-            guard webView(in: host) === web, session.browser === browser else {
-                throw ComputerError("Switching computers recreated WebKit.")
-            }
             host.layoutSubtreeIfNeeded()
-            guard abs(web.convert(web.bounds, to: nil).minX - frame.minX) < 1 else {
-                throw ComputerError("Expanding the sidebar did not restore the 12-point panel gap.")
+            guard let collapsedSurface = terminalSurface(in: host) else { throw ComputerError("Collapsed display is missing.") }
+            let collapsed = collapsedSurface.convert(collapsedSurface.bounds, to: nil)
+            guard abs(collapsed.minX - usable.minX - 8) < 1,
+                  abs(usable.maxX - collapsed.maxX - 8) < 1,
+                  abs(collapsed.minY - frame.minY) < 1,
+                  abs(collapsed.height - frame.height) < 1 else {
+                throw ComputerError("Collapsed sidebar must give the display matching 8-point side insets: \(collapsed)")
             }
         }
-        // Verify page state survives detaching and reattaching the display, not just its URL.
-        browser.view.loadHTMLString("<html><body>Retained display<script>window.noodleFixtureLoaded = true</script></body></html>", baseURL: browser.connection.url)
-        var fixtureLoaded = false
-        for _ in 0..<100 {
-            if (try? await browser.view.evaluateJavaScript("window.noodleFixtureLoaded === true")) as? Bool == true {
-                fixtureLoaded = true; break
-            }
-            try await Task.sleep(for: .milliseconds(100))
-        }
-        guard fixtureLoaded else { throw ComputerError("WebKit did not load the retention fixture.") }
-        _ = try await browser.view.evaluateJavaScript("window.noodleRetainedState = 'unchanged'")
-        host.rootView = ComputerDetailView(store: store, session: shell)
-        try await Task.sleep(for: .milliseconds(200))
-        host.rootView = ComputerDetailView(store: store, session: session)
-        try await Task.sleep(for: .milliseconds(200))
-        guard try await browser.view.evaluateJavaScript("window.noodleRetainedState") as? String == "unchanged" else {
-            throw ComputerError("Switching computers reloaded the page.")
-        }
-        print("DISPLAY LAYOUT TEST PASSED: identical Shell/WebKit bounds, 8-point collapsed side/outer margins, 7-point bottom margin plus 1-point clip, restored 12-point expanded panel gap and terminal inset, retained browser and page state")
+        print("DISPLAY LAYOUT TEST PASSED: 8-point collapsed side/outer margins, 7-point bottom margin plus 1-point clip, 12-point expanded panel gap and terminal inset")
     }
 
     static func checkDesktop() async throws {
         setbuf(stdout, nil)
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("NoodleDesktop-Verification")
+        // Always a fresh computer: a kept one would run the image from an earlier attempt.
+        try? FileManager.default.removeItem(at: root)
         let store = try ComputerStore(root: root)
         let monitor = Task { @MainActor in
             while !Task.isCancelled {
@@ -675,93 +484,301 @@ import WebKit
             throw ComputerError(store.error ?? "Desktop creation failed.")
         }
         await store.start(session)
-        guard session.phase == .running, session.desktop != nil else {
+        guard session.phase == .running, let display = session.display, display.machine != nil else {
             throw ComputerError("Desktop startup failed: \(session.console)")
         }
-        await store.execute("for attempt in 1 2 3 4 5 6 7 8 9 10; do if pgrep -x Xvnc && pgrep -x openbox; then exit 0; fi; sleep 1; done; exit 1", in: session)
-        let result = session.console
-        guard result.contains("[Exit 0]"), session.desktop != nil else {
-            await store.stop(session, force: true)
-            throw ComputerError("Desktop processes did not start: \(result)")
-        }
-        let host = NSHostingView(rootView: ComputerDetailView(store: store, session: session))
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 800),
-                              styleMask: [.borderless], backing: .buffered, defer: false)
-        window.contentView = host
-        host.layoutSubtreeIfNeeded()
-        func webView(in view: NSView) -> WKWebView? {
-            if let web = view as? WKWebView { return web }
-            return view.subviews.compactMap { webView(in: $0) }.first
-        }
-        var rendered = false
-        var lastState = "No web view"
-        for _ in 0..<60 {
-            try await Task.sleep(for: .seconds(1))
-            if let web = webView(in: host) {
-                lastState = (try? await web.evaluateJavaScript("JSON.stringify({classes:document.documentElement.className,canvases:[...document.querySelectorAll('canvas')].map(c=>[c.width,c.height]),text:document.body.innerText.slice(0,500)})")) as? String ?? "Page not ready"
-                if (try? await web.evaluateJavaScript("document.documentElement.classList.contains('noVNC_connected') && [...document.querySelectorAll('canvas')].some(c=>c.width>100 && c.height>100)")) as? Bool == true {
-                    try await Task.sleep(for: .seconds(3))
-                    let snapshot = try await web.takeSnapshot(configuration: nil)
-                    if let data = snapshot.tiffRepresentation {
-                        try data.write(to: FileManager.default.temporaryDirectory.appendingPathComponent("NoodleDesktop-Verification.tiff"))
-                    }
-                    rendered = true
-                    break
-                }
-            }
-        }
-        if rendered {
-            let originalWebView = webView(in: host)
-            // Freeze only this isolated test guest's display server, not its VM.
+        func guest(_ command: String) async -> String {
             session.console = ""
-            await store.execute("pkill -STOP -x Xvnc && ps -o stat= -p $(pgrep -x Xvnc) | grep -q T", in: session)
-            guard session.console.contains("[Exit 0]") else {
-                await store.stop(session, force: true)
-                throw ComputerError("Could not pause the test desktop display server.")
-            }
-            await store.toggleTerminal(session)
-            guard session.showingTerminal, let terminal = session.terminal else {
-                await store.stop(session, force: true)
-                throw ComputerError("Desktop recovery terminal did not open.")
-            }
-            terminal.io.send(Data("export NOODLE_RECOVERY=alive; printf '\\n__RECOVERY_%s__\\n' READY\r".utf8))
-            func terminalScreen() -> String {
-                String(decoding: terminal.view.getTerminal().getBufferAsData(), as: UTF8.self)
-            }
-            for _ in 0..<100 {
-                if terminalScreen().contains("__RECOVERY_READY__") { break }
-                try await Task.sleep(for: .milliseconds(100))
-            }
-            guard terminalScreen().contains("__RECOVERY_READY__") else {
-                await store.stop(session, force: true)
-                throw ComputerError("Terminal stopped responding while the desktop was paused.")
-            }
-            await store.toggleTerminal(session)
-            guard !session.showingTerminal else { throw ComputerError("Show Desktop did not switch back.") }
-            await store.toggleTerminal(session)
-            guard session.terminal === terminal else { throw ComputerError("Switching replaced the shell session.") }
-            terminal.io.send(Data("printf '\\n__PRESERVED_%s__\\n' \"$NOODLE_RECOVERY\"\r".utf8))
-            for _ in 0..<100 {
-                if terminalScreen().contains("__PRESERVED_alive__") { break }
-                try await Task.sleep(for: .milliseconds(100))
-            }
-            guard terminalScreen().contains("__PRESERVED_alive__") else {
-                await store.stop(session, force: true)
-                throw ComputerError("Switching lost the shell environment.")
-            }
-            await store.execute("pkill -CONT -x Xvnc", in: session)
-            await store.toggleTerminal(session)
-            host.layoutSubtreeIfNeeded()
-            guard webView(in: host) === originalWebView else {
-                await store.stop(session, force: true)
-                throw ComputerError("Switching replaced the desktop connection.")
-            }
-            print("RECOVERY TERMINAL TEST PASSED: shell works with paused desktop; switching preserves its session")
+            await store.execute(command, in: session)
+            return session.console
         }
+        func fail(_ message: String) async -> ComputerError {
+            await store.stop(session, force: true)
+            return ComputerError(message)
+        }
+        let processes = await guest("for attempt in 1 2 3 4 5 6 7 8 9 10; do if pgrep -x Xorg && pgrep -x openbox && pgrep -x desktop-surface; then exit 0; fi; sleep 1; done; exit 1")
+        guard processes.contains("[Exit 0]") else { throw await fail("Desktop processes did not start: \(processes)") }
+        // Let the session's own windows open first, so none of them takes focus from a fixture.
+        _ = await guest("for attempt in $(seq 1 60); do xdotool search --onlyvisible --class chromium >/dev/null 2>&1 && break; sleep 0.5; done; sleep 3")
+        // The whole library window, as people use it: nothing in it may cover the display.
+        store.selection = session.id
+        let host = NSHostingView(rootView: ComputerLibraryView(store: store))
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1400, height: 900),
+                              styleMask: [.titled, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
+        window.title = "Desktop Verification"
+        window.titlebarAppearsTransparent = true
+        window.toolbar = NSToolbar(identifier: "desktop-verification")
+        window.contentView = host
+        window.makeKeyAndOrderFront(nil)
+        defer { window.close() }
+        host.layoutSubtreeIfNeeded()
+        func machineView(in view: NSView) -> VZVirtualMachineView? {
+            if let machine = view as? VZVirtualMachineView { return machine }
+            return view.subviews.compactMap { machineView(in: $0) }.first
+        }
+        guard let view = machineView(in: host) else { throw await fail("The desktop shows no native display.") }
+        guard !view.automaticallyReconfiguresDisplay else { throw await fail("A new desktop must keep its own resolution.") }
+
+        // Agents and remote viewers: the guest serves frames and takes input.
+        let frame: CGImage, size: CGSize
+        do { (frame, size) = try await display.surface.frame() } catch {
+            let logs = await guest("tail -20 /var/log/desktop/surface.log; tail -5 /var/log/desktop/Xorg.log; pgrep -a desktop-surface")
+            throw await fail("The desktop did not serve a frame: \(error.localizedDescription)\n\(logs)")
+        }
+        guard frame.width == 1920, frame.height == 1200, size == CGSize(width: 1920, height: 1200) else {
+            throw await fail("The desktop frame is \(frame.width)x\(frame.height), not its fixed 1920x1200.")
+        }
+        // The session tiles and stacks its own windows, so find the fixture where it
+        // actually is and bring it to the top; clicking it is what gives it focus.
+        func openFixture(_ title: String) async throws -> CGPoint {
+            let geometry = await guest(#"""
+                rm -f /tmp/noodle-typed
+                setsid xterm -title '\#(title)' -e sh -c 'read line; printf "%s" "$line" > /tmp/noodle-typed' </dev/null >/tmp/noodle-xterm.log 2>&1 &
+                for attempt in $(seq 1 20); do
+                    window=$(xdotool search --onlyvisible --name '^\#(title)$' 2>/dev/null | head -n 1)
+                    [ -n "$window" ] && break
+                    sleep 0.5
+                done
+                [ -n "$window" ] || { cat /tmp/noodle-xterm.log; wmctrl -l; exit 1; }
+                xdotool windowraise "$window"
+                sleep 0.5
+                xdotool getwindowgeometry --shell "$window"
+                """#)
+            let fields = Dictionary(geometry.split(whereSeparator: \.isNewline).compactMap { line -> (String, Double)? in
+                let parts = line.split(separator: "=")
+                guard parts.count == 2, let value = Double(parts[1]) else { return nil }
+                return (String(parts[0]), value)
+            }, uniquingKeysWith: { first, _ in first })
+            guard let x = fields["X"], let y = fields["Y"], let width = fields["WIDTH"], let height = fields["HEIGHT"] else {
+                throw await fail("The \(title) window did not open: \(geometry)")
+            }
+            return CGPoint(x: x + width / 2, y: y + height / 2)
+        }
+        func click(_ point: CGPoint) async throws {
+            for phase in [SurfaceInput.Phase.move, .down, .up] {
+                try await display.surface.send(.pointer(phase, x: point.x, y: point.y, clickCount: 1))
+            }
+            try await Task.sleep(for: .milliseconds(300))
+        }
+        try await click(try await openFixture("Input Verification"))
+        try await display.surface.send(.text("remote viewer"))
+        try await display.surface.send(.key(.enter))
+        let remote = await guest("for attempt in 1 2 3 4 5 6 7 8 9 10; do [ -s /tmp/noodle-typed ] && break; sleep 0.5; done; cat /tmp/noodle-typed")
+        guard remote.contains("remote viewer") else { throw await fail("Input from a remote viewer did not reach the desktop: \(remote)") }
+
+        // A person at the Mac: keys go through the view's virtual keyboard.
+        try await click(try await openFixture("Keyboard Verification"))
+        window.makeFirstResponder(view)
+        for (character, code) in [("m", UInt16(46)), ("a", 0), ("c", 8), ("\r", 36)] {
+            for type in [NSEvent.EventType.keyDown, .keyUp] {
+                window.sendEvent(NSEvent.keyEvent(with: type, location: .zero, modifierFlags: [], timestamp: 0,
+                    windowNumber: window.windowNumber, context: nil, characters: character,
+                    charactersIgnoringModifiers: character, isARepeat: false, keyCode: code)!)
+            }
+        }
+        let local = await guest("for attempt in 1 2 3 4 5 6 7 8 9 10; do [ -s /tmp/noodle-typed ] && break; sleep 0.5; done; cat /tmp/noodle-typed")
+        guard local.contains("mac") else { throw await fail("Keys typed into the desktop view did not arrive: \(local)") }
+
+        // A person's pointer: the Mac view's own mouse events, where nothing may cover the view.
+        host.layoutSubtreeIfNeeded()
+        func windowPoint(guestX: CGFloat, guestY: CGFloat) -> NSPoint {
+            // The view fits the 1920x1200 screen inside its bounds, keeping its shape.
+            let scale = min(view.bounds.width / 1920, view.bounds.height / 1200)
+            let x = (view.bounds.width - 1920 * scale) / 2 + guestX * scale
+            let y = (view.bounds.height - 1200 * scale) / 2 + (1200 - guestY) * scale
+            return view.convert(NSPoint(x: view.isFlipped ? x : x, y: view.isFlipped ? view.bounds.height - y : y), to: nil)
+        }
+        func mouse(_ type: NSEvent.EventType, _ location: NSPoint) -> NSEvent {
+            NSEvent.mouseEvent(with: type, location: location, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                windowNumber: window.windowNumber, context: nil, eventNumber: 0,
+                clickCount: type == .mouseMoved ? 0 : 1, pressure: type == .leftMouseDown ? 1 : 0)!
+        }
+        let centre = windowPoint(guestX: 960, guestY: 600)
+        let hit = window.contentView?.superview?.hitTest(centre)
+        guard hit === view || hit?.isDescendant(of: view) == true else {
+            throw await fail("A click on the desktop lands on \(hit.map { String(describing: type(of: $0)) } ?? "nothing"), not the display.")
+        }
+        view.mouseMoved(with: mouse(.mouseMoved, centre))
+        try await Task.sleep(for: .milliseconds(500))
+        let moved = await guest("xdotool getmouselocation --shell")
+        let target = try await openFixture("Pointer Verification")
+        let point = windowPoint(guestX: target.x, guestY: target.y)
+        view.mouseMoved(with: mouse(.mouseMoved, point))
+        view.mouseDown(with: mouse(.leftMouseDown, point))
+        view.mouseUp(with: mouse(.leftMouseUp, point))
+        try await Task.sleep(for: .milliseconds(500))
+        let focused = await guest("xdotool getwindowfocus getwindowname; xdotool getmouselocation --shell")
+        guard focused.contains("Pointer Verification") else {
+            let inputs = await guest("grep -iE 'evdev|input|pointer|digitizer' /var/log/desktop/Xorg.log | tail -15")
+            throw await fail("A click through the desktop view did not reach the guest.\nCentre: \(moved)\nAfter click at \(target): \(focused)\n\(inputs)")
+        }
+        // The same through the system's event queue, as a real mouse arrives.
+        print("PASS: native display, guest frames, remote and local keyboard and pointer input")
+
+        // ⌘V and ⌘C through the view, with a private pasteboard: the person's own clipboard is never touched.
+        guard let desktopView = view as? DesktopMachineView else { throw await fail("The desktop view does not handle copy and paste.") }
+        let pasteboard = NSPasteboard(name: .init("NoodleDesktopVerification-\(UUID().uuidString)"))
+        defer { pasteboard.releaseGlobally() }
+        desktopView.pasteboard = pasteboard
+        // ⌘C and ⌘V are the Edit menu's items: send what each item sends, down the window's
+        // responder chain, as the menu does. Posting keys would need this app to be frontmost.
+        func menu(_ key: String) async throws {
+            guard let item = NSApp.mainMenu?.items.compactMap(\.submenu).flatMap(\.items)
+                    .first(where: { $0.keyEquivalent == key && $0.keyEquivalentModifierMask == .command }),
+                  let action = item.action else { throw await fail("The app has no ⌘\(key.uppercased()) menu item.") }
+            window.makeFirstResponder(desktopView)
+            guard window.firstResponder?.tryToPerform(action, with: item) == true else {
+                throw await fail("\(item.title) did not reach the desktop.")
+            }
+        }
+        try await click(try await openFixture("Paste Verification"))
+        pasteboard.clearContents()
+        pasteboard.setString("pasted from the mac\n", forType: .string)
+        try await menu("v")
+        let pasted = await guest("for attempt in 1 2 3 4 5 6 7 8 9 10; do [ -s /tmp/noodle-typed ] && break; sleep 0.5; done; cat /tmp/noodle-typed")
+        guard pasted.contains("pasted from the mac") else { throw await fail("⌘V did not paste the Mac clipboard: \(pasted)") }
+        try await click(try await openFixture("Copy Verification"))
+        _ = await guest("printf 'copied in the guest' | xclip -selection primary -in")
+        pasteboard.clearContents()
+        try await menu("c")
+        var copied: String?
+        for _ in 0..<20 where copied == nil {
+            try await Task.sleep(for: .milliseconds(250))
+            copied = pasteboard.string(forType: .string)
+        }
+        guard copied == "copied in the guest" else { throw await fail("⌘C did not copy the terminal's selection: \(copied ?? "nothing")") }
+        print("PASS: ⌘V pastes the Mac clipboard into the desktop and ⌘C copies back, only when pressed")
+
+        // The desktop's own terminal, which its menus and welcome open, draws with OpenGL.
+        let kitty = await guest(#"""
+            setsid kitty --title 'Kitty Verification' </dev/null >/tmp/noodle-kitty.log 2>&1 &
+            for attempt in $(seq 1 20); do
+                xdotool search --onlyvisible --name '^Kitty Verification$' >/dev/null 2>&1 && exit 0
+                sleep 0.5
+            done
+            cat /tmp/noodle-kitty.log; exit 1
+            """#)
+        guard kitty.contains("[Exit 0]") else { throw await fail("The desktop's terminal did not open: \(kitty)") }
+        print("PASS: the desktop's own terminal opens")
+
+        // Resize with window: turning it on makes the guest take the view's size at once.
+        store.rename(session, name: session.computer.name, resizesDesktop: true)
+        host.layoutSubtreeIfNeeded()
+        var resized = false
+        for _ in 0..<20 {
+            try await Task.sleep(for: .milliseconds(500))
+            if let (next, _) = try? await display.surface.frame(), next.width != 1920 || next.height != 1200 { resized = true; break }
+        }
+        guard view.automaticallyReconfiguresDisplay, resized else {
+            let state = await guest("cat /sys/class/drm/card*-*/modes | head -3; xrandr | head -3; tail -5 /var/log/desktop/resize.log")
+            throw await fail("The desktop did not follow its window's size (view resizes: \(view.automaticallyReconfiguresDisplay), view \(view.bounds.size)):\n\(state)")
+        }
+        // Turning it off returns the desktop to its own resolution straight away.
+        store.rename(session, name: session.computer.name, resizesDesktop: false)
+        var restored = false
+        for _ in 0..<20 {
+            try await Task.sleep(for: .milliseconds(500))
+            if let (next, _) = try? await display.surface.frame(), next.width == 1920, next.height == 1200 { restored = true; break }
+        }
+        guard restored else { throw await fail("Turning off Resize desktop with window did not restore 1920x1200.") }
+        // Changing the setting while the desktop is hidden applies when it shows again.
+        store.rename(session, name: session.computer.name, resizesDesktop: true)
+        await store.toggleTerminal(session)
+        store.rename(session, name: session.computer.name, resizesDesktop: false)
+        await store.toggleTerminal(session)
+        host.layoutSubtreeIfNeeded()
+        var settled = false
+        for _ in 0..<20 {
+            try await Task.sleep(for: .milliseconds(500))
+            if let (next, _) = try? await display.surface.frame(), next.width == 1920, next.height == 1200 { settled = true; break }
+        }
+        guard settled else { throw await fail("A setting changed while the desktop was hidden did not apply.") }
+        print("PASS: desktop resizes with its window when chosen, and returns to its own resolution when not, across tabs")
+
+        // The recovery terminal keeps working while the display server is paused.
+        let paused = await guest("sudo -n pkill -STOP -x Xorg && ps -o stat= -p $(pgrep -x Xorg) | grep -q T")
+        guard paused.contains("[Exit 0]") else { throw await fail("Could not pause the test desktop display server.") }
+        await store.toggleTerminal(session)
+        guard session.showingTerminal, let terminal = session.terminal else { throw await fail("Desktop recovery terminal did not open.") }
+        host.layoutSubtreeIfNeeded()
+        guard machineView(in: host) == nil else { throw await fail("The hidden desktop view stays under the terminal and sets its pointer.") }
+        terminal.io.send(Data("export NOODLE_RECOVERY=alive; printf '\\n__RECOVERY_%s__\\n' READY\r".utf8))
+        func terminalScreen() -> String {
+            String(decoding: terminal.view.getTerminal().getBufferAsData(), as: UTF8.self)
+        }
+        for _ in 0..<100 {
+            if terminalScreen().contains("__RECOVERY_READY__") { break }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        guard terminalScreen().contains("__RECOVERY_READY__") else { throw await fail("Terminal stopped responding while the desktop was paused.") }
+        await store.toggleTerminal(session)
+        guard !session.showingTerminal else { throw await fail("Show Desktop did not switch back.") }
+        await store.toggleTerminal(session)
+        guard session.terminal === terminal else { throw await fail("Switching replaced the shell session.") }
+        terminal.io.send(Data("printf '\\n__PRESERVED_%s__\\n' \"$NOODLE_RECOVERY\"\r".utf8))
+        for _ in 0..<100 {
+            if terminalScreen().contains("__PRESERVED_alive__") { break }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        guard terminalScreen().contains("__PRESERVED_alive__") else { throw await fail("Switching lost the shell environment.") }
+        _ = await guest("sudo -n pkill -CONT -x Xorg")
+        await store.toggleTerminal(session)
+        host.layoutSubtreeIfNeeded()
+        guard machineView(in: host)?.virtualMachine === display.machine, session.display === display else {
+            throw await fail("Switching back did not show the same computer's display.")
+        }
+        // The pointer must still reach the guest after the display was hidden and shown again.
+        guard let shown = machineView(in: host) else { throw await fail("The desktop view is missing after switching back.") }
+        let before = await guest("xdotool getmouselocation --shell")
+        let corner = shown.convert(NSPoint(x: shown.bounds.width * 0.2, y: shown.bounds.height * 0.3), to: nil)
+        shown.mouseMoved(with: mouse(.mouseMoved, corner))
+        try await Task.sleep(for: .milliseconds(500))
+        let after = await guest("xdotool getmouselocation --shell")
+        guard after != before else {
+            throw await fail("After switching back, the pointer no longer reaches the guest.\nBefore: \(before)\nAfter: \(after)")
+        }
+        print("RECOVERY TERMINAL TEST PASSED: shell works with paused desktop; switching preserves its session and the pointer")
+
+        // Watching from Noodle Hub with no window open: a streamer set up as the provider sets
+        // one up for a desktop, with a viewer on the other end of its socket.
+        window.contentView = nil
+        window.orderOut(nil)
+        let streamer = SurfaceStreamer(capture: { try await display.surface.frame() },
+                                       apply: { try await display.surface.send($0) })
+        defer { streamer.stop() }
+        var sockets: [Int32] = [0, 0]
+        guard socketpair(AF_UNIX, SOCK_STREAM, 0, &sockets) == 0 else { throw await fail("No socket for the live view.") }
+        streamer.attach(SurfaceSocket(fd: sockets[0]))
+        let viewer = SurfaceSocket(fd: sockets[1])
+        defer { viewer.close() }
+        viewer.send(SurfaceControl.view(width: 1920, height: 1200).encoded)
+        let video = await withTaskGroup(of: [SurfacePacket]?.self) { group -> [SurfacePacket]? in
+            group.addTask {
+                for await frame in viewer.frames {
+                    if let packets = SurfacePacket.decode(frame), !packets.isEmpty { return packets }
+                }
+                return nil
+            }
+            group.addTask { try? await Task.sleep(for: .seconds(20)); return nil }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
+        }
+        guard let first = video?.first, first.keyFrame, first.width > 0, first.height > 0 else {
+            throw await fail("A live view with no window open received no video.")
+        }
+        let streamed = try await openFixture("Stream Verification")
+        for phase in [SurfaceInput.Phase.move, .down, .up] {
+            viewer.send(SurfaceControl.input(.pointer(phase, x: streamed.x, y: streamed.y, clickCount: 1)).encoded)
+        }
+        try await Task.sleep(for: .milliseconds(300))
+        viewer.send(SurfaceControl.input(.text("watched from the hub")).encoded)
+        viewer.send(SurfaceControl.input(.key(.enter)).encoded)
+        let watched = await guest("for attempt in 1 2 3 4 5 6 7 8 9 10; do [ -s /tmp/noodle-typed ] && break; sleep 0.5; done; cat /tmp/noodle-typed")
+        guard watched.contains("watched from the hub") else { throw await fail("Input from a live view did not reach the desktop: \(watched)") }
+        print("PASS: live view with no window open: \(first.width)x\(first.height) video out, pointer and typing in")
         await store.stop(session, force: true)
-        window.close()
-        guard rendered else { throw ComputerError("Desktop display did not connect: \(lastState)") }
-        print("DESKTOP TEST PASSED: real Noodle desktop, Xvnc/Openbox, authenticated HTTPS, pinned certificate and connected WebKit desktop canvas")
+        print("DESKTOP TEST PASSED: native display on the virtual GPU, Xorg/Openbox, guest frames and input, resize with window")
         try? FileManager.default.removeItem(at: root)
     }
 
@@ -878,7 +895,7 @@ import WebKit
         guard let terminal = session.terminal, let runtime = session.container else {
             throw ComputerError("Missing terminal for exit recovery test.")
         }
-        let browser = session.browser
+        let display = session.display
         for (index, command) in [Data("exit\r".utf8), Data([4]), Data("kill -KILL $$\r".utf8)].enumerated() {
             let previousIO = terminal.io
             terminal.io.send(command)
@@ -895,11 +912,11 @@ import WebKit
                 try await Task.sleep(for: .milliseconds(100))
             }
             guard ready, session.terminal === terminal, session.container === runtime,
-                  session.phase == .running, session.browser === browser else {
+                  session.phase == .running, session.display === display else {
                 throw ComputerError("Terminal recovery failed or replaced the computer/desktop (case \(index)).")
             }
         }
-        print("TERMINAL RECONNECTION TEST PASSED: exit, Ctrl-D, killed shell; same terminal, computer and browser")
+        print("TERMINAL RECONNECTION TEST PASSED: exit, Ctrl-D, killed shell; same terminal, computer and display")
     }
 
     static func run(networkEnabled: Bool = true) async throws {

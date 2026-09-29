@@ -46,8 +46,8 @@ import Foundation
                 try await check(runtime, ContainerComputer.overlayCheckCommand)
                 try await check(runtime, "test -s /etc/resolv.conf; echo latest-check > /workspace/latest-check")
                 if template == .desktop {
-                    try await check(runtime, "for attempt in 1 2 3 4 5 6 7 8 9 10; do if pgrep -x Xvnc && pgrep -x openbox; then exit 0; fi; sleep 1; done; exit 1")
-                    guard session.desktop != nil else { throw ComputerError("Latest Desktop has no display connection") }
+                    try await check(runtime, "for attempt in 1 2 3 4 5 6 7 8 9 10; do if pgrep -x Xorg && pgrep -x openbox; then exit 0; fi; sleep 1; done; exit 1")
+                    guard session.display != nil else { throw ComputerError("Latest Desktop has no native display") }
                 }
                 await store.stop(session)
                 await store.updateImage(session)
@@ -69,9 +69,9 @@ import Foundation
         setbuf(stdout, nil)
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("NoodleOverlay-\(UUID().uuidString)")
         let store = try ComputerStore(root: root)
-        let computer = Computer(name: "Overlay fixture", kind: .container, cpuCount: 2, memoryGiB: 1,
-                                diskGiB: 4, networkEnabled: false,
-                                imageReference: "docker.io/library/alpine:3.23.5", customImage: true)
+        var computer = ComputerTemplate.shell.makeComputer(name: "Overlay fixture")
+        computer.cpuCount = 2
+        computer.networkEnabled = false
         guard await store.create(computer, source: nil), let session = store.selected else {
             throw ComputerError(store.error ?? "Overlay fixture creation failed")
         }

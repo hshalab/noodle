@@ -2,27 +2,14 @@ import XCTest
 @testable import ComputerCore
 
 final class ComputerTests: XCTestCase {
-    func testCustomImageAndWebPortValidation() throws {
-        var computer = Computer(name: "Custom", kind: .container, memoryGiB: 1, diskGiB: 8,
-                                imageReference: "docker.io/library/nginx:alpine", customImage: true, webPort: 80)
-        XCTAssertTrue(computer.hasWebDisplay)
-        XCTAssertFalse(computer.hasDesktop)
-        XCTAssertNil(computer.template)
-        XCTAssertNoThrow(try computer.validate())
-        for port in [0, -1, 65536] {
-            computer.webPort = port
-            XCTAssertThrowsError(try computer.validate())
-        }
-        computer.webPort = 80
-        computer.networkEnabled = false
-        XCTAssertThrowsError(try computer.validate())
-        computer.webPort = nil
-        XCTAssertFalse(computer.hasWebDisplay)
-        XCTAssertNoThrow(try computer.validate())
-        for reference in ["", "a b", "https://example.com/image"] {
-            computer.imageReference = reference
-            XCTAssertThrowsError(try computer.validate())
-        }
+    func testDesktopResizesWithWindowOnlyWhenChosen() throws {
+        var computer = ComputerTemplate.desktop.makeComputer()
+        XCTAssertFalse(computer.resizesDesktop)
+        let saved = try JSONEncoder().encode(computer)
+        XCTAssertFalse(String(decoding: saved, as: UTF8.self).contains("resizesDesktopWithWindow"))
+        XCTAssertFalse(try JSONDecoder().decode(Computer.self, from: saved).resizesDesktop)
+        computer.resizesDesktopWithWindow = true
+        XCTAssertTrue(try JSONDecoder().decode(Computer.self, from: JSONEncoder().encode(computer)).resizesDesktop)
     }
 
     func testAppearanceRoundTripAndBounds() throws {

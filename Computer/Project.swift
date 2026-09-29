@@ -21,7 +21,7 @@ let checkKernel: TargetScript = .pre(script: """
     if [ ! -f "$kernel" ] || [ "$(stat -f %z "$kernel")" -lt 1000000 ]; then
         echo "error: Missing runtime kernel. See Computer/README.md (git lfs pull)." >&2; exit 1
     fi
-    [ "$(shasum -a 256 "$kernel" | awk '{print $1}')" = fb2cfb79eb1ae19447a85d75682d7fa5cfec97e24beb2609a492b806e8072c8d ] || {
+    [ "$(shasum -a 256 "$kernel" | awk '{print $1}')" = 08c33f0a0580e92a7ed08e4d40d593a7dd4ca738ee5906b06f329d973d37e616 ] || {
         echo "error: The runtime kernel does not match its pinned checksum." >&2; exit 1
     }
     """, name: "Check Kernel", basedOnDependencyAnalysis: false)
