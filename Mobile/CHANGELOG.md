@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-29
+
 ### What to Test
 
 - Pin a bot, then ask it to set its status with Messenger (for example, "set your status to Reviewing PR 42"): the status shows in a bubble over its circle. Needs the Mac or Hub on the next update.

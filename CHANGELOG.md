@@ -6,6 +6,8 @@ All notable changes to Noodle are documented here, following
 
 ## [Unreleased]
 
+## [0.33.0] - 2026-09-29
+
 ### Added
 
 - Bots can set a one-line status with Messenger, such as what they are busy with. It shows in the bot's profile, and over the bot's circle when pinned in Noodle for iPhone.

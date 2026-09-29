@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-09-29
+
 ### Fixed
 
 - Start Desktop after an image update when the kept disk has an older group list, instead of failing with “chgrp: invalid group: 'input'”.

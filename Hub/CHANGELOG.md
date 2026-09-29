@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-29
+
 ### Added
 
 - A status a bot sets through Messenger reaches Noodle on the Mac and on iPhone and iPad.
