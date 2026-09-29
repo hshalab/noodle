@@ -1,5 +1,6 @@
 import AppKit
 import ComputerCore
+import NoodleSettingsUI
 import QuickLook
 import QuickLookUI
 import SwiftUI
@@ -207,6 +208,7 @@ struct ComputerFilesView: View {
             }
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: searching)
         }
+        CompanionSettingsToolbarItem()
     }
     @ViewBuilder private var galleryPreview: some View {
         if let file = model.selected {

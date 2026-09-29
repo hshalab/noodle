@@ -10,6 +10,10 @@
 
 - Getting a computer's latest image is now called **Upgrade** instead of **Update**, so it is not confused with saving settings.
 
+### Fixed
+
+- The App Settings button stays at the right end of the toolbar when the file browser is open.
+
 ## [0.18.0] - 2026-09-29
 
 ### Changed

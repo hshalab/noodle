@@ -762,7 +762,8 @@ struct ComputerDetailView: View {
           LocalMacFocusWindowButton(runtime: local, enabled: session.phase == .running, all: true)
         }
       }
-      CompanionSettingsToolbarItem(spacing: .flexible)
+      // Files declares the item after its own, so it stays at the trailing edge.
+      if !showsFiles { CompanionSettingsToolbarItem(spacing: .flexible) }
     }
     .sheet(isPresented: $editing) {
       EditComputerView(store: store, session: session)
@@ -771,6 +772,14 @@ struct ComputerDetailView: View {
       guard session.phase == .running else { return }
       Task { await store.stop(session) }
     }
+  }
+
+  /// Mirrors the branches above that show ComputerFilesView.
+  private var showsFiles: Bool {
+    guard session.showingFiles, session.phase != .updating else { return false }
+    if case .setupRequired = session.phase { return false }
+    if session.localMac != nil { return true }
+    return session.virtual == nil && session.phase == .running && session.container != nil
   }
 }
 
