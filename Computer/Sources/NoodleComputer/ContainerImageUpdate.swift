@@ -1,6 +1,7 @@
 import ComputerCore
 import Containerization
 import ContainerizationEXT4
+import ContainerizationExtras
 import ContainerizationOCI
 import Foundation
 
@@ -81,6 +82,31 @@ extension ContainerComputer {
             try? FileManager.default.removeItem(at: layers)
             throw error
         }
+    }
+
+    /// Asks the registry for the image's current digest without downloading it.
+    /// Nil when the answer is unknown, so no update is suggested by mistake.
+    static func imageIsCurrent(computer: Computer, directory: URL, cache: URL) async throws -> Bool? {
+        let state = try ContainerDiskState.load(in: directory)
+        let reference = try Reference.parse(computer.imageReference)
+        guard let tag = reference.tag ?? reference.digest else { return nil }
+        let remote = try await registryRequest(reference: computer.imageReference) {
+            try await RegistryClient(reference: computer.imageReference,
+                                     tlsConfiguration: TLSUtils.makeEnvironmentAwareTLSConfiguration())
+                .resolve(name: reference.path, tag: tag)
+        }
+        let content = try LocalContentStore(path: cache.appendingPathComponent("Images").appendingPathComponent("content"))
+        let stored = try? await content.get(digest: state.imageDigest)?.data()
+        return imageIsCurrent(stored: state.imageDigest, remote: remote) { $0 == state.imageDigest ? stored : nil }
+    }
+
+    /// A pull stores a single-manifest image under an index it synthesizes, so
+    /// its digest is compared with the manifest inside that index instead.
+    static func imageIsCurrent(stored: String, remote: Descriptor, content: (String) -> Data?) -> Bool? {
+        if stored == remote.digest { return true }
+        if remote.mediaType == MediaTypes.index || remote.mediaType == MediaTypes.dockerManifestList { return false }
+        guard let data = content(stored), let index = try? JSONDecoder().decode(Index.self, from: data) else { return nil }
+        return index.manifests.map(\.digest) == [remote.digest]
     }
 
     /// ImageStore.pull requires an explicit registry and tag/digest. Validate before

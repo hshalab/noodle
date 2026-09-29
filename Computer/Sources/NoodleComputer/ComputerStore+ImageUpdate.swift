@@ -13,6 +13,16 @@ extension ComputerStore {
         await withTaskCancellationHandler { await task.value } onCancel: { task.cancel() }
     }
 
+    /// Marks container computers whose registry has a newer image. Failures
+    /// leave the mark alone; the Update button still reports them when used.
+    func checkImageUpdates() async {
+        for session in sessions where session.computer.kind == .container && imageUpdateTasks[session.id] == nil {
+            let current = try? await ContainerComputer.imageIsCurrent(
+                computer: session.computer, directory: library.directory(for: session.id), cache: cache)
+            if let current, imageUpdateTasks[session.id] == nil { session.imageUpdateAvailable = !current }
+        }
+    }
+
     func cancelImageUpdate(_ session: ComputerSession) {
         imageUpdateTasks[session.id]?.cancel()
     }
@@ -64,9 +74,11 @@ extension ComputerStore {
                 }
                 session.append("\nUpdated the computer image. Your writable layer was preserved.\n")
                 session.updateResult = "The computer image is up to date."
+                session.imageUpdateAvailable = false
             } else {
                 session.append("\nThe computer already has the current image.\n")
                 session.updateResult = "The computer image is already up to date."
+                session.imageUpdateAvailable = false
             }
             session.phase = .stopped
             if wasRunning && !Task.isCancelled { await start(session) }

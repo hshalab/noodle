@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Linux containers show **Update available** in the list when their image has a newer version.
+
 ## [0.18.0] - 2026-09-29
 
 ### Changed

@@ -49,6 +49,7 @@ enum ComputerDisplayMode: String {
     @Published var console = ""
     @Published var commandRunning = false
     @Published var updateResult: String?
+    @Published var imageUpdateAvailable = false
     @Published var updateStatus: String?
     @Published var updateProgress: Double?
     @Published var display: NativeDisplay?

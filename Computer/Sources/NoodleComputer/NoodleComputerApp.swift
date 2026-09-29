@@ -519,6 +519,12 @@ struct ComputerLibraryView: View {
     .onChange(of: store.selection) { _, id in
       UserDefaults.standard.set(id?.uuidString, forKey: "SelectedComputer")
     }
+    .task {
+      while !Task.isCancelled {
+        await store.checkImageUpdates()
+        try? await Task.sleep(for: .seconds(12 * 60 * 60))
+      }
+    }
     .alert(
       store.errorRecovery?.title ?? ComputerAppIdentity.name,
       isPresented: Binding(get: { store.error != nil }, set: { if !$0 { store.error = nil } })
@@ -558,6 +564,9 @@ struct ComputerRow: View {
         Text(session.computer.name).font(.system(size: 13.5, weight: .semibold)).lineLimit(1)
         Text(session.computer.displayType).font(.system(size: 12.5)).foregroundStyle(.secondary)
           .lineLimit(1)
+        if session.imageUpdateAvailable {
+          Text("Update available").font(.system(size: 11.5)).foregroundStyle(.orange).lineLimit(1)
+        }
       }.frame(maxWidth: .infinity, alignment: .leading)
     }
     .frame(height: 66)
@@ -864,6 +873,8 @@ struct EditComputerView: View {
         if let local = session.localMac { LocalMacPermissionsSettings(runtime: local) }
         if let result = session.updateResult {
           Text(result).font(.caption).foregroundStyle(.secondary)
+        } else if session.imageUpdateAvailable && session.phase != .updating {
+          Text("A newer image is available.").font(.caption).foregroundStyle(.orange)
         }
         if session.phase == .updating {
           Button("Cancel Update") { store.cancelImageUpdate(session) }
