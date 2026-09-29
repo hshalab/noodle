@@ -1,4 +1,5 @@
 import AppKit
+import WebKit
 import AppletBridge
 import AppletCore
 
@@ -24,7 +25,7 @@ struct WindowPlace: Codable, Equatable {
   static func make(_ options: NoodletWindowOptions, size: CGSize) -> NSWindow {
     let frame = CGRect(origin: .zero, size: size)
     if options.type == .preview {
-      let panel = NSPanel(contentRect: frame, styleMask: [.titled, .closable, .resizable, .utilityWindow, .hudWindow, .nonactivatingPanel], backing: .buffered, defer: false)
+      let panel = PagePanel(contentRect: frame, styleMask: [.titled, .closable, .resizable, .utilityWindow, .hudWindow, .nonactivatingPanel], backing: .buffered, defer: false)
       panel.isReleasedWhenClosed = false
       panel.hidesOnDeactivate = false
       panel.isFloatingPanel = true
@@ -33,7 +34,7 @@ struct WindowPlace: Codable, Equatable {
     }
     let window =
       options.cornerRadius == nil
-      ? NSWindow(contentRect: frame, styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
+      ? PageWindow(contentRect: frame, styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
       : UntitledWindow(contentRect: frame, styleMask: [.closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
     window.isReleasedWhenClosed = false
     return window
@@ -126,8 +127,29 @@ extension WindowPresentation {
   }
 }
 
+/// WebKit passes a key the page did not cancel back up to the window, where AppKit beeps, so a game
+/// reading the arrow keys without preventDefault beeped on every press. The page had the key.
+@MainActor private func pageHadKey(_ selector: Selector, in window: NSWindow) -> Bool {
+  guard selector == #selector(NSResponder.keyDown(with:)) else { return false }
+  var view = window.firstResponder as? NSView
+  while let current = view, !(current is WKWebView) { view = current.superview }
+  return view != nil
+}
+
+@MainActor private class PageWindow: NSWindow {
+  override func noResponder(for eventSelector: Selector) {
+    if !pageHadKey(eventSelector, in: self) { super.noResponder(for: eventSelector) }
+  }
+}
+
+@MainActor private final class PagePanel: NSPanel {
+  override func noResponder(for eventSelector: Selector) {
+    if !pageHadKey(eventSelector, in: self) { super.noResponder(for: eventSelector) }
+  }
+}
+
 /// A noodlet window with a cornerRadius: no title bar, yet it takes the keyboard and closes with ⌘W.
-@MainActor private final class UntitledWindow: NSWindow {
+@MainActor private final class UntitledWindow: PageWindow {
   override var canBecomeKey: Bool { true }
   override var canBecomeMain: Bool { true }
   // The inherited one refuses without a close button.

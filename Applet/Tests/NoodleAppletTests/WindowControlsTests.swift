@@ -1,5 +1,7 @@
 import AppKit
 import AppletCore
+import ObjectiveC
+import WebKit
 import XCTest
 
 @testable import NoodleApplet
@@ -65,5 +67,39 @@ final class WindowControlsTests: XCTestCase {
         let window = try window(titlebar: #""none""#, extra: #","cornerRadius":12,"background":"translucent""#)
         let effect = try XCTUnwrap(window.contentView?.subviews.first as? NSVisualEffectView)
         XCTAssertNotNil(effect.maskImage)
+    }
+
+    /// WebKit hands a key the page did not cancel back up to the window, where AppKit beeps. A game
+    /// reading the arrow keys without preventDefault beeped on every press; the page had the key.
+    @MainActor func testKeysAPageLeftUnhandledDoNotBeep() throws {
+        let original = try XCTUnwrap(class_getInstanceMethod(NSResponder.self, #selector(NSResponder.noResponder(for:))))
+        let recording = try XCTUnwrap(class_getInstanceMethod(NSResponder.self, #selector(NSResponder.recordingNoResponder(for:))))
+        method_exchangeImplementations(original, recording)
+        defer { method_exchangeImplementations(original, recording) }
+        let keyDown = #selector(NSResponder.keyDown(with:))
+        for extra in ["", #","cornerRadius":12"#, #","type":"preview""#] {
+            let window = try window(titlebar: "true", extra: extra)
+            let page = WKWebView(frame: CGRect(x: 0, y: 0, width: 100, height: 100))
+            let field = NSTextView()
+            window.contentView?.addSubview(page)
+            window.contentView?.addSubview(field)
+            unhandledKeys = 0
+            XCTAssertTrue(window.makeFirstResponder(page), extra)
+            window.noResponder(for: keyDown)
+            XCTAssertEqual(unhandledKeys, 0, "a key the page had beeped\(extra)")
+
+            // Anything else in the window still says when nothing took a key.
+            XCTAssertTrue(window.makeFirstResponder(field), extra)
+            window.noResponder(for: keyDown)
+            XCTAssertEqual(unhandledKeys, 1, extra)
+        }
+    }
+}
+
+@MainActor private var unhandledKeys = 0
+extension NSResponder {
+    /// Stands in for AppKit's beep while the test runs.
+    @MainActor @objc fileprivate func recordingNoResponder(for selector: Selector) {
+        if selector == #selector(NSResponder.keyDown(with:)) { unhandledKeys += 1 }
     }
 }
