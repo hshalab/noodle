@@ -248,7 +248,8 @@ final class SurfaceTests: XCTestCase {
         XCTAssertLessThan(still, 20, "a still surface was captured \(still) times a second")
 
         hub.send(SurfaceControl.input(.pointer(.move, x: 1, y: 1)).encoded)
-        let acting = try await captured(over: .milliseconds(500))
+        // Half a second, so compare per second: a slow runner's full pace is only a few frames more.
+        let acting = try await captured(over: .milliseconds(500)) * 2
         XCTAssertGreaterThan(acting, still, "input did not bring back the full pace")
     }
 
