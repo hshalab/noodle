@@ -14,7 +14,7 @@
   <img alt="Individual and team work" src="https://img.shields.io/badge/work-individual%20%2B%20teams-0a0a0a?style=flat-square">
 </p>
 
-[Website](https://usenoodle.app) · [Apps](#apps) · [Documentation](docs/README.md) · [Enterprise](docs/enterprise.md) · [Security](docs/security.md)
+[Website](https://usenoodle.app) · [Apps](#apps) · [Documentation](docs/README.md) · [Security](docs/security.md)
 
 </div>
 
@@ -105,7 +105,6 @@ can add an address of your own.
 
 - [Working with agents](docs/usage.md)
 - [Harness setup](docs/harness-setup.md)
-- [Noodle in the enterprise](docs/enterprise.md)
 - [Noodle Computer](Computer/README.md)
 - [Noodle Applet](Applet/README.md)
 - [Noodle Browser](Browser/README.md)

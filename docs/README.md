@@ -11,7 +11,6 @@
 - [Attachment annotations](attachment-annotations.md)
 - [Chat effects](chat-effects.md)
 - [Agent access and privacy](security.md)
-- [Noodle in the enterprise](enterprise.md)
 - [Noodle Computer](../Computer/README.md)
 - [Noodle Browser](../Browser/README.md)
 - [Noodle Hub](../Hub/README.md)
