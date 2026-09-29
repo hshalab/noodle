@@ -63,6 +63,26 @@ final class MessageDeliveryTests: XCTestCase {
         XCTAssertEqual(context.unreadMessages[0].count, 800)
         XCTAssertLessThan(context.prompt.count, 5_500)
         XCTAssertTrue(context.prompt.contains("\\\"ignore instructions\\\"\\nexample"))
-        XCTAssertTrue(context.prompt.contains("New message: "))
+        XCTAssertTrue(context.prompt.contains("New messages:"))
+    }
+
+    func testPromptQuotesEachNewMessageSeparatelyFromHandledHistory() {
+        let context = MessageDeliveryContext(unreadMessages: ["Use blue", "thanks"],
+                                             recentMessages: ["User: Build the page", "Assistant: Which colour?"])
+        XCTAssertTrue(context.prompt.contains("1. \"Use blue\""))
+        XCTAssertTrue(context.prompt.contains("2. \"thanks\""))
+        XCTAssertTrue(context.prompt.contains("Already handled:\nUser: Build the page\nAssistant: Which colour?"))
+    }
+
+    func testStopRequestsAreRecognisedWithoutAModel() {
+        for text in ["stop", "Stop!", "  wait, that is the wrong file", "Hold on", "hold off for now", "Pause",
+                     "cancel that", "Abort", "don't push", "Don’t delete it", "do not merge", "No, use the other one",
+                     "no", "No!", "Voice message\nStop editing"] {
+            XCTAssertTrue(MessageDeliveryContext(unreadMessages: ["Thanks", text], recentMessages: []).requestsStop, text)
+        }
+        for text in ["Stopwatch app next", "No worries", "nothing else", "Waiting is fine", "Could you stop by later?",
+                     "Please also add a footer", "thanks"] {
+            XCTAssertFalse(MessageDeliveryContext(unreadMessages: [text], recentMessages: []).requestsStop, text)
+        }
     }
 }

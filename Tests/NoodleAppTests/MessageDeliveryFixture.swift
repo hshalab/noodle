@@ -95,7 +95,7 @@ import XCTest
     let classifier = RoutingClassifier()
     let router: MessageDeliveryRouter
     let process = RoutingProcess()
-    static let context = MessageDeliveryContext(unreadMessages: ["Pause those edits"], recentMessages: ["Assistant: editing files"])
+    static let context = MessageDeliveryContext(unreadMessages: ["Use the blue theme instead"], recentMessages: ["Assistant: editing files"])
 
     /// A nil timeout keeps the production default.
     init(timeout: Duration?, now: @escaping () -> ContinuousClock.Instant) {

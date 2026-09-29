@@ -63,14 +63,26 @@ import XCTest
         }
     }
 
-    func testUnavailableClassifierLeavesNotificationQueuedWithoutReadingContext() {
+    func testUnavailableClassifierLeavesRoutineNotificationQueued() async {
         let f = fixture()
         f.classifier.isAvailable = false
-        let task = f.router.notify(f.process) { XCTFail("Unavailable classification must not read conversation text"); return nil }
-        XCTAssertNil(task)
+        await finish(f.notify())
+        XCTAssertTrue(f.classifier.contexts.isEmpty)
         XCTAssertEqual(f.process.notifications.count, 1)
         XCTAssertTrue(f.process.pending.isPending)
         XCTAssertFalse(f.process.pending.isImmediate)
+    }
+
+    func testStopRequestPromotesWithoutTheModel() async {
+        for available in [true, false] {
+            let f = fixture()
+            f.classifier.isAvailable = available
+            let context = MessageDeliveryContext(unreadMessages: ["Thanks", "Wait, wrong file"], recentMessages: [])
+            await finish(f.router.notify(f.process) { context })
+            XCTAssertTrue(f.classifier.contexts.isEmpty, "A stop request must not wait for the model")
+            XCTAssertEqual(f.process.promotions, [f.process.pending.id!])
+            XCTAssertTrue(f.process.pending.isImmediate)
+        }
     }
 
     func testRoutineAndFailedClassificationsKeepTheOriginalWakeQueued() async {
@@ -282,12 +294,12 @@ import XCTest
         let repository = WorkspaceRepository(rootURL: root)
         try repository.prepare()
         let bot = try repository.createAgent(named: "Offline routing bot")
-        let message = try repository.sendUserMessage(conversationID: bot.conversation.id, body: "Pause the edits")
+        let message = try repository.sendUserMessage(conversationID: bot.conversation.id, body: "Use the blue theme instead")
         let process = RoutingProcess(agent: bot.agent)
         let task = f.router.notify(process, repository: repository)
         XCTAssertEqual(process.notifications.count, 1)
         await fulfillment(of: [reply.entered], timeout: 2)
-        XCTAssertEqual(f.classifier.contexts.first?.unreadMessages, ["Pause the edits"])
+        XCTAssertEqual(f.classifier.contexts.first?.unreadMessages, ["Use the blue theme instead"])
         reply.resolve(.success(true))
         await finish(task)
         XCTAssertEqual(process.promotions, [process.pending.id!])

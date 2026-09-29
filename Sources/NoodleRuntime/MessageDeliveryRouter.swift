@@ -2,7 +2,8 @@ import Foundation
 import NoodleCore
 import os
 
-/// Queue immediately, then optionally promote that same pending wake. Inference
+/// Queue immediately, then optionally promote that same pending wake: at once
+/// for an obvious stop request, otherwise when the model says so. Inference
 /// never blocks an idle agent or the normal end-of-turn delivery path.
 /// The deadline only bounds a stuck model; it must outlast a cold model load,
 /// and a verdict for an already dispatched wake promotes nothing.
@@ -44,7 +45,7 @@ public final class MessageDeliveryRouter {
         let mode = MessageDeliveryMode.load(from: defaults)
         let wasWorking = process.snapshot.phase == .working
         let notificationID = process.notify(immediately: mode == .immediate)
-        guard mode == .automatic, wasWorking, classifier.isAvailable else { return nil }
+        guard mode == .automatic, wasWorking else { return nil }
         let jobID = UUID()
         let started = ContinuousClock.now
         let deadline = now().advanced(by: timeout)
@@ -57,6 +58,12 @@ public final class MessageDeliveryRouter {
                 guard !Task.isCancelled, self.now() < deadline,
                       let context = try await context(),
                       !Task.isCancelled, self.now() < deadline else { return }
+                if context.requestsStop {
+                    Self.logger.notice("delivery-stop-request bot=\(agentID.uuidString, privacy: .public)")
+                    process?.promoteNotification(notificationID)
+                    return
+                }
+                guard self.classifier.isAvailable else { return }
                 let immediate = try await self.classifier.shouldSendImmediately(context)
                 guard !Task.isCancelled, self.now() < deadline else {
                     // A newer message supersedes silently; only a missed deadline is notable.

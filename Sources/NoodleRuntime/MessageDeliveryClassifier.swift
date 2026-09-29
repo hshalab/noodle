@@ -28,26 +28,31 @@ public struct MessageDeliveryClassifier: MessageDeliveryClassifying {
             let session = LanguageModelSession()
             // The macOS 26 SDK used by CI predates the samplingMode label.
             #if canImport(FoundationModels, _version: 2)
-            let options = GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 16)
+            let options = GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 128)
             #else
-            let options = GenerationOptions(sampling: .greedy, maximumResponseTokens: 16)
+            let options = GenerationOptions(sampling: .greedy, maximumResponseTokens: 128)
             #endif
             let response = try await session.respond(to: """
-                A coding assistant is currently working on a task. Classify the intent of the user's new message into one category:
+                A coding assistant is currently working on a task. Classify the intent of each new message, in order, into one category:
                 stop: stop or pause the current work
                 correction: change or correct what the assistant is doing now
+                challenge: questions or objects to what the assistant is doing now
+                answer: answers a question the assistant asked
                 emergency: something requires immediate attention before the current work finishes
                 additionalTask: extra work, a task for afterwards, a future deadline, or content to create such as button labels
                 acknowledgement: thanks or agreement
                 question: a question that allows the work to continue
                 unclear: none of the above or ambiguous
                 \(context.prompt)
-                Classify the new message.
-                """, generating: MessageDeliveryIntent.self,
+                Classify each new message.
+                """, generating: MessageDeliveryIntents.self,
                 options: options)
-            switch response.content {
-            case .stop, .correction, .emergency: return true
-            case .additionalTask, .acknowledgement, .question, .unclear: return false
+            // One urgent message is enough to interrupt the whole batch.
+            return response.content.intents.contains { intent in
+                switch intent {
+                case .stop, .correction, .challenge, .answer, .emergency: true
+                case .additionalTask, .acknowledgement, .question, .unclear: false
+                }
             }
         }
         #endif
@@ -57,7 +62,13 @@ public struct MessageDeliveryClassifier: MessageDeliveryClassifying {
 
 #if canImport(FoundationModels)
 @Generable
+private struct MessageDeliveryIntents {
+    @Guide(description: "One intent per new message, in order", .maximumCount(4))
+    var intents: [MessageDeliveryIntent]
+}
+
+@Generable
 private enum MessageDeliveryIntent {
-    case stop, correction, emergency, additionalTask, acknowledgement, question, unclear
+    case stop, correction, challenge, answer, emergency, additionalTask, acknowledgement, question, unclear
 }
 #endif

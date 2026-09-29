@@ -80,15 +80,33 @@ public struct MessageDeliveryContext: Codable, Sendable {
         }, recentMessages: history.suffix(4).map(text))
     }
 
+    /// Obvious stop requests steer at once, without waiting for or needing the
+    /// model. A bare "no" counts only when punctuated, unlike "No worries".
+    public var requestsStop: Bool {
+        let phrases = ["stop", "wait", "hold on", "hold off", "pause", "cancel", "abort", "don't", "do not"]
+        return unreadMessages.flatMap { $0.split(whereSeparator: \.isNewline) }.contains { line in
+            let text = line.trimmingCharacters(in: .whitespaces).lowercased().replacingOccurrences(of: "’", with: "'")
+            func starts(with phrase: String, followedBy allowed: (Character) -> Bool) -> Bool {
+                guard text.hasPrefix(phrase) else { return false }
+                return text.dropFirst(phrase.count).first.map(allowed) ?? true
+            }
+            return phrases.contains { starts(with: $0) { !$0.isLetter } }
+                || starts(with: "no") { $0.isPunctuation }
+        }
+    }
+
     public var prompt: String {
-        // Keep the incoming batch quoted and separate from prior context.
+        // Quote each new message on its own so it gets its own verdict, and
+        // keep handled history apart from what is being classified.
         let encoder = JSONEncoder()
         func quoted(_ message: String) -> String {
             String(decoding: (try? encoder.encode(message)) ?? Data(), as: UTF8.self)
         }
         return """
-            Conversation so far: \(recentMessages.joined(separator: " "))
-            New message: \(quoted(unreadMessages.joined(separator: "\n")))
+            Already handled:
+            \(recentMessages.joined(separator: "\n"))
+            New messages:
+            \(unreadMessages.enumerated().map { "\($0.offset + 1). \(quoted($0.element))" }.joined(separator: "\n"))
             """
     }
 }

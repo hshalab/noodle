@@ -6,6 +6,10 @@ All notable changes to Noodle are documented here, following
 
 ## [Unreleased]
 
+### Changed
+
+- Automatic message delivery reaches a busy bot straight away when you say stop, wait, hold on or similar, even on Macs without Apple Intelligence. It also sends answers to the bot's questions and objections to what it is doing, and when you send several messages at once, one urgent message is enough.
+
 ## [0.33.0] - 2026-09-29
 
 ### Added
