@@ -9,6 +9,7 @@ All notable changes to Noodle are documented here, following
 ### Added
 
 - Settings > Companion Apps lists Noodle Mobile, with a link to join its TestFlight beta.
+- Klaviyo and Evernote can be added as tools.
 
 ### Changed
 

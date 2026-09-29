@@ -49,6 +49,11 @@ final class ToolCatalogTests: XCTestCase {
         XCTAssertTrue(tool.defaultInstructions.contains("never request or handle their credentials"))
     }
 
+    func testSelfRegisteringServicesAreListed() {
+        XCTAssertEqual(ToolCatalog.definition(forMCPEndpoint: URL(string: "https://mcp.klaviyo.com/mcp")!)?.id, "klaviyo")
+        XCTAssertEqual(ToolCatalog.definition(forMCPEndpoint: URL(string: "https://mcp.evernote.com/mcp")!)?.id, "evernote")
+    }
+
     func testCreatingPresetDoesNotAssignOrAuthenticateIt() throws {
         let tool = try XCTUnwrap(ToolCatalog.matching("Notion").first)
         switch tool.configuration {

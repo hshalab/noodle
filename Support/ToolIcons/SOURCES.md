@@ -15,6 +15,7 @@ under a uniform `.icon` extension. They are bundled, never remotely fetched by t
 | clickup.icon | https://clickup.com/favicons/apple-touch-icon.png |
 | cloudflare.icon | https://www.cloudflare.com/favicon.ico |
 | crmkit.icon | https://crmkit.ai/favicon.ico |
+| evernote.icon (2026-09-29) | https://evernote.com/favicon.ico |
 | exa.icon | https://exa.ai/images/favicon-32x32.png |
 | fireflies.icon | https://fireflies.ai/favicon.ico |
 | granola.icon | https://www.granola.ai/favicon/favicon-96x96.png |
@@ -25,6 +26,7 @@ under a uniform `.icon` extension. They are bundled, never remotely fetched by t
 | higgsfield.icon | https://higgsfield.ai/icon.png |
 | jam.icon | https://framerusercontent.com/images/PJzGWvCk8HH9Ho4kUWVsQtYI.png |
 | jotform.icon | https://cdn.jotfor.ms/assets/img/favicons/favicon-2021-light.png |
+| klaviyo.icon (2026-09-29) | https://www.klaviyo.com/icons/icon-144x144.png |
 | linear.icon | https://linear.app/favicon.ico?v=2 |
 | mapbox.icon | https://cdn.prod.website-files.com/6050a76fa6a633d5d54ae714/6050ac000ff99b5cdba92d07_mapbox_favicon_32x32%202.png |
 | morningstar.icon | https://morningstar.com/favicon.ico |
