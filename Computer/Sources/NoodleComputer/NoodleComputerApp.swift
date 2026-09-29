@@ -212,7 +212,8 @@ enum ComputerLaunchCheck {
     NSLog("noodle.development-hooks.enabled")
     #endif
     guard CommandLine.arguments.contains("--noodle-background") else {
-      guard !ComputerLaunchCheck.isVerificationRun else { return }
+      // Checks run in the library window, which the scene no longer opens on launch.
+      guard !ComputerLaunchCheck.isVerificationRun else { presentLibrary(); return }
       // Launch URLs can arrive just after this, so decide on the next turn.
       let userLaunch = notification.userInfo?[NSApplication.launchIsDefaultUserInfoKey] as? Bool == true
       DispatchQueue.main.async { [weak self] in
