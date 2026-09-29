@@ -1,4 +1,5 @@
 import AppKit
+import AppletBridge
 import AppletCore
 
 /// Where the window of a noodlet the user is watching sits, so its next version takes its place.
@@ -41,11 +42,18 @@ struct WindowPlace: Codable, Equatable {
     if !options.resizable { window.styleMask.remove(.resizable) }
     window.level = options.type != .standard ? .floating : .normal
     if options.type != .standard { window.collectionBehavior.insert(.fullScreenAuxiliary) }
-    if !options.titlebar || options.type == .preview {
+    let ownTitlebar = options.titlebar == .none
+    if options.titlebar != .visible || options.type == .preview {
       window.titleVisibility = .hidden
       window.titlebarAppearsTransparent = true
       window.styleMask.insert(.fullSizeContentView)
       window.isMovableByWindowBackground = true
+    }
+    // Hidden, not removed, so the window keeps its actions and their shortcuts.
+    if ownTitlebar {
+      for button in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
+        window.standardWindowButton(button)?.isHidden = true
+      }
     }
     if options.background != .opaque {
       window.isOpaque = false
@@ -63,13 +71,13 @@ struct WindowPlace: Codable, Equatable {
     } else {
       window.contentView = content
     }
-    if !options.titlebar || options.type == .preview, let container = window.contentView {
+    if options.titlebar != .visible || options.type == .preview, let container = window.contentView {
       let drag = NoodletTitlebarDragView()
       drag.translatesAutoresizingMaskIntoConstraints = false
       container.addSubview(drag, positioned: .above, relativeTo: nil)
       NSLayoutConstraint.activate([
         drag.topAnchor.constraint(equalTo: container.topAnchor),
-        drag.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: options.type == .preview ? 28 : 78),
+        drag.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: ownTitlebar ? 0 : options.type == .preview ? 28 : 78),
         drag.trailingAnchor.constraint(equalTo: container.trailingAnchor),
         drag.heightAnchor.constraint(equalToConstant: 30)
       ])
@@ -88,6 +96,23 @@ struct WindowPlace: Codable, Equatable {
       let current = window.contentRect(forFrameRect: window.frame).size
       window.setContentSize(options.size(width: Int(current.width), height: Int(current.height)))
     }
+  }
+}
+
+extension WindowPresentation {
+  /// What a noodlet's own window buttons do. False while the window is out of sight.
+  static func perform(_ action: String, on window: NSWindow) throws -> Bool {
+    guard ["close", "minimize", "zoom", "toggleFullScreen"].contains(action) else {
+      throw AppletError("Unknown window action.")
+    }
+    guard window.isVisible else { return false }
+    switch action {
+    case "close": window.performClose(nil)
+    case "minimize": window.miniaturize(nil)
+    case "zoom": window.zoom(nil)
+    default: window.toggleFullScreen(nil)
+    }
+    return true
   }
 }
 

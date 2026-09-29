@@ -166,7 +166,11 @@ public enum AppletGuidance {
         (a non-activating floating panel with a compact close-only title bar).
         background is opaque (default), translucent (native material), or transparent.
         For transparent/translucent HTML, set html and body background:transparent.
-        titlebar controls title visibility/full-size content; native close controls remain.
+        titlebar false hides the title and extends content under it; the native window
+        buttons remain. titlebar "none" also hides those buttons so the noodlet draws its
+        own: HTML calls `noodle.window.close()` / `minimize()` / `zoom()` /
+        `toggleFullScreen()`, Swift the same on `NoodletContext.window`. Each returns false
+        while the window is out of sight.
         Dimensions are content points, 120–4096; minimum cannot exceed maximum.
         Resizing defaults on. Played on a TV, a resizable window fills the screen; a fixed
         one (resizable false, or equal min and max) keeps its size, scaled to fit on black.

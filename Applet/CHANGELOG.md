@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- A noodlet can draw its own window buttons. With `"titlebar": "none"` in its `noodlet.json` the native close, minimise and zoom buttons are hidden, and its own buttons call `noodle.window` in HTML or `NoodletContext.window` in Swift to close, minimise, zoom or go full screen.
+
 ### Fixed
 
 - A noodlet watched from your iPhone while its window is closed on the Mac keeps running as if seen. Games, such as ones drawn on a canvas, showed only their background because they paused themselves as hidden.

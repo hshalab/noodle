@@ -4,11 +4,34 @@ import Foundation
 public struct NoodletWindowOptions: Codable, Sendable, Equatable {
   public enum Kind: String, Codable, Sendable { case standard, floating, preview }
   public enum Background: String, Codable, Sendable { case opaque, translucent, transparent }
+  /// true, false, or "none" for a noodlet that draws its own title bar and window buttons.
+  public enum Titlebar: Codable, Sendable {
+    case visible, hidden, none
+    public init(from decoder: Decoder) throws {
+      let value = try decoder.singleValueContainer()
+      if let visible = try? value.decode(Bool.self) {
+        self = visible ? .visible : .hidden
+      } else if try value.decode(String.self) == "none" {
+        self = .none
+      } else {
+        throw DecodingError.dataCorruptedError(
+          in: value, debugDescription: "titlebar must be true, false or \"none\".")
+      }
+    }
+    public func encode(to encoder: Encoder) throws {
+      var value = encoder.singleValueContainer()
+      switch self {
+      case .visible: try value.encode(true)
+      case .hidden: try value.encode(false)
+      case .none: try value.encode("none")
+      }
+    }
+  }
   public var type: Kind = .standard
   public var background: Background = .opaque
   public var resizable = true
   public var rememberFrame = false
-  public var titlebar = true
+  public var titlebar = Titlebar.visible
   public var width: Int?
   public var height: Int?
   public var minWidth: Int?
@@ -26,7 +49,7 @@ public struct NoodletWindowOptions: Codable, Sendable, Equatable {
     background = try c.decodeIfPresent(Background.self, forKey: .background) ?? .opaque
     resizable = try c.decodeIfPresent(Bool.self, forKey: .resizable) ?? true
     rememberFrame = try c.decodeIfPresent(Bool.self, forKey: .rememberFrame) ?? false
-    titlebar = try c.decodeIfPresent(Bool.self, forKey: .titlebar) ?? true
+    titlebar = try c.decodeIfPresent(Titlebar.self, forKey: .titlebar) ?? .visible
     width = try c.decodeIfPresent(Int.self, forKey: .width)
     height = try c.decodeIfPresent(Int.self, forKey: .height)
     minWidth = try c.decodeIfPresent(Int.self, forKey: .minWidth)

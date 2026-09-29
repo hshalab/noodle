@@ -91,14 +91,7 @@ final class NativeRunnerTests: XCTestCase {
     /// A live view clicks a noodlet whose window is out of sight; SwiftUI controls must still act,
     /// and the window must stay hidden.
     func testSwiftUIControlsActWhileTheWindowIsHidden() throws {
-        guard let toolchain = try? NativeRunner.toolchain() else { throw XCTSkip("No Apple Swift compiler is installed.") }
-        let compiler = URL(fileURLWithPath: toolchain.frontend).deletingLastPathComponent().appendingPathComponent("swiftc").path
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        for folder in ["data", "package", "cache"] {
-            try FileManager.default.createDirectory(at: root.appendingPathComponent(folder), withIntermediateDirectories: true)
-        }
-        defer { try? FileManager.default.removeItem(at: root) }
-        try """
+        let lines = try runBackground("""
             import SwiftUI
             struct Noodlet: View {
                 var body: some View {
@@ -109,7 +102,51 @@ final class NativeRunnerTests: XCTestCase {
                     }
                 }
             }
-            """.write(to: root.appendingPathComponent("Main.swift"), atomically: true, encoding: .utf8)
+            """) { send in
+            // Points from the top left: the button, the tap area, then a drag across the blue area.
+            XCTAssertNil(try send("button", ["operation": "click", "x": 100, "y": 50])["error"])
+            XCTAssertNil(try send("tap", ["operation": "click", "x": 100, "y": 150])["error"])
+            XCTAssertNil(try send("drag", ["operation": "drag", "x": 40, "y": 250, "toX": 160, "toY": 250])["error"])
+            XCTAssertNotNil(try send("place", ["operation": "place"])["error"], "the window was shown")
+        }
+        XCTAssertEqual(lines, ["pressed", "tapped", "dragged"])
+    }
+
+    /// A noodlet that draws its own title bar has no native buttons, and its window actions
+    /// do nothing while the window is out of sight.
+    func testNoTitlebarHidesTheNativeButtons() throws {
+        let lines = try runBackground("""
+            import SwiftUI
+            struct Noodlet: View {
+                var body: some View {
+                    Color.red.ignoresSafeArea().onTapGesture {
+                        let window = NSApp.windows.first { $0.contentView != nil }!
+                        let buttons = [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].compactMap { window.standardWindowButton($0) }
+                        print(buttons.count, buttons.allSatisfy { $0.isHidden })
+                        print(NoodletContext.window.minimize(), NoodletContext.window.zoom(), NoodletContext.window.toggleFullScreen(), NoodletContext.window.close())
+                    }
+                }
+            }
+            """, window: #"{"titlebar":"none"}"#) { send in
+            XCTAssertNil(try send("check", ["operation": "click", "x": 100, "y": 150])["error"])
+        }
+        XCTAssertEqual(lines, ["3 true", "false false false false"])
+    }
+
+    /// Builds `source` with the native runtime, runs it in background mode, which never orders
+    /// the window in, and returns what it printed after `drive` sends it commands.
+    private func runBackground(
+        _ source: String, window: String? = nil,
+        drive: (_ send: (String, [String: Any]) throws -> [String: Any]) throws -> Void
+    ) throws -> [String] {
+        guard let toolchain = try? NativeRunner.toolchain() else { throw XCTSkip("No Apple Swift compiler is installed.") }
+        let compiler = URL(fileURLWithPath: toolchain.frontend).deletingLastPathComponent().appendingPathComponent("swiftc").path
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        for folder in ["data", "package", "cache"] {
+            try FileManager.default.createDirectory(at: root.appendingPathComponent(folder), withIntermediateDirectories: true)
+        }
+        defer { try? FileManager.default.removeItem(at: root) }
+        try source.write(to: root.appendingPathComponent("Main.swift"), atomically: true, encoding: .utf8)
         let resources = AppletResources.bundle.url(forResource: "Resources", withExtension: nil)!
         let build = Process(), log = Pipe()
         build.executableURL = URL(fileURLWithPath: compiler)
@@ -122,15 +159,17 @@ final class NativeRunnerTests: XCTestCase {
         let diagnostics = String(decoding: log.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
         build.waitUntilExit()
         XCTAssertEqual(build.terminationStatus, 0, diagnostics)
-        guard build.terminationStatus == 0 else { return }
+        guard build.terminationStatus == 0 else { return [] }
 
-        // Background mode never orders the window in, so nothing appears on screen or takes focus.
         let noodlet = Process(), input = Pipe(), output = Pipe()
         noodlet.executableURL = root.appendingPathComponent("noodlet")
-        noodlet.environment = ProcessInfo.processInfo.environment.filter { ["PATH", "HOME", "TMPDIR"].contains($0.key) }.merging([
+        var environment = [
             "NOODLET_PROTOCOL": "P:", "NOODLET_MODE": "background", "NOODLET_WIDTH": "200", "NOODLET_HEIGHT": "300",
             "NOODLET_DATA": root.appendingPathComponent("data").path, "NOODLET_PACKAGE": root.appendingPathComponent("package").path,
-        ]) { _, new in new }
+        ]
+        environment["NOODLET_WINDOW"] = window
+        noodlet.environment = ProcessInfo.processInfo.environment.filter { ["PATH", "HOME", "TMPDIR"].contains($0.key) }
+            .merging(environment) { _, new in new }
         noodlet.standardInput = input; noodlet.standardOutput = output; noodlet.standardError = FileHandle.nullDevice
         try noodlet.run()
         defer { if noodlet.isRunning { noodlet.terminate() } }
@@ -145,20 +184,15 @@ final class NativeRunnerTests: XCTestCase {
             }
             throw AppletError("The noodlet ended before replying to \(id).")
         }
-        func send(_ id: String, _ command: [String: Any]) throws -> [String: Any] {
+        _ = try reply("ready")
+        try drive { id, command in
             input.fileHandleForWriting.write(try JSONSerialization.data(withJSONObject: command.merging(["id": id]) { _, new in new }) + Data("\n".utf8))
             return try reply(id)
         }
-        _ = try reply("ready")
-        // Points from the top left: the button, the tap area, then a drag across the blue area.
-        XCTAssertNil(try send("button", ["operation": "click", "x": 100, "y": 50])["error"])
-        XCTAssertNil(try send("tap", ["operation": "click", "x": 100, "y": 150])["error"])
-        XCTAssertNil(try send("drag", ["operation": "drag", "x": 40, "y": 250, "toX": 160, "toY": 250])["error"])
-        XCTAssertNotNil(try send("place", ["operation": "place"])["error"], "the window was shown")
         input.fileHandleForWriting.closeFile()
         while lines.next() != nil {}
         noodlet.waitUntilExit()
-        XCTAssertEqual(lines.seen.filter { !$0.hasPrefix("P:") }, ["pressed", "tapped", "dragged"])
+        return lines.seen.filter { !$0.hasPrefix("P:") }
     }
 }
 

@@ -18,4 +18,17 @@ final class WindowTests: XCTestCase {
         XCTAssertEqual(options.size(width:900).width, 480)
         XCTAssertEqual(try JSONDecoder().decode(NoodletWindowOptions.self, from: JSONEncoder().encode(options)).background, .translucent)
     }
+    func testTitlebarCanDropTheNativeButtons() throws {
+        XCTAssertEqual(try decode("{}").titlebar, .visible)
+        XCTAssertEqual(try decode(#"{"titlebar":true}"#).titlebar, .visible)
+        XCTAssertEqual(try decode(#"{"titlebar":false}"#).titlebar, .hidden)
+        XCTAssertEqual(try decode(#"{"titlebar":"none"}"#).titlebar, .none)
+        XCTAssertThrowsError(try decode(#"{"titlebar":"unknown"}"#))
+        // The Swift runtime reads the options back as JSON, so each value keeps its manifest form.
+        for text in [#"{"titlebar":true}"#, #"{"titlebar":false}"#, #"{"titlebar":"none"}"#] {
+            let json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(decode(text))) as! [String: Any]
+            let original = try JSONSerialization.jsonObject(with: Data(text.utf8)) as! [String: Any]
+            XCTAssertEqual(json["titlebar"] as? NSObject, original["titlebar"] as? NSObject, text)
+        }
+    }
 }

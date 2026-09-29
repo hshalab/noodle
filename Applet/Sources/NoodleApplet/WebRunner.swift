@@ -319,6 +319,8 @@ final class WebRunner: NSObject, WKNavigationDelegate, WKUIDelegate,
         dragEvent = nil
         window.performDrag(with: event)
         return (true, nil)
+      case "window":
+        return (try WindowPresentation.perform(body["action"] as? String ?? "", on: window), nil)
       case "fetch":
         return (try await network.fetch(body, enabled: package.manifest.network), nil)
       case "cancelFetch":

@@ -170,4 +170,17 @@ final class BridgeDispatchTests: XCTestCase {
         XCTAssertNil(value)
         XCTAssertNotNil(error)
     }
+
+    @MainActor func testWindowActionsAnswerFalseOutOfSight() async throws {
+        let (runner, root, _) = try makeRunner()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let (value, error) = await runner.handleBridge(
+            operation: "window", body: ["operation": "window", "action": "minimize"])
+        XCTAssertNil(error)
+        XCTAssertEqual(value as? Bool, false)
+        let (unknown, unknownError) = await runner.handleBridge(
+            operation: "window", body: ["operation": "window", "action": "maximize"])
+        XCTAssertNil(unknown)
+        XCTAssertEqual(unknownError, "Unknown window action.")
+    }
 }

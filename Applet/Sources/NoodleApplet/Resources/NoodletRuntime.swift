@@ -15,6 +15,21 @@ public enum NoodletContext {
     /// Play sound through this engine. It is heard in the foreground; out of sight it runs
     /// silently in real time. Either way a recording hears it, and nothing else.
     @MainActor public static var audioEngine: AVAudioEngine { NoodletSound.shared.engine }
+    /// For a noodlet that draws its own window buttons, with "titlebar":"none".
+    @MainActor public static let window = NoodletWindow()
+}
+
+/// Each action answers false while the window is out of sight.
+@MainActor public struct NoodletWindow {
+    @discardableResult public func close() -> Bool { act { $0.performClose(nil) } }
+    @discardableResult public func minimize() -> Bool { act { $0.miniaturize(nil) } }
+    @discardableResult public func zoom() -> Bool { act { $0.zoom(nil) } }
+    @discardableResult public func toggleFullScreen() -> Bool { act { $0.toggleFullScreen(nil) } }
+    private func act(_ action: (NSWindow) -> Void) -> Bool {
+        guard let window = (NSApp.delegate as? NoodletRuntimeDelegate)?.window, window.isVisible else { return false }
+        action(window)
+        return true
+    }
 }
 
 /// The noodlet's audio engine and what a recording hears from it: interleaved 16-bit stereo
@@ -203,7 +218,10 @@ public struct NoodletSecrets: Sendable {
         host.autoresizingMask = [.width, .height]
         if options["resizable"] as? Bool == false { window.styleMask.remove(.resizable) }
         if ["floating", "preview"].contains(options["type"] as? String ?? "") { window.level = .floating; window.collectionBehavior.insert(.fullScreenAuxiliary) }
-        if options["titlebar"] as? Bool == false || options["type"] as? String == "preview" { window.titleVisibility = .hidden; window.titlebarAppearsTransparent = true; window.styleMask.insert(.fullSizeContentView); window.isMovableByWindowBackground = true }
+        let ownTitlebar = options["titlebar"] as? String == "none", plainTitlebar = options["titlebar"] as? Bool != false && !ownTitlebar
+        // Hidden, not removed, so the window keeps its actions and their shortcuts.
+        if ownTitlebar { for button in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] { window.standardWindowButton(button)?.isHidden = true } }
+        if !plainTitlebar || options["type"] as? String == "preview" { window.titleVisibility = .hidden; window.titlebarAppearsTransparent = true; window.styleMask.insert(.fullSizeContentView); window.isMovableByWindowBackground = true }
         let background = options["background"] as? String ?? "opaque"
         if background != "opaque" { window.isOpaque = false; window.backgroundColor = .clear }
         if background == "translucent" {
@@ -211,10 +229,10 @@ public struct NoodletSecrets: Sendable {
             effect.material = .hudWindow; effect.blendingMode = .behindWindow; effect.state = .active
             effect.addSubview(host); window.contentView = effect
         } else { window.contentView = host }
-        if options["titlebar"] as? Bool == false || options["type"] as? String == "preview", let container = window.contentView {
+        if !plainTitlebar || options["type"] as? String == "preview", let container = window.contentView {
             let drag = NoodletTitlebarDragView(); drag.translatesAutoresizingMaskIntoConstraints = false
             container.addSubview(drag, positioned: .above, relativeTo: nil)
-            NSLayoutConstraint.activate([drag.topAnchor.constraint(equalTo:container.topAnchor), drag.leadingAnchor.constraint(equalTo:container.leadingAnchor, constant:options["type"] as? String == "preview" ? 28 : 78), drag.trailingAnchor.constraint(equalTo:container.trailingAnchor), drag.heightAnchor.constraint(equalToConstant:30)])
+            NSLayoutConstraint.activate([drag.topAnchor.constraint(equalTo:container.topAnchor), drag.leadingAnchor.constraint(equalTo:container.leadingAnchor, constant:ownTitlebar ? 0 : options["type"] as? String == "preview" ? 28 : 78), drag.trailingAnchor.constraint(equalTo:container.trailingAnchor), drag.heightAnchor.constraint(equalToConstant:30)])
         }
         window.contentMinSize = NSSize(width: CGFloat(options["minWidth"] as? Int ?? 120), height: CGFloat(options["minHeight"] as? Int ?? 120))
         window.contentMaxSize = NSSize(width: CGFloat(options["maxWidth"] as? Int ?? 4096), height: CGFloat(options["maxHeight"] as? Int ?? 4096))
