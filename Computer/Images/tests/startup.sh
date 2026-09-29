@@ -6,6 +6,10 @@ if /init >/tmp/noodle-no-gpu.log 2>&1; then
     echo 'Desktop unexpectedly started without a GPU' >&2; exit 1
 fi
 grep -q 'needs a virtual GPU' /tmp/noodle-no-gpu.log
+# A writable layer kept from an older image can carry its /etc/group, without
+# the device groups this image gives the desktop user.
+groupdel input
+gpasswd -d agent video >/dev/null
 export DESKTOP_BROWSER_AUTOSTART=0 DESKTOP_TERMINAL_AUTOSTART=0 DESKTOP_TILING_AUTOSTART=0
 export DESKTOP_PANEL_AUTOSTART=0 DESKTOP_COMPOSITOR_AUTOSTART=0
 # Prove a derived config is loaded and runtime defaults can override it.
@@ -74,6 +78,8 @@ for attempt in $(seq 1 80); do
 done
 grep -q '^\[desktop\] ready on :1$' /tmp/noodle-startup.log
 test "$(cat /run/desktop/startup-user)" = 0
+id -nG agent | tr ' ' '\n' | grep -qx video
+id -nG agent | tr ' ' '\n' | grep -qx input
 test "$(cat /run/desktop/config-fixture)" = loaded
 test "$(cat /run/desktop/session-fixture)" = '1000 :1 Runtime fixture loaded'
 test "$(cat /workspace/example.txt)" = 'user data'
