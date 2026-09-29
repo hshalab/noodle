@@ -5,6 +5,12 @@
 ### What to Test
 
 - Stop Noodle on the Mac or Hub your phone is paired with, then pull down on the bots list: a Not connected line appears above the bots, their dots turn grey, and tapping the line opens Profiles, where the Hub reads Not connected. Start it again and pull down: the line goes and the dots show each bot's state.
+- Tap … on the bots list, then New Group: name it, pick some bots and tap Create. The group appears in the list and on the Mac. Send a message: its bots answer, each named above its replies.
+- Make a group in Noodle on the Mac or Hub: it appears on the phone. Touch and hold it and choose Edit Group…, or tap its name in the conversation, to rename it, change its bots, set its background or delete it.
+
+### Added
+
+- Groups: see, create, edit and delete conversations with several of your bots, as on the Mac.
 
 ### Changed
 

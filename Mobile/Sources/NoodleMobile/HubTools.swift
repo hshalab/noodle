@@ -126,14 +126,14 @@ extension HubChats {
     }
 
     /// Opens the live view of what a link in the bot's conversation points at.
-    func openSurface(_ attachment: LinkAttachment, in agent: LinkBot) async throws -> LinkChannel {
-        try await pairing.channel(.openSurface(conversationID: agent.conversationID, attachmentID: attachment.id))
+    func openSurface(_ attachment: LinkAttachment, in conversation: some HubConversation) async throws -> LinkChannel {
+        try await pairing.channel(.openSurface(conversationID: conversation.conversationID, attachmentID: attachment.id))
     }
 
     /// The latest picture of what a link points at, for a card that carries none, as a noodlet's.
-    func picture(for attachment: LinkAttachment, in agent: LinkBot) async throws -> Data? {
+    func picture(for attachment: LinkAttachment, in conversation: some HubConversation) async throws -> Data? {
         if let known = pictures[attachment.id] { return known }
-        guard case .picture(let data) = try await pairing.request(.linkPreview(conversationID: agent.conversationID, attachmentID: attachment.id))
+        guard case .picture(let data) = try await pairing.request(.linkPreview(conversationID: conversation.conversationID, attachmentID: attachment.id))
         else { throw LinkError("The Hub sent an unexpected answer.") }
         pictures[attachment.id] = data
         return data
@@ -521,7 +521,7 @@ private struct CustomToolForm: View {
 /// A link a bot shared to a browser tab, computer or noodlet, shown live and usable from the phone.
 struct LiveSurfaceScreen: View {
     let chats: HubChats
-    let agent: LinkBot
+    let thread: HubThread
     let attachment: LinkAttachment
     @Environment(\.dismiss) private var dismiss
     @State private var feed = SurfaceFeed()
@@ -572,7 +572,7 @@ struct LiveSurfaceScreen: View {
     private func follow() async {
         feed.onFirstPicture = { showing = true }
         do {
-            let channel = try await chats.openSurface(attachment, in: agent)
+            let channel = try await chats.openSurface(attachment, in: thread)
             self.channel = channel
             defer { channel.cancel() }
             for try await frame in channel.frames {

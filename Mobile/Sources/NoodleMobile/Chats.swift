@@ -3,10 +3,59 @@ import NoodleWallpaperCore
 import PhotosUI
 import SwiftUI
 
-/// The bots this phone's user keeps on the Hub and their conversations, kept current from the Hub's events.
+/// A conversation this phone shows: a bot's own, or a group's.
+protocol HubConversation: Identifiable where ID == UUID {
+    var conversationID: UUID { get }
+    var createdAt: Date { get }
+    var readUpTo: Date? { get }
+    var name: String { get }
+    var about: String { get }
+}
+
+extension LinkBot: HubConversation {
+    var name: String { draft.name }
+    var about: String { draft.publicDescription }
+}
+
+extension LinkGroup: HubConversation {
+    /// A group's ID is its conversation's.
+    var conversationID: UUID { id }
+    var name: String { draft.name }
+    var about: String { draft.publicDescription }
+}
+
+/// A row of the list and the conversation it opens.
+enum HubThread: HubConversation {
+    case bot(LinkBot), group(LinkGroup)
+
+    private var conversation: any HubConversation {
+        switch self {
+        case .bot(let bot): bot
+        case .group(let group): group
+        }
+    }
+
+    var id: UUID { conversation.id }
+    var conversationID: UUID { conversation.conversationID }
+    var createdAt: Date { conversation.createdAt }
+    var readUpTo: Date? { conversation.readUpTo }
+    var name: String { conversation.name }
+    var about: String { conversation.about }
+
+    var bot: LinkBot? {
+        if case .bot(let bot) = self { bot } else { nil }
+    }
+
+    var group: LinkGroup? {
+        if case .group(let group) = self { group } else { nil }
+    }
+}
+
+/// The bots and groups this phone's user keeps on the Hub and their conversations, kept current from the Hub's events.
 @MainActor @Observable final class HubChats {
     let pairing: HubPairing
     private(set) var agents: [LinkBot] = []
+    private(set) var groups: [LinkGroup] = []
     var error: String?
     /// Whether the list is known: from the last sync saved on this phone, or from the Hub itself.
     private(set) var isLoaded = false
@@ -40,6 +89,7 @@ import SwiftUI
     /// The last sync, shown at launch while the Hub is asked again.
     private struct Cache: Codable {
         var agents: [LinkBot]
+        var groups: [LinkGroup]?
         var conversations: [UUID: [LinkMessage]]
         var read: [UUID: Int]
         var start: [UUID: Int]?
@@ -54,6 +104,7 @@ import SwiftUI
                                                  from: Data(contentsOf: pairing.directory.appendingPathComponent("backgrounds.json")))) ?? [:]
         if let cache = try? JSONDecoder().decode(Cache.self, from: Data(contentsOf: cacheURL)) {
             agents = cache.agents
+            groups = cache.groups ?? []
             conversations = cache.conversations
             read = cache.read
             start = cache.start ?? [:]
@@ -65,63 +116,63 @@ import SwiftUI
     private var seenURL: URL { pairing.directory.appendingPathComponent("read.json") }
     private var draftsURL: URL { pairing.directory.appendingPathComponent("drafts.json") }
 
-    func background(for agent: LinkBot) -> ConversationBackground {
-        backgrounds[agent.conversationID] ?? ConversationBackground()
+    func background(for conversation: some HubConversation) -> ConversationBackground {
+        backgrounds[conversation.conversationID] ?? ConversationBackground()
     }
 
-    func backgroundImageURL(for agent: LinkBot) -> URL? {
-        background(for: agent).imageFilename.map { backgroundsFolder.appendingPathComponent($0) }
+    func backgroundImageURL(for conversation: some HubConversation) -> URL? {
+        background(for: conversation).imageFilename.map { backgroundsFolder.appendingPathComponent($0) }
     }
 
     /// A preset or the default. Any photo the conversation had is removed.
-    func setBackground(_ background: ConversationBackground, for agent: LinkBot) throws {
-        if let old = backgroundImageURL(for: agent), old.lastPathComponent != background.imageFilename {
+    func setBackground(_ background: ConversationBackground, for conversation: some HubConversation) throws {
+        if let old = backgroundImageURL(for: conversation), old.lastPathComponent != background.imageFilename {
             try? FileManager.default.removeItem(at: old)
         }
-        backgrounds[agent.conversationID] = background.isDefault ? nil : background
+        backgrounds[conversation.conversationID] = background.isDefault ? nil : background
         try JSONEncoder().encode(backgrounds).write(to: pairing.directory.appendingPathComponent("backgrounds.json"), options: .atomic)
     }
 
     /// A photo, converted as Noodle converts every still background.
-    func setBackground(photo: Data, for agent: LinkBot) throws {
+    func setBackground(photo: Data, for conversation: some HubConversation) throws {
         let jpeg = try BackgroundMedia.jpegData(from: photo)
         try FileManager.default.createDirectory(at: backgroundsFolder, withIntermediateDirectories: true)
         // A new name each time, so views showing the old picture reload.
-        let name = "\(agent.conversationID.uuidString)-\(UUID().uuidString).jpg"
+        let name = "\(conversation.conversationID.uuidString)-\(UUID().uuidString).jpg"
         try jpeg.write(to: backgroundsFolder.appendingPathComponent(name), options: .atomic)
-        try setBackground(ConversationBackground(imageFilename: name, mediaKind: .image), for: agent)
+        try setBackground(ConversationBackground(imageFilename: name, mediaKind: .image), for: conversation)
     }
 
     private var backgroundsFolder: URL { pairing.directory.appendingPathComponent("Backgrounds", isDirectory: true) }
 
-    func draft(for agent: LinkBot) -> String { drafts[agent.conversationID] ?? "" }
+    func draft(for conversation: some HubConversation) -> String { drafts[conversation.conversationID] ?? "" }
 
-    func setDraft(_ text: String, for agent: LinkBot) {
-        guard drafts[agent.conversationID, default: ""] != text else { return }
-        drafts[agent.conversationID] = text.isEmpty ? nil : text
+    func setDraft(_ text: String, for conversation: some HubConversation) {
+        guard drafts[conversation.conversationID, default: ""] != text else { return }
+        drafts[conversation.conversationID] = text.isEmpty ? nil : text
         try? JSONEncoder().encode(drafts).write(to: draftsURL, options: .atomic)
     }
 
     /// The bot's phase as its dot shows it: offline while its Hub does not answer.
     func phase(of agent: LinkBot) -> LinkBotPhase? { HubConnection(pairing).phase(of: agent.phase) }
 
-    /// Whether the bot has written since the conversation was last opened here.
-    func isUnread(_ agent: LinkBot) -> Bool {
-        guard let seen, let reply = messages(of: agent).last(where: { if case .bot = $0.author { true } else { false } }) else {
+    /// Whether a bot has written since the conversation was last opened here.
+    func isUnread(_ conversation: some HubConversation) -> Bool {
+        guard let seen, let reply = messages(of: conversation).last(where: { if case .bot = $0.author { true } else { false } }) else {
             return false
         }
-        return seen[agent.conversationID].map { reply.createdAt > $0 } ?? true
+        return seen[conversation.conversationID].map { reply.createdAt > $0 } ?? true
     }
 
     /// Also tells the Hub, up to the latest message it has, so the person's other devices show it read.
-    func markRead(_ agent: LinkBot) {
-        let messages = messages(of: agent)
-        guard let latest = messages.last?.createdAt, (seen?[agent.conversationID] ?? .distantPast) < latest else { return }
-        seen = (seen ?? [:]).merging([agent.conversationID: latest]) { $1 }
+    func markRead(_ conversation: some HubConversation) {
+        let messages = messages(of: conversation)
+        guard let latest = messages.last?.createdAt, (seen?[conversation.conversationID] ?? .distantPast) < latest else { return }
+        seen = (seen ?? [:]).merging([conversation.conversationID: latest]) { $1 }
         saveSeen()
-        Task { await HubNotifications.clearDelivered(conversation: agent.conversationID) }
+        Task { await HubNotifications.clearDelivered(conversation: conversation.conversationID) }
         guard let kept = messages.last(where: { !sending.contains($0.id) && !undelivered.contains($0.id) }) else { return }
-        let mark = LinkReadMark(conversationID: agent.conversationID, messageID: kept.id)
+        let mark = LinkReadMark(conversationID: conversation.conversationID, messageID: kept.id)
         // A Hub from before read state was shared does not know the request; this phone keeps its own.
         Task { _ = try? await pairing.request(.markRead(mark)) }
     }
@@ -140,15 +191,17 @@ import SwiftUI
     }
 
     private func saveCache() {
-        try? JSONEncoder().encode(Cache(agents: agents, conversations: conversations, read: read, start: start))
+        try? JSONEncoder().encode(Cache(agents: agents, groups: groups, conversations: conversations, read: read, start: start))
             .write(to: cacheURL, options: .atomic)
     }
 
-    var sortedAgents: [LinkBot] { Self.sorted(agents.map { (self, $0) }).map(\.1) }
+    var threads: [HubThread] { agents.map(HubThread.bot) + groups.map(HubThread.group) }
+
+    var sortedThreads: [HubThread] { Self.sorted(threads.map { (self, $0) }).map(\.1) }
 
     /// Pinned first, then newest conversation first, as in Messages, across however many Hubs.
-    static func sorted(_ agents: [(HubChats, LinkBot)]) -> [(HubChats, LinkBot)] {
-        agents.sorted { lhs, rhs in
+    static func sorted(_ threads: [(HubChats, HubThread)]) -> [(HubChats, HubThread)] {
+        threads.sorted { lhs, rhs in
             let (left, right) = (lhs.0.isPinned(lhs.1), rhs.0.isPinned(rhs.1))
             if left != right { return left }
             return lhs.0.recency(of: lhs.1) > rhs.0.recency(of: rhs.1)
@@ -156,21 +209,23 @@ import SwiftUI
     }
 
     /// As the Mac sidebar searches: the name, the description or anything said that this phone holds,
-    /// ignoring case and accents. A blank search matches every bot.
-    func matches(_ agent: LinkBot, search: String) -> Bool {
+    /// ignoring case and accents. A blank search matches everything.
+    func matches(_ conversation: some HubConversation, search: String) -> Bool {
         let term = search.trimmingCharacters(in: .whitespacesAndNewlines)
-        return term.isEmpty || agent.draft.name.localizedStandardContains(term)
-            || agent.draft.publicDescription.localizedStandardContains(term)
-            || messages(of: agent).contains { $0.body.localizedStandardContains(term) }
+        return term.isEmpty || conversation.name.localizedStandardContains(term)
+            || conversation.about.localizedStandardContains(term)
+            || messages(of: conversation).contains { $0.body.localizedStandardContains(term) }
     }
 
-    /// When the conversation last moved, or the bot was made.
-    private func recency(of agent: LinkBot) -> Date { latestMessage(of: agent)?.createdAt ?? agent.createdAt }
+    /// When the conversation last moved, or the bot or group was made.
+    private func recency(of conversation: some HubConversation) -> Date {
+        latestMessage(of: conversation)?.createdAt ?? conversation.createdAt
+    }
 
-    func isPinned(_ agent: LinkBot) -> Bool { pinned.contains(agent.id) }
+    func isPinned(_ conversation: some HubConversation) -> Bool { pinned.contains(conversation.id) }
 
-    func togglePin(_ agent: LinkBot) {
-        if pinned.remove(agent.id) == nil { pinned.insert(agent.id) }
+    func togglePin(_ conversation: some HubConversation) {
+        if pinned.remove(conversation.id) == nil { pinned.insert(conversation.id) }
         savePins()
     }
 
@@ -203,11 +258,44 @@ import SwiftUI
             throw LinkError("The Hub sent an unexpected answer.")
         }
         agents.removeAll { $0.id == agent.id }
-        conversations[agent.conversationID] = nil
-        read[agent.conversationID] = nil
-        if seen?.removeValue(forKey: agent.conversationID) != nil { saveSeen() }
-        if pinned.remove(agent.id) != nil { savePins() }
+        forget(agent)
         saveCache()
+    }
+
+    /// Makes a group of this user's bots on the Hub.
+    func createGroup(_ draft: LinkGroupDraft) async throws -> LinkGroup {
+        guard case .group(let group) = try await pairing.request(.createGroup(draft)) else {
+            throw LinkError("The Hub sent an unexpected answer.")
+        }
+        groups.append(group)
+        saveCache()
+        return group
+    }
+
+    func updateGroup(_ group: LinkGroup) async throws {
+        guard case .group(let updated) = try await pairing.request(.updateGroup(id: group.id, group.draft)) else {
+            throw LinkError("The Hub sent an unexpected answer.")
+        }
+        if let index = groups.firstIndex(where: { $0.id == updated.id }) { groups[index] = updated }
+        saveCache()
+    }
+
+    /// Deletes the group and its messages on the Hub, for every device. Its bots stay.
+    func deleteGroup(_ group: LinkGroup) async throws {
+        guard case .done = try await pairing.request(.deleteGroup(id: group.id)) else {
+            throw LinkError("The Hub sent an unexpected answer.")
+        }
+        groups.removeAll { $0.id == group.id }
+        forget(group)
+        saveCache()
+    }
+
+    /// What this phone keeps of a conversation that is gone.
+    private func forget(_ conversation: some HubConversation) {
+        conversations[conversation.conversationID] = nil
+        read[conversation.conversationID] = nil
+        if seen?.removeValue(forKey: conversation.conversationID) != nil { saveSeen() }
+        if pinned.remove(conversation.id) != nil { savePins() }
     }
 
     /// Starts a failed bot again, as Kick does on the Mac: at once, or after the question the Hub returns.
@@ -234,9 +322,25 @@ import SwiftUI
 
     func agent(_ id: UUID) -> LinkBot? { agents.first { $0.id == id } }
 
-    func messages(of agent: LinkBot) -> [LinkMessage] { conversations[agent.conversationID] ?? [] }
+    func thread(_ id: UUID) -> HubThread? { threads.first { $0.id == id } }
 
-    func latestMessage(of agent: LinkBot) -> LinkMessage? { messages(of: agent).last }
+    /// The group's bots this phone knows, in the group's order.
+    func members(of group: LinkGroup) -> [LinkBot] { group.draft.botIDs.compactMap(agent) }
+
+    func messages(of conversation: some HubConversation) -> [LinkMessage] { conversations[conversation.conversationID] ?? [] }
+
+    func latestMessage(of conversation: some HubConversation) -> LinkMessage? { messages(of: conversation).last }
+
+    /// In a group, the bot's name heading each run of its messages, by message.
+    static func authorLabels(in messages: [LinkMessage], name: (UUID) -> String?) -> [UUID: String] {
+        var labels: [UUID: String] = [:]
+        var previous: LinkMessage.Author?
+        for message in messages {
+            if case .bot(let id) = message.author, message.author != previous, let name = name(id) { labels[message.id] = name }
+            previous = message.author
+        }
+        return labels
+    }
 
     /// Loads everything, then follows the Hub's changes until cancelled, reconnecting after a pause.
     func follow() async {
@@ -255,9 +359,9 @@ import SwiftUI
         switch event {
         case .botsChanged:
             try await reload()
-        // Groups are not shown here yet.
         case .groupsChanged:
-            return
+            try await loadGroups()
+            forgetGone()
         case .conversationChanged(let id, _):
             try await load(id)
         case .messageChanged(let message):
@@ -290,13 +394,13 @@ import SwiftUI
     }
 
     /// Adds your reaction, or takes it back if it is there.
-    func toggleReaction(_ emoji: String, on message: LinkMessage, in agent: LinkBot) async throws {
+    func toggleReaction(_ emoji: String, on message: LinkMessage, in conversation: some HubConversation) async throws {
         let present = !message.reactions.contains(LinkReaction(author: .you, emoji: emoji))
         guard case .message(let changed) = try await pairing.request(.react(LinkReactionChange(
-            conversationID: agent.conversationID, messageID: message.id, emoji: emoji, present: present))) else {
+            conversationID: conversation.conversationID, messageID: message.id, emoji: emoji, present: present))) else {
             throw LinkError("The Hub sent an unexpected answer.")
         }
-        merge([changed], into: agent.conversationID)
+        merge([changed], into: conversation.conversationID)
         saveCache()
     }
 
@@ -304,13 +408,14 @@ import SwiftUI
         guard case .bots(let bots) = try await pairing.request(.bots) else { throw LinkError("The Hub sent an unexpected answer.") }
         agents = pairing.keptPictures(bots)
         for bot in bots { try await load(bot.conversationID) }
-        // Conversations of bots that are gone.
-        conversations = conversations.filter { id, _ in bots.contains { $0.conversationID == id } }
+        // A Hub from before groups does not know the request; it has none to show.
+        try? await loadGroups()
+        forgetGone()
         if seen == nil {
             seen = conversations.compactMapValues { $0.last?.createdAt }
             saveSeen()
         }
-        for bot in bots { if let upTo = bot.readUpTo { noteRead(bot.conversationID, upTo: upTo) } }
+        for thread in threads { if let upTo = thread.readUpTo { noteRead(thread.conversationID, upTo: upTo) } }
         // Chats work even when the Hub cannot list tools.
         try? await loadTools()
         isLoaded = true
@@ -321,6 +426,21 @@ import SwiftUI
         guard agents.map(\.id) == bots.map(\.id) else { return }
         agents = pairing.keptPictures(agents)
         saveCache()
+    }
+
+    private func loadGroups() async throws {
+        guard case .groups(let listed) = try await pairing.request(.groups) else { throw LinkError("The Hub sent an unexpected answer.") }
+        groups = listed
+        for group in listed {
+            try await load(group.id)
+            if let upTo = group.readUpTo { noteRead(group.id, upTo: upTo) }
+        }
+    }
+
+    /// Conversations of bots and groups that are gone.
+    private func forgetGone() {
+        let kept = Set(threads.map(\.conversationID))
+        conversations = conversations.filter { kept.contains($0.key) }
     }
 
     /// Messages shown before the Hub has them, and those it never got.
@@ -334,7 +454,7 @@ import SwiftUI
         return message.delivered ? "Delivered" : "Sent"
     }
 
-    func send(_ body: String, files: [OutgoingFile] = [], to agent: LinkBot) async throws {
+    func send(_ body: String, files: [OutgoingFile] = [], to conversation: some HubConversation) async throws {
         let attachments = try files.map { file in
             LinkAttachment(id: file.id, filename: file.filename, mediaType: file.mediaType,
                            byteCount: try file.url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0, voice: file.voice,
@@ -342,19 +462,19 @@ import SwiftUI
         }
         // As on the Mac, a message of files alone says how many.
         let text = body.isEmpty && !files.isEmpty ? "Sent \(files.count) attachment\(files.count == 1 ? "" : "s")" : body
-        let outgoing = LinkOutgoingMessage(conversationID: agent.conversationID, id: UUID(), body: text,
+        let outgoing = LinkOutgoingMessage(conversationID: conversation.conversationID, id: UUID(), body: text,
                                            attachmentIDs: attachments.map(\.id))
         // Shown at once; the Hub's copy replaces it.
         sending.insert(outgoing.id)
         defer { sending.remove(outgoing.id) }
-        merge([LinkMessage(id: outgoing.id, conversationID: agent.conversationID, author: .you, body: text,
-                           createdAt: Date(), delivered: false, attachments: attachments)], into: agent.conversationID)
+        merge([LinkMessage(id: outgoing.id, conversationID: conversation.conversationID, author: .you, body: text,
+                           createdAt: Date(), delivered: false, attachments: attachments)], into: conversation.conversationID)
         let sent: LinkMessage
         do {
             // Files first: the Hub refuses a message that points at a file it lacks.
             for (file, attachment) in zip(files, attachments) {
                 try keep(file.url, as: attachment)
-                try await pairing.upload(file.url, as: attachment, to: agent.conversationID)
+                try await pairing.upload(file.url, as: attachment, to: conversation.conversationID)
             }
             guard case .message(let message) = try await pairing.request(.send(outgoing)) else {
                 throw LinkError("The Hub sent an unexpected answer.")
@@ -364,26 +484,26 @@ import SwiftUI
             undelivered.insert(outgoing.id)
             throw error
         }
-        merge([sent], into: agent.conversationID)
-        try await load(agent.conversationID)
+        merge([sent], into: conversation.conversationID)
+        try await load(conversation.conversationID)
         saveCache()
     }
 
     /// A recording, sent as the Mac sends one: the audio with its transcript, under "Voice message".
-    func sendVoice(_ audio: URL, voice: LinkVoice, to agent: LinkBot) async throws {
+    func sendVoice(_ audio: URL, voice: LinkVoice, to conversation: some HubConversation) async throws {
         try await send(Self.voiceBody, files: [OutgoingFile(url: audio, filename: "Voice message.caf", mediaType: "audio/x-caf",
-                                                            voice: voice)], to: agent)
+                                                            voice: voice)], to: conversation)
     }
 
     static let voiceBody = "Voice message"
 
     /// The file on this phone, downloaded from the Hub the first time it is asked for.
-    func file(for attachment: LinkAttachment, in agent: LinkBot) async throws -> URL {
+    func file(for attachment: LinkAttachment, in conversation: some HubConversation) async throws -> URL {
         let url = fileURL(for: attachment)
         if FileManager.default.fileExists(atPath: url.path) { return url }
         let staging = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: staging) }
-        try await pairing.download(attachment, from: agent.conversationID, to: staging)
+        try await pairing.download(attachment, from: conversation.conversationID, to: staging)
         try keep(staging, as: attachment)
         return url
     }
@@ -435,14 +555,15 @@ import SwiftUI
     }
 
     /// Whether earlier messages wait on the Hub, to load as the person scrolls back.
-    func hasEarlier(_ agent: LinkBot) -> Bool { (start[agent.conversationID] ?? 0) > 0 }
+    func hasEarlier(_ conversation: some HubConversation) -> Bool { (start[conversation.conversationID] ?? 0) > 0 }
 
-    func loadEarlier(_ agent: LinkBot) async throws {
-        guard let first = start[agent.conversationID], first > 0 else { return }
-        let page = try await self.page(LinkMessagePage(conversationID: agent.conversationID, before: first, limit: Self.pageSize))
-        let known = Set((conversations[agent.conversationID] ?? []).map(\.id))
-        conversations[agent.conversationID] = page.messages.filter { !known.contains($0.id) } + (conversations[agent.conversationID] ?? [])
-        start[agent.conversationID] = page.start ?? 0
+    func loadEarlier(_ conversation: some HubConversation) async throws {
+        let id = conversation.conversationID
+        guard let first = start[id], first > 0 else { return }
+        let page = try await self.page(LinkMessagePage(conversationID: id, before: first, limit: Self.pageSize))
+        let known = Set((conversations[id] ?? []).map(\.id))
+        conversations[id] = page.messages.filter { !known.contains($0.id) } + (conversations[id] ?? [])
+        start[id] = page.start ?? 0
         saveCache()
     }
 
@@ -475,7 +596,7 @@ struct OutgoingFile: Identifiable, Equatable {
     var voice: LinkVoice?
 }
 
-/// The home screen once paired: the agents of the Hubs shown, newest conversation first.
+/// The home screen once paired: the bots and groups of the Hubs shown, newest conversation first.
 struct AgentsView: View {
     let pairings: [HubPairing]
     /// A tapped notification's conversation, until it opens.
@@ -490,18 +611,19 @@ struct AgentsView: View {
     @State private var showingProfile = false
     @State private var showingSettings = false
     @State private var creating = false
+    @State private var creatingGroup = false
     @State private var search = ""
     @State private var editing: Row?
 
     private struct Row: Identifiable {
         let chats: HubChats
-        let agent: LinkBot
+        let thread: HubThread
         let id: ChatLink
     }
 
     private var rows: [Row] {
-        HubChats.sorted(chats.flatMap { hub in hub.agents.map { (hub, $0) } }).map { hub, agent in
-            Row(chats: hub, agent: agent, id: ChatLink(hub: CurrentHub.name(of: hub.pairing), agent: agent.id))
+        HubChats.sorted(chats.flatMap { hub in hub.threads.map { (hub, $0) } }).map { hub, thread in
+            Row(chats: hub, thread: thread, id: ChatLink(hub: CurrentHub.name(of: hub.pairing), thread: thread.id))
         }
     }
 
@@ -510,9 +632,9 @@ struct AgentsView: View {
         NavigationStack(path: $path) {
             // As in Messages: pinned bots in circles above the rest, and one plain list of matches while searching.
             let searching = !search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            let found = rows.filter { $0.chats.matches($0.agent, search: search) }
-            let pinned = searching ? [] : found.filter { $0.chats.isPinned($0.agent) }
-            let others = searching ? found : found.filter { !$0.chats.isPinned($0.agent) }
+            let found = rows.filter { $0.chats.matches($0.thread, search: search) }
+            let pinned = searching ? [] : found.filter { $0.chats.isPinned($0.thread) }
+            let others = searching ? found : found.filter { !$0.chats.isPinned($0.thread) }
             List {
                 // Only above bots: with none, the empty list says it instead.
                 if !rows.isEmpty {
@@ -529,7 +651,7 @@ struct AgentsView: View {
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 3), spacing: 16) {
                         ForEach(pinned) { row in
                             Button { path = [row.id] } label: {
-                                PinnedAgent(agent: row.agent, phase: row.chats.phase(of: row.agent), unread: row.chats.isUnread(row.agent))
+                                PinnedAgent(chats: row.chats, thread: row.thread, unread: row.chats.isUnread(row.thread))
                             }
                             .buttonStyle(.plain)
                             .contextMenu { menu(for: row) }
@@ -540,15 +662,15 @@ struct AgentsView: View {
                 }
                 ForEach(others) { row in
                     NavigationLink(value: row.id) {
-                        AgentRow(agent: row.agent, phase: row.chats.phase(of: row.agent), latest: row.chats.latestMessage(of: row.agent),
-                                 unread: row.chats.isUnread(row.agent), hub: chats.count > 1 ? row.chats.pairing.hubName : nil)
+                        AgentRow(chats: row.chats, thread: row.thread, latest: row.chats.latestMessage(of: row.thread),
+                                 unread: row.chats.isUnread(row.thread), hub: chats.count > 1 ? row.chats.pairing.hubName : nil)
                     }
                     // As in Messages: dividers between rows, none above the first.
                     .listRowSeparator(row.id == others.first?.id ? .hidden : .visible, edges: .top)
                     // Room for the unread dot, as far from the edge as from the picture.
                     .listRowInsets(.leading, AgentRow.dotGap * 2 + AgentRow.dotSize)
                     .swipeActions(edge: .leading) {
-                        Button { row.chats.togglePin(row.agent) } label: { Label("Pin", systemImage: "pin.fill") }
+                        Button { row.chats.togglePin(row.thread) } label: { Label("Pin", systemImage: "pin.fill") }
                             .tint(.orange)
                     }
                     .contextMenu { menu(for: row) }
@@ -572,7 +694,7 @@ struct AgentsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: ChatLink.self) { link in
                 if let hub = chats.first(where: { CurrentHub.name(of: $0.pairing) == link.hub }) {
-                    ChatView(chats: hub, agentID: link.agent)
+                    ChatView(chats: hub, threadID: link.thread)
                 }
             }
             .toolbar {
@@ -598,7 +720,10 @@ struct AgentsView: View {
             .sheet(isPresented: $creating) {
                 if let first = chats.first { AgentEditor(chats: first, agent: nil, hubs: chats) }
             }
-            .sheet(item: $editing) { row in AgentEditor(chats: row.chats, agent: row.agent) }
+            .sheet(isPresented: $creatingGroup) {
+                if let first = chats.first { GroupEditor(chats: first, group: nil, hubs: chats) }
+            }
+            .sheet(item: $editing) { row in ThreadEditor(chats: row.chats, thread: row.thread) }
         }
         .onChange(of: opening, initial: true, open)
         .onChange(of: rows.map(\.id)) { open() }
@@ -612,21 +737,21 @@ struct AgentsView: View {
         }
     }
 
-    /// A bot's touch-and-hold menu, the same for its row and its pinned circle.
+    /// A conversation's touch-and-hold menu, the same for its row and its pinned circle.
     @ViewBuilder
     private func menu(for row: Row) -> some View {
-        if row.chats.isPinned(row.agent) {
-            Button { row.chats.togglePin(row.agent) } label: { Label("Unpin", systemImage: "pin.slash.fill") }
+        if row.chats.isPinned(row.thread) {
+            Button { row.chats.togglePin(row.thread) } label: { Label("Unpin", systemImage: "pin.slash.fill") }
         } else {
-            Button { row.chats.togglePin(row.agent) } label: { Label("Pin", systemImage: "pin.fill") }
+            Button { row.chats.togglePin(row.thread) } label: { Label("Pin", systemImage: "pin.fill") }
         }
-        Button { editing = row } label: { Label("Edit Bot…", systemImage: "pencil") }
+        Button { editing = row } label: { Label(row.thread.group == nil ? "Edit Bot…" : "Edit Group…", systemImage: "pencil") }
     }
 
     /// Opens a tapped notification's conversation once its Hub's bots have loaded.
     private func open() {
         guard let route = opening,
-              let row = rows.first(where: { $0.agent.conversationID == route.conversation
+              let row = rows.first(where: { $0.thread.conversationID == route.conversation
                   && PushTopic.topic(for: $0.chats.pairing) == route.topic }) else { return }
         path = [row.id]
         opening = nil
@@ -635,6 +760,7 @@ struct AgentsView: View {
     private func openChosen() {
         switch chosen {
         case .createBot: creating = true
+        case .createGroup: creatingGroup = true
         case .profiles: showingProfile = true
         case .settings: showingSettings = true
         case nil: break
@@ -648,13 +774,13 @@ private struct FollowKey: Equatable {
     let away: Bool
 }
 
-/// A conversation in the list: the Hub, by the name of its folder, and the bot.
+/// A conversation in the list: the Hub, by the name of its folder, and the bot or group.
 struct ChatLink: Hashable {
     let hub: String
-    let agent: UUID
+    let thread: UUID
 }
 
-enum MoreChoice { case createBot, profiles, settings }
+enum MoreChoice { case createBot, createGroup, profiles, settings }
 
 /// The rarely used actions, in a short sheet from the bottom.
 struct MoreSheet: View {
@@ -663,13 +789,14 @@ struct MoreSheet: View {
     var body: some View {
         VStack(spacing: 12) {
             option("New Bot", systemImage: "plus", .createBot)
+            option("New Group", systemImage: "person.2", .createGroup)
             option("Profiles", systemImage: "person.crop.circle", .profiles)
             option("Settings", systemImage: "gear", .settings)
         }
         .buttonStyle(.bordered)
         .controlSize(.large)
         .padding(24)
-        .presentationDetents([.height(230)])
+        .presentationDetents([.height(292)])
         .presentationDragIndicator(.visible)
     }
 
@@ -681,17 +808,17 @@ struct MoreSheet: View {
 }
 
 private struct AgentRow: View {
-    let agent: LinkBot
-    let phase: LinkBotPhase?
+    let chats: HubChats
+    let thread: HubThread
     let latest: LinkMessage?
     let unread: Bool
-    /// The bot's Hub, when several are shown together.
+    /// The conversation's Hub, when several are shown together.
     var hub: String?
     static let dotSize: CGFloat = 10, dotGap: CGFloat = 8
 
     var body: some View {
         HStack(spacing: 12) {
-            AgentAvatar(draft: agent.draft, size: 48, phase: phase)
+            ThreadAvatar(chats: chats, thread: thread, size: 48)
                 // In the margin left of the picture, as in Messages.
                 .overlay(alignment: .leading) {
                     if unread {
@@ -701,7 +828,7 @@ private struct AgentRow: View {
                 }
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text(agent.draft.name).font(.headline).lineLimit(1)
+                    Text(thread.name).font(.headline).lineLimit(1)
                     if let hub {
                         Text(hub).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     }
@@ -711,7 +838,7 @@ private struct AgentRow: View {
                             .font(.subheadline).foregroundStyle(.secondary)
                     }
                 }
-                Text(latest?.body ?? agent.draft.publicDescription)
+                Text(latest?.body ?? thread.about)
                     .font(.subheadline).foregroundStyle(.secondary)
                     .lineLimit(2)
             }
@@ -720,15 +847,15 @@ private struct AgentRow: View {
     }
 }
 
-/// A pinned bot: a large picture with its name beneath, as Messages shows pinned conversations.
+/// A pinned bot or group: a large picture with its name beneath, as Messages shows pinned conversations.
 private struct PinnedAgent: View {
-    let agent: LinkBot
-    let phase: LinkBotPhase?
+    let chats: HubChats
+    let thread: HubThread
     let unread: Bool
 
     var body: some View {
         VStack(spacing: 6) {
-            AgentAvatar(draft: agent.draft, size: 76, phase: phase)
+            ThreadAvatar(chats: chats, thread: thread, size: 76)
                 .overlay(alignment: .topLeading) {
                     if unread {
                         Circle().fill(.tint).frame(width: 14, height: 14)
@@ -736,7 +863,7 @@ private struct PinnedAgent: View {
                             .accessibilityLabel("Unread")
                     }
                 }
-            Text(agent.draft.name).font(.caption).lineLimit(1)
+            Text(thread.name).font(.caption).lineLimit(1)
         }
         .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
@@ -786,12 +913,12 @@ struct ConversationScrolling: ViewModifier {
     }
 }
 
-/// One agent's conversation, laid out like Messages.
+/// A bot's or a group's conversation, laid out like Messages.
 struct ChatView: View {
     /// The height of a one-line message field, which the buttons beside it match.
     static let controlHeight: CGFloat = 48
     let chats: HubChats
-    let agentID: UUID
+    let threadID: UUID
     @AppStorage(WebLinkPreview.key) private var previewsLinks = true
     @State private var previewing: PreviewedLink?
     @State private var draft = ""
@@ -817,34 +944,36 @@ struct ChatView: View {
     @State private var recorder: VoiceRecorder
     @Environment(\.dismiss) private var dismiss
 
-    init(chats: HubChats, agentID: UUID) {
+    init(chats: HubChats, threadID: UUID) {
         self.chats = chats
-        self.agentID = agentID
+        self.threadID = threadID
         _recorder = State(initialValue: VoiceRecorder(directory: FileManager.default.temporaryDirectory
-            .appendingPathComponent("Recordings", isDirectory: true).appendingPathComponent(agentID.uuidString, isDirectory: true)))
+            .appendingPathComponent("Recordings", isDirectory: true).appendingPathComponent(threadID.uuidString, isDirectory: true)))
     }
 
     var body: some View {
         Group {
-            if let agent = chats.agent(agentID) { conversation(with: agent) }
+            if let thread = chats.thread(threadID) { conversation(in: thread) }
         }
         // Deleted here or on another device.
-        .onChange(of: chats.agent(agentID) == nil) { _, gone in if gone { dismiss() } }
+        .onChange(of: chats.thread(threadID) == nil) { _, gone in if gone { dismiss() } }
     }
 
-    private func conversation(with agent: LinkBot) -> some View {
-        let messages = chats.messages(of: agent)
+    private func conversation(in thread: HubThread) -> some View {
+        let messages = chats.messages(of: thread)
+        let bot = thread.bot
         // As in Messages, only your latest message says how far it got.
         let latestOwn = messages.last { $0.author == .you }?.id
+        let authors = thread.group == nil ? [:] : HubChats.authorLabels(in: messages) { chats.agent($0)?.draft.name }
         return ScrollView {
             LazyVStack(spacing: 6) {
                 // Reaching the top loads the page before.
-                if chats.hasEarlier(agent) {
+                if chats.hasEarlier(thread) {
                     ProgressView().frame(maxWidth: .infinity).padding(.vertical, 8)
-                        .task(id: messages.first?.id) { try? await chats.loadEarlier(agent) }
+                        .task(id: messages.first?.id) { try? await chats.loadEarlier(thread) }
                 }
                 ForEach(messages) { message in
-                    Bubble(chats: chats, agent: agent, message: message,
+                    Bubble(chats: chats, thread: thread, message: message, author: authors[message.id],
                            delivery: message.id == latestOwn ? chats.delivery(of: message) : nil)
                         .id(message.id)
                 }
@@ -856,14 +985,14 @@ struct ChatView: View {
         }
         .modifier(ConversationScrolling(latest: messages.last))
         .scrollDismissesKeyboard(.interactively)
-        .background { ConversationBackdrop(background: chats.background(for: agent), imageURL: chats.backgroundImageURL(for: agent)) }
+        .background { ConversationBackdrop(background: chats.background(for: thread), imageURL: chats.backgroundImageURL(for: thread)) }
         // Open means read, including replies that arrive while it is open.
         .onAppear {
-            chats.markRead(agent)
-            draft = chats.draft(for: agent)
+            chats.markRead(thread)
+            draft = chats.draft(for: thread)
         }
-        .onChange(of: draft) { chats.setDraft(draft, for: agent) }
-        .onChange(of: messages.last?.id) { chats.markRead(agent) }
+        .onChange(of: draft) { chats.setDraft(draft, for: thread) }
+        .onChange(of: messages.last?.id) { chats.markRead(thread) }
         // Behind the attach panel, as in Messages: the conversation blurs, and tapping it closes the panel.
         .overlay {
             if attaching {
@@ -878,43 +1007,45 @@ struct ChatView: View {
             ToolbarItem(placement: .principal) {
                 Button { editing = true } label: {
                     HStack(spacing: 8) {
-                        AgentAvatar(draft: agent.draft, size: 28, phase: chats.phase(of: agent))
-                        Text(agent.draft.name).font(.headline).foregroundStyle(.primary)
+                        ThreadAvatar(chats: chats, thread: thread, size: 28)
+                        Text(thread.name).font(.headline).foregroundStyle(.primary)
                     }
                 }
                 .accessibilityHint("Edit")
             }
-            // As in the Mac's sidebar: Kick only for a failed bot, New Session always.
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    if agent.phase == .failed {
-                        Button("Kick", systemImage: "arrow.clockwise") { kick(agent) }
+            // As in the Mac's sidebar: Kick only for a failed bot, New Session always. Groups have neither.
+            if let bot {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        if bot.phase == .failed {
+                            Button("Kick", systemImage: "arrow.clockwise") { kick(bot) }
+                        }
+                        Button("New Session", systemImage: "sparkles") { confirmingNewSession = true }
+                    } label: {
+                        Image(systemName: "ellipsis")
                     }
-                    Button("New Session", systemImage: "sparkles") { confirmingNewSession = true }
-                } label: {
-                    Image(systemName: "ellipsis")
+                    .accessibilityLabel("More")
                 }
-                .accessibilityLabel("More")
             }
         }
-        .alert("Start a new session for \(agent.draft.name)?", isPresented: $confirmingNewSession) {
-            Button("New Session") { run { try await chats.startNewSession(agent) } }
+        .alert("Start a new session for \(thread.name)?", isPresented: $confirmingNewSession) {
+            Button("New Session") { run { if let bot { try await chats.startNewSession(bot) } } }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("\(agent.draft.name) will start with a fresh context. Its workspace, memory and messages are kept.")
+            Text("\(thread.name) will start with a fresh context. Its workspace, memory and messages are kept.")
         }
         .alert(kickConfirmation?.title ?? "Recover Bot", isPresented: Binding(
             get: { kickConfirmation != nil }, set: { if !$0 { kickConfirmation = nil } }
         ), presenting: kickConfirmation) { confirmation in
-            Button(confirmation.confirmTitle) { run { try await chats.confirmKick(confirmation, for: agent) } }
+            Button(confirmation.confirmTitle) { run { if let bot { try await chats.confirmKick(confirmation, for: bot) } } }
             if confirmation.offersNewSession {
-                Button("New Session") { run { try await chats.startNewSession(agent) } }
+                Button("New Session") { run { if let bot { try await chats.startNewSession(bot) } } }
             }
             Button("Cancel", role: .cancel) {}
         } message: { confirmation in
             Text(confirmation.message)
         }
-        .sheet(isPresented: $editing) { AgentEditor(chats: chats, agent: agent) }
+        .sheet(isPresented: $editing) { ThreadEditor(chats: chats, thread: thread) }
         .photosPicker(isPresented: $pickingPhotos, selection: $photos, maxSelectionCount: 10,
                       matching: .any(of: [.images, .videos]))
         .onChange(of: photos) { _, items in
@@ -947,7 +1078,7 @@ struct ChatView: View {
         // Over the whole screen, bars included, as in Messages; the overlay animates itself in and out.
         .fullScreenCover(item: $focused) { focus in
             MessageActions(focus: focus) { emoji in
-                Task { try? await chats.toggleReaction(emoji, on: focus.message, in: agent) }
+                Task { try? await chats.toggleReaction(emoji, on: focus.message, in: thread) }
             } close: {
                 var instant = Transaction()
                 instant.disablesAnimations = true
@@ -956,15 +1087,15 @@ struct ChatView: View {
             .presentationBackground(.clear)
         }
         .fullScreenCover(item: $watching) { attachment in
-            LiveSurfaceScreen(chats: chats, agent: agent, attachment: attachment)
+            LiveSurfaceScreen(chats: chats, thread: thread, attachment: attachment)
         }
     }
 
     private var composer: some View {
         VStack(spacing: 6) {
-            if recorder.phase != .idle, let agent = chats.agent(agentID) {
+            if recorder.phase != .idle, let thread = chats.thread(threadID) {
                 VoiceRecordingBar(recorder: recorder) { audio, voice in
-                    try await chats.sendVoice(audio, voice: voice, to: agent)
+                    try await chats.sendVoice(audio, voice: voice, to: thread)
                 }
                 .padding(.horizontal, 12).padding(.vertical, 4)
                 .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -1104,10 +1235,11 @@ struct ChatView: View {
         }
     }
 
-    /// Bots matching an @ being typed, this conversation's first.
+    /// Bots matching an @ being typed: this bot first, or a group's own bots only.
     @ViewBuilder private var mentions: some View {
         if let request = MentionCompletion.request(in: draft, caret: caret) {
-            let bots = request.matches(chats.agents, preferred: agentID)
+            let group = chats.thread(threadID)?.group
+            let bots = request.matches(group.map(chats.members) ?? chats.agents, preferred: threadID)
             if !bots.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
@@ -1163,13 +1295,13 @@ struct ChatView: View {
 
     private func send() {
         let body = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !body.isEmpty || !files.isEmpty, let agent = chats.agent(agentID) else { return }
+        guard !body.isEmpty || !files.isEmpty, let thread = chats.thread(threadID) else { return }
         let sending = files
         draft = ""
         files = []
         problem = nil
         Task {
-            do { try await chats.send(body, files: sending, to: agent) } catch { problem = error.localizedDescription }
+            do { try await chats.send(body, files: sending, to: thread) } catch { problem = error.localizedDescription }
         }
     }
 }
@@ -1193,8 +1325,10 @@ enum MessageFolding {
 
 private struct Bubble: View {
     let chats: HubChats
-    let agent: LinkBot
+    let thread: HubThread
     let message: LinkMessage
+    /// In a group, the bot's name above the first of its messages in a row.
+    let author: String?
     /// Shown under your latest message only.
     let delivery: String?
     @State private var expanded = false
@@ -1221,6 +1355,9 @@ private struct Bubble: View {
         case .bot:
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
+                    if let author {
+                        Text(author).font(.caption).foregroundStyle(.secondary).padding(.leading, 12).padding(.top, 4)
+                    }
                     content(foreground: .primary, background: Color(.secondarySystemBackground))
                 }
                 Spacer(minLength: 48)
@@ -1229,7 +1366,7 @@ private struct Bubble: View {
     }
 
     private func react(_ emoji: String) {
-        Task { try? await chats.toggleReaction(emoji, on: message, in: agent) }
+        Task { try? await chats.toggleReaction(emoji, on: message, in: thread) }
     }
 
     /// One badge per emoji, with a count; yours are tinted, and tapping one adds or takes back yours.
@@ -1258,7 +1395,7 @@ private struct Bubble: View {
             let together = mode != .vertical && message.attachments.count > 1
             AttachmentRows(mode: mode, trailing: message.author == .you) {
                 ForEach(message.attachments) { attachment in
-                    AttachmentView(chats: chats, agent: agent, attachment: attachment, group: message.attachments, compact: together)
+                    AttachmentView(chats: chats, thread: thread, attachment: attachment, group: message.attachments, compact: together)
                         .shadow(color: mode == .stack && together ? .black.opacity(0.3) : .clear, radius: 3, y: 2)
                 }
             }
@@ -1440,7 +1577,7 @@ struct AgentEditor: View {
                         NavigationLink("Browsers") { HubToolsScreen(chats: chats, agent: agent, kind: .browser) }
                     }
                     Section {
-                        NavigationLink("Background") { BackgroundEditor(chats: chats, agent: agent) }
+                        NavigationLink("Background") { BackgroundEditor(chats: chats, thread: .bot(agent)) }
                     }
                     Section {
                         Button("Delete Bot", role: .destructive) { confirmingDelete = true }
@@ -1507,10 +1644,214 @@ struct AgentEditor: View {
     }
 }
 
+/// The editor for a bot or a group.
+struct ThreadEditor: View {
+    let chats: HubChats
+    let thread: HubThread
+
+    var body: some View {
+        switch thread {
+        case .bot(let bot): AgentEditor(chats: chats, agent: bot)
+        case .group(let group): GroupEditor(chats: chats, group: group)
+        }
+    }
+}
+
+/// Makes a group of bots on the Hub, or edits one: its name, description and bots.
+struct GroupEditor: View {
+    /// The Hub the group is on, or is made on. Its bots are the ones to choose from.
+    @State private var chats: HubChats
+    /// Nil makes a new group.
+    let group: LinkGroup?
+    /// The Hubs a new group can be made on.
+    private let hubs: [HubChats]
+    @Environment(\.dismiss) private var dismiss
+    @State private var draft: LinkGroupDraft
+    @State private var saving = false
+    @State private var confirmingDelete = false
+    @State private var problem: String?
+
+    init(chats: HubChats, group: LinkGroup?, hubs: [HubChats] = []) {
+        _chats = State(initialValue: chats)
+        self.group = group
+        self.hubs = hubs
+        _draft = State(initialValue: group?.draft ?? LinkGroupDraft(name: "", botIDs: []))
+    }
+
+    /// A group is all one Hub's bots, so choosing another Hub clears the choice.
+    private var hub: Binding<String> {
+        Binding {
+            CurrentHub.name(of: chats.pairing)
+        } set: { name in
+            guard let hub = hubs.first(where: { CurrentHub.name(of: $0.pairing) == name }), hub !== chats else { return }
+            chats = hub
+            draft.botIDs = []
+        }
+    }
+
+    private var bots: [LinkBot] {
+        chats.agents.sorted { $0.draft.name.localizedStandardCompare($1.draft.name) == .orderedAscending }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Name", text: $draft.name)
+                    TextField("Description", text: $draft.publicDescription, axis: .vertical)
+                        .lineLimit(2...4)
+                }
+                if group == nil, hubs.count > 1 {
+                    Section {
+                        Picker("Hub", selection: hub) {
+                            ForEach(hubs, id: \.pairing.directory) { hub in
+                                Text(hub.pairing.hubName).tag(CurrentHub.name(of: hub.pairing))
+                            }
+                        }
+                    }
+                }
+                Section("Members") {
+                    if bots.isEmpty {
+                        Text("No Bots").foregroundStyle(.secondary)
+                    }
+                    ForEach(bots) { bot in
+                        let chosen = draft.botIDs.contains(bot.id)
+                        Button {
+                            if chosen { draft.botIDs.removeAll { $0 == bot.id } } else { draft.botIDs.append(bot.id) }
+                        } label: {
+                            HStack(spacing: 12) {
+                                AgentAvatar(draft: bot.draft, size: 32)
+                                Text(bot.draft.name).foregroundStyle(.primary)
+                                Spacer()
+                                if chosen { Image(systemName: "checkmark").foregroundStyle(.tint) }
+                            }
+                        }
+                        .accessibilityAddTraits(chosen ? .isSelected : [])
+                    }
+                }
+                if let problem {
+                    Section { Text(problem).foregroundStyle(.red) }
+                }
+                if let group {
+                    Section {
+                        NavigationLink("Background") { BackgroundEditor(chats: chats, thread: .group(group)) }
+                    }
+                    Section {
+                        Button("Delete Group", role: .destructive) { confirmingDelete = true }
+                            .disabled(saving)
+                    }
+                }
+            }
+            .navigationTitle(group == nil ? "New Group" : "Group Info")
+            .navigationBarTitleDisplayMode(.inline)
+            .confirmationDialog("Delete \(group?.draft.name ?? "")?", isPresented: $confirmingDelete, titleVisibility: .visible) {
+                Button("Delete", role: .destructive, action: delete)
+            } message: {
+                Text("The group and its messages are deleted from the Hub for all your devices. Its bots stay.")
+            }
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    if saving {
+                        ProgressView()
+                    } else {
+                        Button(group == nil ? "Create" : "Save", action: save)
+                            .disabled(draft.name.trimmingCharacters(in: .whitespaces).isEmpty || members.isEmpty)
+                    }
+                }
+            }
+        }
+    }
+
+    /// The chosen bots still on the Hub; one deleted meanwhile is left out.
+    private var members: [UUID] { draft.botIDs.filter { chats.agent($0) != nil } }
+
+    private func delete() {
+        guard let group else { return }
+        saving = true
+        problem = nil
+        Task {
+            defer { saving = false }
+            do {
+                try await chats.deleteGroup(group)
+                dismiss()
+            } catch {
+                problem = error.localizedDescription
+            }
+        }
+    }
+
+    private func save() {
+        draft.name = draft.name.trimmingCharacters(in: .whitespaces)
+        draft.botIDs = members
+        saving = true
+        problem = nil
+        Task {
+            defer { saving = false }
+            do {
+                if var group {
+                    group.draft = draft
+                    try await chats.updateGroup(group)
+                } else {
+                    _ = try await chats.createGroup(draft)
+                }
+                dismiss()
+            } catch {
+                problem = error.localizedDescription
+            }
+        }
+    }
+}
+
 extension LinkHarness {
     /// One line for the chosen harness: the provider, then the profile when it is not the harness's own login.
     var chosenName: String {
         profileName.map { "\(providerName) · \($0)" } ?? providerName
+    }
+}
+
+/// A bot's picture, or a group's: its first bots together, as Noodle on the Mac shows a group.
+struct ThreadAvatar: View {
+    let chats: HubChats
+    let thread: HubThread
+    let size: CGFloat
+
+    var body: some View {
+        switch thread {
+        case .bot(let bot):
+            AgentAvatar(draft: bot.draft, size: size, phase: chats.phase(of: bot))
+        case .group(let group):
+            let members = chats.members(of: group)
+            if members.count == 1, let bot = members.first {
+                // One bot in front of a disc, so it still reads as a group.
+                ZStack {
+                    Circle().fill(.quaternary).frame(width: size * 0.88, height: size * 0.88)
+                        .offset(x: size * 0.06, y: size * 0.06)
+                    AgentAvatar(draft: bot.draft, size: size * 0.86)
+                        .overlay { Circle().stroke(Color(.systemBackground), lineWidth: 2) }
+                        .offset(x: -size * 0.06, y: -size * 0.06)
+                }
+                .frame(width: size, height: size)
+            } else {
+                ZStack {
+                    Circle().fill(.quaternary)
+                    ForEach(Array(members.prefix(3).enumerated()), id: \.element.id) { index, bot in
+                        AgentAvatar(draft: bot.draft, size: size * 0.62)
+                            .overlay { Circle().stroke(Color(.systemBackground), lineWidth: 2) }
+                            .offset(Self.offset(index, size: size))
+                    }
+                }
+                .frame(width: size, height: size)
+            }
+        }
+    }
+
+    private static func offset(_ index: Int, size: CGFloat) -> CGSize {
+        switch index {
+        case 0: CGSize(width: -size * 0.18, height: -size * 0.14)
+        case 1: CGSize(width: size * 0.18, height: -size * 0.14)
+        default: CGSize(width: 0, height: size * 0.19)
+        }
     }
 }
 

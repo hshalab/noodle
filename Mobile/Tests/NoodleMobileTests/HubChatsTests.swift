@@ -11,6 +11,7 @@ private actor FakeHub {
     var bot = LinkBot(id: UUID(), conversationID: UUID(),
                       draft: LinkBotDraft(name: "Scout", provider: "claude"), createdAt: Date(timeIntervalSince1970: 0))
     var created: [LinkBot] = []
+    var groups: [LinkGroup] = []
     /// Files by ID, as uploaded or given to the bot's messages.
     var files: [UUID: (attachment: LinkAttachment, data: Data)] = [:]
     var downloads = 0
@@ -26,6 +27,15 @@ private actor FakeHub {
     func listen(at endpoint: LinkEndpoint) { endpoints = [endpoint] }
 
     func setPicture(_ data: Data) { bot.draft.avatarImageData = data }
+
+    /// A group of Scout, made on another device, with something already said in it.
+    func addGroup(named name: String, saying body: String) -> LinkGroup {
+        let group = LinkGroup(id: UUID(), draft: LinkGroupDraft(name: name, botIDs: [bot.id]), createdAt: Date(timeIntervalSince1970: 5))
+        groups.append(group)
+        messages.append(LinkMessage(id: UUID(), conversationID: group.id, author: .bot(bot.id), body: body,
+                                    createdAt: Date(timeIntervalSince1970: 30), delivered: true))
+        return group
+    }
 
     func data(of id: UUID) -> Data? { files[id]?.data }
 
@@ -66,6 +76,19 @@ private actor FakeHub {
             return .bot(bot)
         case .success(.deleteBot(let id)):
             created.removeAll { $0.id == id }
+            return .done
+        case .success(.groups):
+            return .groups(groups)
+        case .success(.createGroup(let draft)):
+            let group = LinkGroup(id: UUID(), draft: draft, createdAt: Date())
+            groups.append(group)
+            return .group(group)
+        case .success(.updateGroup(let id, let draft)):
+            guard let index = groups.firstIndex(where: { $0.id == id }) else { return .failure("No such group.") }
+            groups[index].draft = draft
+            return .group(groups[index])
+        case .success(.deleteGroup(let id)):
+            groups.removeAll { $0.id == id }
             return .done
         case .success(.createBot(let draft)):
             let new = LinkBot(id: UUID(), conversationID: UUID(), draft: draft, createdAt: Date())
@@ -285,12 +308,12 @@ private actor RecordedSubscriptions: PushSubscriptions {
         let scout = try #require(chats.agents.first)
         // A newer agent with no messages sorts above Scout, whose only message is from 1970.
         let atlas = try await chats.create(LinkBotDraft(name: "Atlas", provider: "codex"))
-        #expect(chats.sortedAgents.map(\.id) == [atlas.id, scout.id])
+        #expect(chats.sortedThreads.map(\.id) == [atlas.id, scout.id])
 
         chats.togglePin(scout)
 
         #expect(chats.isPinned(scout))
-        #expect(chats.sortedAgents.map(\.id) == [scout.id, atlas.id])
+        #expect(chats.sortedThreads.map(\.id) == [scout.id, atlas.id])
         let relaunched = HubChats(pairing: HubPairing(directory: directory, deviceName: "iPhone"))
         #expect(relaunched.isPinned(scout))
     }
@@ -310,7 +333,7 @@ private actor RecordedSubscriptions: PushSubscriptions {
             ("nobody", []), (" \n ", [zoe.id, scout.id])
         ]
         for (query, expected) in cases {
-            #expect(chats.sortedAgents.filter { chats.matches($0, search: query) }.map(\.id) == expected, "\(query)")
+            #expect(chats.sortedThreads.filter { chats.matches($0, search: query) }.map(\.id) == expected, "\(query)")
         }
     }
 
@@ -697,6 +720,75 @@ private actor RecordedSubscriptions: PushSubscriptions {
         try chats.setBackground(ConversationBackground(), for: scout)
         #expect(chats.background(for: scout).isDefault)
         #expect(!FileManager.default.fileExists(atPath: image.path))
+    }
+
+    /// Groups made on another device are listed with the bots, with what was said in them.
+    @Test func groupsListWithTheirConversations() async throws {
+        let hub = FakeHub()
+        let group = await hub.addGroup(named: "Crew", saying: "Morning")
+        let (chats, server) = try await paired(to: hub)
+        defer { server.stop() }
+
+        try await chats.reload()
+
+        #expect(chats.groups.map(\.draft.name) == ["Crew"])
+        #expect(chats.sortedThreads.map(\.id) == [group.id, await hub.bot.id])
+        #expect(chats.latestMessage(of: group)?.body == "Morning")
+        #expect(chats.members(of: group).map(\.draft.name) == ["Scout"])
+    }
+
+    /// A group made, renamed and deleted from the phone reaches the Hub, and leaves no pin or saved copy behind.
+    @Test func aGroupIsMadeEditedAndDeletedOnTheHub() async throws {
+        let hub = FakeHub()
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let (chats, server) = try await paired(to: hub, directory: directory)
+        defer { server.stop() }
+        try await chats.reload()
+        let scout = await hub.bot
+
+        var group = try await chats.createGroup(LinkGroupDraft(name: "Crew", botIDs: [scout.id]))
+        #expect(await hub.groups.map(\.draft.name) == ["Crew"])
+        group.draft.name = "Night Crew"
+        try await chats.updateGroup(group)
+        #expect(chats.groups.map(\.draft.name) == ["Night Crew"])
+        #expect(HubChats(pairing: HubPairing(directory: directory, deviceName: "iPhone")).groups.map(\.draft.name) == ["Night Crew"])
+        chats.togglePin(group)
+
+        try await chats.deleteGroup(group)
+
+        #expect(chats.groups.isEmpty)
+        #expect(await hub.groups.isEmpty)
+        let relaunched = HubChats(pairing: HubPairing(directory: directory, deviceName: "iPhone"))
+        #expect(relaunched.groups.isEmpty)
+        #expect(!relaunched.isPinned(group))
+    }
+
+    /// A group made on another device shows once the Hub says groups changed.
+    @Test func aGroupMadeElsewhereShowsWhenTheHubSaysSo() async throws {
+        let hub = FakeHub()
+        let (chats, server) = try await paired(to: hub)
+        defer { server.stop() }
+        try await chats.reload()
+        let group = await hub.addGroup(named: "Crew", saying: "Morning")
+
+        try await chats.apply(.groupsChanged)
+
+        #expect(chats.groups.map(\.id) == [group.id])
+        #expect(chats.latestMessage(of: group)?.body == "Morning")
+    }
+
+    /// In a group, a bot's name heads each run of its messages, as in Messages.
+    @Test func groupMessagesNameTheirBotAtTheStartOfEachRun() {
+        let (scout, atlas, conversation) = (UUID(), UUID(), UUID())
+        let messages = [(LinkMessage.Author.bot(scout), 1), (.bot(scout), 2), (.you, 3), (.bot(scout), 4), (.bot(atlas), 5), (.system, 6)]
+            .map { LinkMessage(id: UUID(), conversationID: conversation, author: $0.0, body: "\($0.1)",
+                               createdAt: Date(timeIntervalSince1970: TimeInterval($0.1)), delivered: true) }
+        let names = [scout: "Scout", atlas: "Atlas"]
+
+        let labels = HubChats.authorLabels(in: messages) { names[$0] }
+
+        #expect(messages.compactMap { labels[$0.id] } == ["Scout", "Scout", "Atlas"])
+        #expect(labels[messages[1].id] == nil)
     }
 
     @Test func botPicturesAreShrunkAndStoredAsTheMacStoresThem() throws {

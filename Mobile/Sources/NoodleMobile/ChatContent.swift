@@ -17,7 +17,7 @@ extension EnvironmentValues {
 /// which swipes through the other files of the same message.
 struct AttachmentView: View {
     let chats: HubChats
-    let agent: LinkBot
+    let thread: HubThread
     let attachment: LinkAttachment
     /// Every attachment of the message this one belongs to.
     var group: [LinkAttachment] = []
@@ -39,7 +39,7 @@ struct AttachmentView: View {
             live
         } else if let voice = attachment.voice {
             VoiceMessagePlayer(url: url, voice: voice)
-                .task(id: attachment.id) { url = try? await chats.file(for: attachment, in: agent) }
+                .task(id: attachment.id) { url = try? await chats.file(for: attachment, in: thread) }
         } else {
             file
         }
@@ -57,7 +57,7 @@ struct AttachmentView: View {
             // As on the Mac: a picture in the conversation can become its backdrop.
             if isImage, let url {
                 Button("Use as Background", systemImage: "photo.on.rectangle") {
-                    try? chats.setBackground(photo: Data(contentsOf: url), for: agent)
+                    try? chats.setBackground(photo: Data(contentsOf: url), for: thread)
                 }
             }
         }
@@ -94,7 +94,7 @@ struct AttachmentView: View {
         .task(id: attachment.id) {
             // Cards come without their pictures; each is fetched as its card comes into view.
             guard attachment.card?.image == nil else { return }
-            livePicture = try? await chats.picture(for: attachment, in: agent)
+            livePicture = try? await chats.picture(for: attachment, in: thread)
         }
     }
 
@@ -183,7 +183,7 @@ struct AttachmentView: View {
 
     private func load() async {
         do {
-            let file = try await chats.file(for: attachment, in: agent)
+            let file = try await chats.file(for: attachment, in: thread)
             url = file
             image = isImage ? Self.downsampled(file, to: 720) : await thumbnail(of: file)
         } catch {

@@ -56,7 +56,7 @@ struct ConversationBackdrop: View {
 /// It applies as it is chosen; it is this phone's look alone.
 struct BackgroundEditor: View {
     let chats: HubChats
-    let agent: LinkBot
+    let thread: HubThread
     @Environment(\.supportsImagePlayground) private var supportsImagePlayground
     @State private var photo: PhotosPickerItem?
     @State private var creating = false
@@ -64,11 +64,11 @@ struct BackgroundEditor: View {
     @State private var problem: String?
 
     var body: some View {
-        let background = chats.background(for: agent)
+        let background = chats.background(for: thread)
         Form {
             Section {
                 ZStack {
-                    ConversationBackdrop(background: background, imageURL: chats.backgroundImageURL(for: agent))
+                    ConversationBackdrop(background: background, imageURL: chats.backgroundImageURL(for: thread))
                     VStack(alignment: .leading, spacing: 14) {
                         Text("Make this space your own.").padding(10).background(.regularMaterial, in: Capsule())
                         HStack { Spacer(); Text("Looks good!").padding(10).background(.regularMaterial, in: Capsule()) }
@@ -117,7 +117,7 @@ struct BackgroundEditor: View {
         defer { busy = false }
         do {
             guard let data = try await load() else { throw ConversationBackgroundError.invalidImage }
-            try chats.setBackground(photo: data, for: agent)
+            try chats.setBackground(photo: data, for: thread)
         } catch {
             problem = error.localizedDescription
         }
@@ -126,7 +126,7 @@ struct BackgroundEditor: View {
     private func swatch(_ title: String, _ background: ConversationBackground, selected: Bool) -> some View {
         Button {
             problem = nil
-            do { try chats.setBackground(background, for: agent) } catch { problem = error.localizedDescription }
+            do { try chats.setBackground(background, for: thread) } catch { problem = error.localizedDescription }
         } label: {
             VStack(spacing: 6) {
                 ConversationBackdrop(background: background)
