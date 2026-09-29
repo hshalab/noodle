@@ -357,6 +357,79 @@ import XCTest
         XCTAssertNil(f.hub.access.owner(ofBot: second.id))
     }
 
+    private func createGroup(_ f: Fixture, of bots: [LinkBot]) async throws -> LinkGroup {
+        guard case .group(let group) = try await f.device.request(.createGroup(LinkGroupDraft(
+            name: "House", publicDescription: "Runs the house", botIDs: bots.map(\.id)))) else {
+            throw XCTSkip("unexpected answer")
+        }
+        return group
+    }
+
+    func testAGroupOfTheUsersBotsIsKeptOnTheHub() async throws {
+        let f = try await fixture()
+        let alfred = try await createBot(f)
+        let jeeves = try await createBot(f)
+        let group = try await createGroup(f, of: [alfred, jeeves])
+        XCTAssertEqual(Set(group.draft.botIDs), [alfred.id, jeeves.id])
+        let listed = try await f.device.request(.groups)
+        XCTAssertEqual(listed, .groups([group]))
+        let kept = try XCTUnwrap(f.hub.repository.loadConversations().first { $0.id == group.id })
+        XCTAssertEqual(kept.kind, .group)
+        XCTAssertEqual(kept.displayName, "House")
+
+        _ = try await f.device.request(.send(LinkOutgoingMessage(conversationID: group.id, id: UUID(), body: "Dinner at eight.")))
+        _ = try f.hub.repository.sendAgentMessage(agentID: jeeves.id, conversationID: group.id, body: "Very good.")
+        guard case .messages(let page) = try await f.device.request(.messages(conversationID: group.id, after: 0)) else {
+            return XCTFail("no messages")
+        }
+        XCTAssertEqual(page.messages.map(\.body), ["Dinner at eight.", "Very good."])
+        XCTAssertEqual(page.messages.last?.author, .bot(jeeves.id))
+
+        guard case .group(let renamed) = try await f.device.request(.updateGroup(id: group.id, LinkGroupDraft(
+            name: "Staff", publicDescription: "", botIDs: [alfred.id]))) else { return XCTFail("not renamed") }
+        XCTAssertEqual(renamed.draft.name, "Staff")
+        XCTAssertEqual(renamed.draft.botIDs, [alfred.id])
+
+        let deleted = try await f.device.request(.deleteGroup(id: group.id))
+        XCTAssertEqual(deleted, .done)
+        XCTAssertFalse(try f.hub.repository.loadConversations().contains { $0.id == group.id })
+        XCTAssertEqual(try f.hub.repository.loadAgents().count, 2, "deleting the group deleted its bots")
+    }
+
+    func testAGroupTakesOnlyItsUsersOwnBots() async throws {
+        let f = try await fixture()
+        let alfred = try await createBot(f)
+        let grace = try f.hub.access.addUser(named: "Grace")
+        f.hub.access.move(grace, to: f.hub.access.plans.first { $0.name == "Family" }!)
+        let other = HubPairing(directory: FileManager.default.temporaryDirectory.appendingPathComponent("noodle-hub-other-\(UUID())"),
+                               deviceName: "Other")
+        await other.join(f.link.invite(grace).url().absoluteString)
+        guard case .bot(let hers) = try await other.request(.createBot(LinkBotDraft(name: "Marvin", provider: "claude-code"))) else {
+            return XCTFail("no bot")
+        }
+        do {
+            _ = try await createGroup(f, of: [alfred, hers])
+            XCTFail("Made a group with another user's bot")
+        } catch {}
+
+        let group = try await createGroup(f, of: [alfred])
+        let listed = try await other.request(.groups)
+        XCTAssertEqual(listed, .groups([]))
+        do {
+            _ = try await other.request(.send(LinkOutgoingMessage(conversationID: group.id, id: UUID(), body: "Hi")))
+            XCTFail("Reached another user's group")
+        } catch {}
+    }
+
+    /// A group whose last bot is deleted goes with it, rather than staying on the Hub with no one to show it.
+    func testAGroupGoesWithItsLastBot() async throws {
+        let f = try await fixture()
+        let alfred = try await createBot(f)
+        let group = try await createGroup(f, of: [alfred])
+        _ = try await f.device.request(.deleteBot(id: alfred.id))
+        XCTAssertFalse(try f.hub.repository.loadConversations().contains { $0.id == group.id })
+    }
+
     func testFilesTravelToAndFromABotInPieces() async throws {
         let f = try await fixture()
         let bot = try await createBot(f)

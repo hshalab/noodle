@@ -444,6 +444,15 @@ import os
         case .deleteBot(let id):
             try hubBots().delete(id, for: try user(key))
             return .done
+        case .groups:
+            return .groups(try hubBots().groups(for: try user(key)))
+        case .createGroup(let draft):
+            return .group(try hubBots().createGroup(draft, for: try user(key)))
+        case .updateGroup(let id, let draft):
+            return .group(try hubBots().updateGroup(id, with: draft, for: try user(key)))
+        case .deleteGroup(let id):
+            try hubBots().deleteGroup(id, for: try user(key))
+            return .done
         case .kick(let botID):
             return try hubBots().kick(botID, for: try user(key)).map(LinkResponse.kickConfirmation) ?? .done
         case .confirmKick(let botID, let confirmationID):

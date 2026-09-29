@@ -252,6 +252,9 @@ import SwiftUI
         switch event {
         case .botsChanged:
             try await reload()
+        // Groups are not shown here yet.
+        case .groupsChanged:
+            return
         case .conversationChanged(let id, _):
             try await load(id)
         case .messageChanged(let message):
