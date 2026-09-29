@@ -215,6 +215,9 @@ final class WebRunner: NSObject, WKNavigationDelegate, WKUIDelegate,
     for cancel in pending { cancel() }
     finishLoad(AppletError("Noodlet stopped."))
     web.stopLoading()
+    // Whatever still holds the view, the page's sound and scripts end with the noodlet.
+    setMuted(true)
+    web.loadHTMLString("", baseURL: nil)
     web.configuration.userContentController.removeScriptMessageHandler(
       forName: "noodle", contentWorld: .page)
     web.navigationDelegate = nil

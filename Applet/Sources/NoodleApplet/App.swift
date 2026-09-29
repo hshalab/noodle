@@ -644,15 +644,16 @@ extension NativeRunner: NoodletCastTarget {}
 
 /// Plays a noodlet full screen on a display. A TV becomes one through AirPlay, which macOS
 /// only lets people add themselves, so the menu ends with the way to do that.
-@MainActor private struct NoodletCastMenu: View {
-  let target: NoodletCastTarget
+@MainActor struct NoodletCastMenu: View {
+  /// The menu bar keeps its items after the noodlet closes, so they must not keep it running.
+  weak var target: NoodletCastTarget?
   var body: some View {
-    if target.isCasting {
-      Button("Bring Back to This Mac") { target.bringBack() }
-    } else if target.canCast {
+    if let target, target.isCasting {
+      Button("Bring Back to This Mac") { self.target?.bringBack() }
+    } else if let target, target.canCast {
       Menu("Play On") {
         ForEach(Array(NSScreen.screens.enumerated()), id: \.offset) { _, screen in
-          Button(screen.localizedName) { target.play(on: screen) }
+          Button(screen.localizedName) { self.target?.play(on: screen) }
         }
         if !NSScreen.screens.isEmpty { Divider() }
         Button("Add TV or Display") { NSWorkspace.shared.open(NoodletCast.displaysSettings) }

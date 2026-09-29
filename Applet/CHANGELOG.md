@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Closing a game no longer leaves its sound playing until you quit Applet. The menu bar kept the closed noodlet running out of sight; a stopped noodlet's page now always ends.
+
 ## [0.15.0] - 2026-09-29
 
 ### Added

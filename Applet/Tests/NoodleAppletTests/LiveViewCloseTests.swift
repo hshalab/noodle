@@ -3,6 +3,7 @@ import AppletBridge
 import AppletCore
 import Darwin
 import Surface
+import SwiftUI
 import WebKit
 import XCTest
 
@@ -144,4 +145,46 @@ import XCTest
         let busy = await isBusy(runtime, new)
         XCTAssertTrue(busy)
     }
+
+    /// A page something still holds after its noodlet stopped is emptied and silenced, so a game
+    /// cannot play on out of sight until the Applet quits.
+    func testAStoppedNoodletsPageIsEmptiedEvenIfStillHeld() async throws {
+        let (runtime, library) = try makeRuntime()
+        let package = try await install(runtime, library)
+        let session = try await open(runtime, package, mode: "foreground")
+        let runner = try XCTUnwrap(session.web)
+        runner.window.performClose(nil)
+        XCTAssertEqual(session.state, "stopped")
+        XCTAssertTrue(runner.muted)
+        var location = ""
+        for _ in 0..<100 where location != "about:blank" {
+            location = try await runner.web.evaluateJavaScript("location.href") as? String ?? ""
+            if location != "about:blank" { try await Task.sleep(for: .milliseconds(50)) }
+        }
+        XCTAssertEqual(location, "about:blank", "the stopped noodlet's page kept running")
+    }
+
+    /// The menu bar keeps its items after a noodlet closes; its Play On and Bring Back items
+    /// must not keep the closed noodlet, and the game in it, alive.
+    func testTheCastMenuDoesNotKeepAClosedNoodletAlive() throws {
+        for casting in [true, false] {
+            weak var gone: CastTargetStub?
+            var body: (any View)?
+            autoreleasepool {
+                let target = CastTargetStub(casting: casting)
+                gone = target
+                body = NoodletCastMenu(target: target).body
+            }
+            XCTAssertNotNil(body)
+            XCTAssertNil(gone, "a menu item kept the noodlet alive (casting: \(casting))")
+        }
+    }
+}
+
+@MainActor private final class CastTargetStub: NoodletCastTarget {
+    let isCasting: Bool
+    var canCast: Bool { true }
+    init(casting: Bool) { isCasting = casting }
+    func play(on screen: NSScreen) {}
+    func bringBack() {}
 }
