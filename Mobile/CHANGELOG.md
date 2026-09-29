@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### What to Test
+
+- Stop Noodle on the Mac or Hub your phone is paired with, then pull down on the bots list: a Not connected line appears above the bots, their dots turn grey, and tapping the line opens Profiles, where the Hub reads Not connected. Start it again and pull down: the line goes and the dots show each bot's state.
+
+### Changed
+
+- The bots list and Profiles show when a Hub is not connected, and its bots show as offline instead of their last known state.
+
 ## [0.6.0] - 2026-09-29
 
 ### What to Test

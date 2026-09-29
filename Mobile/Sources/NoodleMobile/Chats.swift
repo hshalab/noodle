@@ -102,6 +102,9 @@ import SwiftUI
         try? JSONEncoder().encode(drafts).write(to: draftsURL, options: .atomic)
     }
 
+    /// The bot's phase as its dot shows it: offline while its Hub does not answer.
+    func phase(of agent: LinkBot) -> LinkBotPhase? { HubConnection(pairing).phase(of: agent.phase) }
+
     /// Whether the bot has written since the conversation was last opened here.
     func isUnread(_ agent: LinkBot) -> Bool {
         guard let seen, let reply = messages(of: agent).last(where: { if case .bot = $0.author { true } else { false } }) else {
@@ -511,11 +514,22 @@ struct AgentsView: View {
             let pinned = searching ? [] : found.filter { $0.chats.isPinned($0.agent) }
             let others = searching ? found : found.filter { !$0.chats.isPinned($0.agent) }
             List {
+                // Only above bots: with none, the empty list says it instead.
+                if !rows.isEmpty {
+                    ForEach(chats.filter { HubConnection($0.pairing) == .notConnected }, id: \.pairing.id) { hub in
+                        Button { showingProfile = true } label: {
+                            Label(chats.count > 1 ? "\(hub.pairing.hubName) is not connected" : "Not connected",
+                                  systemImage: "wifi.exclamationmark")
+                                .font(.subheadline).foregroundStyle(.orange)
+                        }
+                        .listRowSeparator(.hidden)
+                    }
+                }
                 if !pinned.isEmpty {
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 3), spacing: 16) {
                         ForEach(pinned) { row in
                             Button { path = [row.id] } label: {
-                                PinnedAgent(agent: row.agent, unread: row.chats.isUnread(row.agent))
+                                PinnedAgent(agent: row.agent, phase: row.chats.phase(of: row.agent), unread: row.chats.isUnread(row.agent))
                             }
                             .buttonStyle(.plain)
                             .contextMenu { menu(for: row) }
@@ -526,7 +540,7 @@ struct AgentsView: View {
                 }
                 ForEach(others) { row in
                     NavigationLink(value: row.id) {
-                        AgentRow(agent: row.agent, latest: row.chats.latestMessage(of: row.agent),
+                        AgentRow(agent: row.agent, phase: row.chats.phase(of: row.agent), latest: row.chats.latestMessage(of: row.agent),
                                  unread: row.chats.isUnread(row.agent), hub: chats.count > 1 ? row.chats.pairing.hubName : nil)
                     }
                     // As in Messages: dividers between rows, none above the first.
@@ -668,6 +682,7 @@ struct MoreSheet: View {
 
 private struct AgentRow: View {
     let agent: LinkBot
+    let phase: LinkBotPhase?
     let latest: LinkMessage?
     let unread: Bool
     /// The bot's Hub, when several are shown together.
@@ -676,7 +691,7 @@ private struct AgentRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            AgentAvatar(draft: agent.draft, size: 48, phase: agent.phase)
+            AgentAvatar(draft: agent.draft, size: 48, phase: phase)
                 // In the margin left of the picture, as in Messages.
                 .overlay(alignment: .leading) {
                     if unread {
@@ -708,11 +723,12 @@ private struct AgentRow: View {
 /// A pinned bot: a large picture with its name beneath, as Messages shows pinned conversations.
 private struct PinnedAgent: View {
     let agent: LinkBot
+    let phase: LinkBotPhase?
     let unread: Bool
 
     var body: some View {
         VStack(spacing: 6) {
-            AgentAvatar(draft: agent.draft, size: 76, phase: agent.phase)
+            AgentAvatar(draft: agent.draft, size: 76, phase: phase)
                 .overlay(alignment: .topLeading) {
                     if unread {
                         Circle().fill(.tint).frame(width: 14, height: 14)
@@ -862,7 +878,7 @@ struct ChatView: View {
             ToolbarItem(placement: .principal) {
                 Button { editing = true } label: {
                     HStack(spacing: 8) {
-                        AgentAvatar(draft: agent.draft, size: 28, phase: agent.phase)
+                        AgentAvatar(draft: agent.draft, size: 28, phase: chats.phase(of: agent))
                         Text(agent.draft.name).font(.headline).foregroundStyle(.primary)
                     }
                 }

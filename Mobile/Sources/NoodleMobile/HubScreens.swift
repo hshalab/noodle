@@ -263,6 +263,8 @@ struct HubsView: View {
                                 .contentShape(.rect)
                             }
                             .buttonStyle(.plain)
+                            let connection = HubConnection(pairing)
+                            Text(connection.title).font(.subheadline).foregroundStyle(connection.color)
                             if !together, hubs.hubs.count > 1, CurrentHub.pick(hubs.hubs, saved: current) === pairing {
                                 Image(systemName: "checkmark").foregroundStyle(.tint).accessibilityLabel("Shown")
                             }
@@ -371,16 +373,42 @@ struct ProfileView: View {
     }
 
     private var status: some View {
-        // The status shown may be the one saved at the last launch; only an answer this launch means connected.
-        let (title, color): (String, Color) = if pairing.isWorking || (pairing.endpoint == nil && pairing.error == nil) {
-            ("Connecting…", .secondary)
-        } else if pairing.error != nil {
-            ("Not connected", .orange)
-        } else {
-            ("Connected", .green)
-        }
-        return Text(title).foregroundStyle(color)
+        let connection = HubConnection(pairing)
+        return Text(connection.title).foregroundStyle(connection.color)
     }
+}
+
+/// Whether a Hub answers this launch.
+enum HubConnection: Equatable {
+    case connecting, connected, notConnected
+
+    /// The status saved at the last launch shows first; only an answer this launch means connected.
+    init(isWorking: Bool, answered: Bool, failed: Bool) {
+        self = if isWorking || (!answered && !failed) { .connecting } else if failed { .notConnected } else { .connected }
+    }
+
+    @MainActor init(_ pairing: HubPairing) {
+        self.init(isWorking: pairing.isWorking, answered: pairing.endpoint != nil, failed: pairing.error != nil)
+    }
+
+    var title: String {
+        switch self {
+        case .connecting: "Connecting…"
+        case .connected: "Connected"
+        case .notConnected: "Not connected"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .connecting: .secondary
+        case .connected: .green
+        case .notConnected: .orange
+        }
+    }
+
+    /// What a bot's dot shows: the phase it last reported is stale once its Hub stops answering.
+    func phase(of phase: LinkBotPhase?) -> LinkBotPhase? { self == .notConnected ? .offline : phase }
 }
 
 /// A one-time invitation from the Hub for another device of this person.
