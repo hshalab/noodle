@@ -205,7 +205,7 @@ public struct NoodletSecrets: Sendable {
         let size = NSSize(width: Double(env["NOODLET_WIDTH"] ?? "900") ?? 900, height: Double(env["NOODLET_HEIGHT"] ?? "620") ?? 620)
         let options = (env["NOODLET_WINDOW"].flatMap { $0.data(using: .utf8) }.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String:Any]) ?? [:]
         if options["type"] as? String == "preview" {
-            let panel = NSPanel(contentRect: CGRect(origin: .zero, size: size), styleMask: [.titled, .closable, .resizable, .utilityWindow, .hudWindow, .nonactivatingPanel], backing: .buffered, defer: false)
+            let panel = NoodletHostPanel(contentRect: CGRect(origin: .zero, size: size), styleMask: [.titled, .closable, .resizable, .utilityWindow, .hudWindow, .nonactivatingPanel], backing: .buffered, defer: false)
             panel.hidesOnDeactivate = false; panel.isFloatingPanel = true; panel.becomesKeyOnlyIfNeeded = false
             window = panel
         } else if options["cornerRadius"] is NSNumber {
@@ -213,7 +213,7 @@ public struct NoodletSecrets: Sendable {
             // Titled windows get this from AppKit.
             if options["type"] as? String != "floating" { window.collectionBehavior.insert(.fullScreenPrimary) }
         } else {
-        window = NSWindow(contentRect: CGRect(origin: .zero, size: size), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
+        window = NoodletHostWindow(contentRect: CGRect(origin: .zero, size: size), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         }
         window.title = env["NOODLET_TITLE"] ?? "Noodlet"; window.isReleasedWhenClosed = false
         let hosting = NSHostingView(rootView: Noodlet().frame(maxWidth: .infinity, maxHeight: .infinity))
@@ -402,15 +402,17 @@ public struct NoodletSecrets: Sendable {
                     if op == "drag" { mouse(.leftMouseDragged,NSPoint(x:command["toX"] as? Double ?? x,y:host.bounds.height-(command["toY"] as? Double ?? y))) }
                     mouse(.leftMouseUp,op == "drag" ? NSPoint(x:command["toX"] as? Double ?? x,y:host.bounds.height-(command["toY"] as? Double ?? y)) : point)
                 } else if op == "type" {
-                    guard let client = window.firstResponder as? NSTextInputClient else { throw RuntimeError("Focus an editable native control before typing.") }
-                    client.insertText(command["text"] as? String ?? "", replacementRange:NSRange(location:NSNotFound,length:0))
+                    // Typing with no text field focused, as into a game, arrives as its keys.
+                    let text = command["text"] as? String ?? ""
+                    if let client = window.firstResponder as? NSTextInputClient {
+                        client.insertText(text, replacementRange:NSRange(location:NSNotFound,length:0))
+                    } else {
+                        for character in text { NoodletKeys.press(String(character), in: window) }
+                    }
                 } else if op == "key" {
                     let key = command["text"] as? String ?? "Enter"
-                    let keys: [String:(String,UInt16)] = ["Enter":("\r",36),"Escape":("\u{1b}",53),"Space":(" ",49),"Tab":("\t",48),"ArrowLeft":("\u{f702}",123),"ArrowRight":("\u{f703}",124),"ArrowDown":("\u{f701}",125),"ArrowUp":("\u{f700}",126)]
-                    let pair = keys[key] ?? (key,0)
-                    for type in [NSEvent.EventType.keyDown,.keyUp] {
-                        if let event = NSEvent.keyEvent(with:type,location:.zero,modifierFlags:[],timestamp:ProcessInfo.processInfo.systemUptime,windowNumber:window.windowNumber,context:nil,characters:pair.0,charactersIgnoringModifiers:pair.0,isARepeat:false,keyCode:pair.1) { window.sendEvent(event) }
-                    }
+                    if let pressed = command["pressed"] as? Bool { NoodletKeys.press(key, in: window, as: [pressed ? .keyDown : .keyUp]) }
+                    else { NoodletKeys.press(key, in: window) }
                 } else {
                     throw RuntimeError("Native scroll injection is not supported by this runtime. Use the noodlet's controls.")
                 }
@@ -447,7 +449,44 @@ public struct NoodletSecrets: Sendable {
 struct RuntimeError: LocalizedError { let message: String; init(_ text: String) { message=text }; var errorDescription: String? { message } }
 
 /// A noodlet window with a cornerRadius: no title bar, yet it takes the keyboard and closes with ⌘W.
-@MainActor final class NoodletUntitledWindow: NSWindow {
+/// Keys played into the noodlet for someone driving it from elsewhere, as a keyboard sends them:
+/// by name (Enter, ArrowLeft, space, left and so on), lowercase letter or digit, with their key codes.
+@MainActor enum NoodletKeys {
+    /// While a played key is handled, a key the noodlet ignores ends without a beep: nobody at this Mac pressed it.
+    static var playing = false
+    private static let named: [String:(String,UInt16)] = [
+        "Enter":("\r",36), "enter":("\r",36), "Escape":("\u{1b}",53), "escape":("\u{1b}",53), "Space":(" ",49), " ":(" ",49), "space":(" ",49),
+        "Tab":("\t",48), "tab":("\t",48), "Backspace":("\u{7f}",51), "backspace":("\u{7f}",51),
+        "ArrowLeft":("\u{f702}",123), "left":("\u{f702}",123), "ArrowRight":("\u{f703}",124), "right":("\u{f703}",124),
+        "ArrowDown":("\u{f701}",125), "down":("\u{f701}",125), "ArrowUp":("\u{f700}",126), "up":("\u{f700}",126),
+    ]
+    private static let codes: [Character:UInt16] = [
+        "a":0, "s":1, "d":2, "f":3, "h":4, "g":5, "z":6, "x":7, "c":8, "v":9, "b":11, "q":12, "w":13, "e":14, "r":15, "y":16, "t":17,
+        "1":18, "2":19, "3":20, "4":21, "6":22, "5":23, "9":25, "7":26, "8":28, "0":29, "o":31, "u":32, "i":34, "p":35, "l":37, "j":38,
+        "k":40, "n":45, "m":46,
+    ]
+
+    static func press(_ key: String, in window: NSWindow, as types: [NSEvent.EventType] = [.keyDown, .keyUp]) {
+        let (characters, code) = named[key] ?? (key, key.count == 1 ? codes[Character(key.lowercased())] ?? 0 : 0)
+        playing = true
+        defer { playing = false }
+        for type in types {
+            if let event = NSEvent.keyEvent(with:type,location:.zero,modifierFlags:[],timestamp:ProcessInfo.processInfo.systemUptime,windowNumber:window.windowNumber,context:nil,characters:characters,charactersIgnoringModifiers:characters,isARepeat:false,keyCode:code) { window.sendEvent(event) }
+        }
+    }
+}
+
+@MainActor class NoodletHostWindow: NSWindow {
+    override func noResponder(for eventSelector: Selector) { if !NoodletKeys.playing { super.noResponder(for: eventSelector) } }
+    override func doCommand(by selector: Selector) { if !NoodletKeys.playing { super.doCommand(by: selector) } }
+}
+
+@MainActor final class NoodletHostPanel: NSPanel {
+    override func noResponder(for eventSelector: Selector) { if !NoodletKeys.playing { super.noResponder(for: eventSelector) } }
+    override func doCommand(by selector: Selector) { if !NoodletKeys.playing { super.doCommand(by: selector) } }
+}
+
+@MainActor final class NoodletUntitledWindow: NoodletHostWindow {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
     // The inherited one refuses without a close button.

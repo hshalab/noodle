@@ -151,6 +151,44 @@ final class NativeRunnerTests: XCTestCase {
         XCTAssertEqual(lines, ["false true true"])
     }
 
+    /// Keys from someone playing on another device reach a native game as a keyboard sends them:
+    /// held until let go, with their key codes, typing without a text field arriving as keys, and
+    /// a key the game ignores ending without a beep, since nobody at this Mac pressed it.
+    func testRemoteKeysReachANativeGameAsAKeyboardSendsThem() throws {
+        let lines = try runBackground("""
+            import SwiftUI
+            import ObjectiveC
+            final class Keys: NSView {
+                override var acceptsFirstResponder: Bool { true }
+                override func viewDidMoveToWindow() { window?.makeFirstResponder(self) }
+                private func log(_ kind: String, _ event: NSEvent) {
+                    print(kind, event.keyCode, event.characters?.unicodeScalars.map { String($0.value) }.joined() ?? "")
+                }
+                override func keyDown(with event: NSEvent) { log("down", event); if event.keyCode == 53 { super.keyDown(with: event) } }
+                override func keyUp(with event: NSEvent) { log("up", event) }
+            }
+            extension NSResponder { @objc func beeped(_ selector: Selector) { print("beep") } }
+            struct KeysView: NSViewRepresentable {
+                func makeNSView(context: Context) -> Keys {
+                    method_exchangeImplementations(class_getInstanceMethod(NSResponder.self, #selector(NSResponder.noResponder(for:)))!,
+                                                   class_getInstanceMethod(NSResponder.self, #selector(NSResponder.beeped(_:)))!)
+                    return Keys()
+                }
+                func updateNSView(_ view: Keys, context: Context) {}
+            }
+            struct Noodlet: View { var body: some View { KeysView() } }
+            """) { send in
+            for (id, command) in [("space down", ["text": "space", "pressed": true]), ("space up", ["text": "space", "pressed": false]),
+                                  ("left", ["text": "left", "pressed": true]), ("z", ["text": "z", "pressed": true]),
+                                  ("7", ["text": "7", "pressed": false]), ("escape", ["text": "Escape"])] as [(String, [String: Any])] {
+                XCTAssertNil(try send(id, command.merging(["operation": "key"]) { old, _ in old })["error"], id)
+            }
+            XCTAssertNil(try send("type", ["operation": "type", "text": "hi"])["error"])
+        }
+        XCTAssertEqual(lines, ["down 49 32", "up 49 32", "down 123 63234", "down 6 122", "up 26 55", "down 53 27", "up 53 27",
+                               "down 4 104", "up 4 104", "down 34 105", "up 34 105"])
+    }
+
     /// Builds `source` with the native runtime, runs it in background mode, which never orders
     /// the window in, and returns what it printed after `drive` sends it commands.
     private func runBackground(

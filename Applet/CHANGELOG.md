@@ -11,6 +11,8 @@
 ### Fixed
 
 - Pressing Escape in an HTML noodlet no longer makes the Mac beep, on screen or while someone plays it from a phone.
+- Playing a noodlet from a phone no longer affects the Mac. Its keys went to whichever window was active, so they changed the library's selection, opened the emoji picker and beeped; they now go only to the game.
+- Swift noodlets played from a phone get held keys as they go down and come up, with the key codes a keyboard sends, take typing as keys when no text field is focused, and no longer make the Mac beep.
 - Closing a game no longer leaves its sound playing until you quit Applet. The menu bar kept the closed noodlet running out of sight; a stopped noodlet's page now always ends.
 
 ## [0.15.0] - 2026-09-29

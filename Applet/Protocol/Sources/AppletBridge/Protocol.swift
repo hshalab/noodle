@@ -45,6 +45,9 @@ public struct AppletRequest: Codable, Sendable {
     public var owner: String?
     public var files: [String: Data]?
     public var text: String?
+    /// On `key`, only the key going down (true) or coming up (false), as a held key is played;
+    /// left out, the key is pressed and let go.
+    public var pressed: Bool?
     public var target: String?
     public var mode: String?
     public var testClock: Bool?

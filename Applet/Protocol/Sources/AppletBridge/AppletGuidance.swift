@@ -166,7 +166,9 @@ public enum AppletGuidance {
         pads (at most two) list only the directions the game uses; buttons (at most eight)
         go from most to least important, labels up to 12 characters; menu is the pause key.
         Keys are left, right, up, down, space, enter, tab, escape, backspace, a lowercase
-        letter or a digit, each used once. The game sees real keydown and keyup events.
+        letter or a digit, each used once. Held buttons send a key down and, on release, a key
+        up: HTML gets keydown and keyup events with key, code and keyCode (do not check
+        isTrusted), Swift gets keyDown and keyUp with their key codes.
 
         Optional manifest window object (HTML and Swift):
         {"type":"floating","background":"translucent","titlebar":false,"width":320,"height":350,"minWidth":260,"minHeight":300,"maxWidth":480,"maxHeight":520,"resizable":true,"rememberFrame":true}

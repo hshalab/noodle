@@ -508,6 +508,10 @@ import AppletCore
       throw AppletError("Session \(session.id) is \(session.state).", code: "session-not-running")
     }
     if let web = session.web {
+      if let script = PageKeys.script(for: input) {
+        _ = try await web.evaluate(script)
+        return
+      }
       if session.injector?.view !== web.web {
         session.injector = (web.web, SurfaceEventInjector(view: web.web))
       }
@@ -515,23 +519,22 @@ import AppletCore
       return
     }
     guard let native = session.native else { throw AppletError("The noodlet has no view.") }
-    var request = AppletRequest(.click, sessionID: session.id)
-    switch input {
-    case .pointer(.up, let x, let y, _): request.x = x; request.y = y
-    case .pointer: return
-    case .scroll(_, _, let dx, let dy): request = AppletRequest(.scroll, sessionID: session.id); request.toX = dx; request.toY = dy
-    case .text(let text): request = AppletRequest(.type, sessionID: session.id); request.text = text
-    // A native noodlet takes whole key presses, so a held key is pressed once.
-    case .hold(_, pressed: false): return
-    case .hold(let key, pressed: true):
-      if let named = SurfaceInput.Key(rawValue: key) { return try await deliver(.key(named), to: session) }
-      request = AppletRequest(.type, sessionID: session.id); request.text = key
-    case .key(let key):
-      let names: [SurfaceInput.Key: String] = [.enter: "Enter", .tab: "Tab", .escape: "Escape", .backspace: "Backspace", .space: " ",
-                                               .left: "ArrowLeft", .right: "ArrowRight", .up: "ArrowUp", .down: "ArrowDown"]
-      request = AppletRequest(.key, sessionID: session.id); request.text = names[key]
-    }
+    guard let request = Self.nativeRequest(for: input, session: session.id) else { return }
     _ = try await native.perform(request)
+  }
+  /// What a remote viewer did as a native noodlet's runtime takes it: a click where the pointer
+  /// lifts, a scroll, typing, or a key by name, held keys going down and coming up on their own.
+  static func nativeRequest(for input: SurfaceInput, session: UUID) -> AppletRequest? {
+    var request: AppletRequest
+    switch input {
+    case .pointer(.up, let x, let y, _): request = AppletRequest(.click, sessionID: session); request.x = x; request.y = y
+    case .pointer: return nil
+    case .scroll(_, _, let dx, let dy): request = AppletRequest(.scroll, sessionID: session); request.toX = dx; request.toY = dy
+    case .text(let text): request = AppletRequest(.type, sessionID: session); request.text = text
+    case .hold(let key, let pressed): request = AppletRequest(.key, sessionID: session); request.text = key; request.pressed = pressed
+    case .key(let key): request = AppletRequest(.key, sessionID: session); request.text = key.rawValue
+    }
+    return request
   }
   private func belongs(_ package: NoodletPackage, owner: String) -> Bool {
     library.owner(of: package.url) == owner
@@ -778,4 +781,57 @@ import AppletCore
 private struct SessionRecord: Codable {
   let owner: String
   var response: AppletResponse
+}
+
+/// Keys and typing from a remote viewer, played into an HTML noodlet's page as the key events a
+/// keyboard gives. As Mac key events they went through the Mac's text input, which serves the
+/// active window, so they reached other windows, opened the emoji picker and beeped.
+enum PageKeys {
+  static func script(for input: SurfaceInput) -> String? {
+    var steps: [[String: Any]] = []
+    switch input {
+    case .pointer, .scroll: return nil
+    case .hold(let key, let pressed): steps = [step(pressed ? "keydown" : "keyup", key)]
+    case .key(let key):
+      var down = step("keydown", key.rawValue)
+      if key == .backspace { down["delete"] = true }
+      steps = [down, step("keyup", key.rawValue)]
+    case .text(let text):
+      for character in text.prefix(4096) {
+        let name = character == " " ? "space" : String(character)
+        var down = step("keydown", name)
+        down["insert"] = String(character)
+        steps += [down, step("keyup", name)]
+      }
+    }
+    guard let data = try? JSONSerialization.data(withJSONObject: steps) else { return nil }
+    return """
+      const target = document.activeElement && document.activeElement !== document.body ? document.activeElement : (document.body || document.documentElement);
+      const editable = target.isContentEditable || target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement;
+      for (const s of \(String(decoding: data, as: UTF8.self))) {
+        const typed = target.dispatchEvent(new KeyboardEvent(s.type, {key: s.key, code: s.code, keyCode: s.keyCode, which: s.keyCode, bubbles: true, cancelable: true, composed: true}));
+        if (typed && editable && s.insert) document.execCommand('insertText', false, s.insert);
+        if (typed && editable && s.delete) document.execCommand('delete');
+      }
+      """
+  }
+
+  /// A key as a keyboard reports it: named keys, lowercase letters and digits by their key, code
+  /// and key code; anything else typed carries only its character.
+  private static func step(_ type: String, _ name: String) -> [String: Any] {
+    let named: [String: (String, String, Int)] = [
+      "space": (" ", "Space", 32), "enter": ("Enter", "Enter", 13), "tab": ("Tab", "Tab", 9), "escape": ("Escape", "Escape", 27),
+      "backspace": ("Backspace", "Backspace", 8), "left": ("ArrowLeft", "ArrowLeft", 37), "up": ("ArrowUp", "ArrowUp", 38),
+      "right": ("ArrowRight", "ArrowRight", 39), "down": ("ArrowDown", "ArrowDown", 40),
+    ]
+    if let (key, code, keyCode) = named[name] { return ["type": type, "key": key, "code": code, "keyCode": keyCode] }
+    if name.count == 1, let scalar = name.unicodeScalars.first, scalar.isASCII {
+      let upper = name.uppercased()
+      if ("a"..."z").contains(name.lowercased()) {
+        return ["type": type, "key": name, "code": "Key" + upper, "keyCode": Int(upper.unicodeScalars.first!.value)]
+      }
+      if ("0"..."9").contains(name) { return ["type": type, "key": name, "code": "Digit" + name, "keyCode": Int(scalar.value)] }
+    }
+    return ["type": type, "key": name, "code": "", "keyCode": 0]
+  }
 }
