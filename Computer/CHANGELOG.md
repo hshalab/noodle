@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Stop now stops a Linux computer whose system ignores the request to shut down, such as an installer, by forcing it to stop after 30 seconds.
+
 ## [0.17.0] - 2026-09-28
 
 ### Changed
