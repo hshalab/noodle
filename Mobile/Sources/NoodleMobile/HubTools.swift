@@ -1,4 +1,5 @@
 import AuthenticationServices
+import GameController
 import HubLink
 import SwiftUI
 
@@ -528,16 +529,40 @@ struct LiveSurfaceScreen: View {
     @State private var channel: LinkChannel?
     @State private var showing = false
     @State private var failure: String?
+    /// The keys a game declared: shown as a controller in place of the keyboard.
+    @State private var controls: Gamepad?
+    @State private var showsControls = true
+    @State private var hardware = HardwareGamepad()
     @Environment(\.verticalSizeClass) private var verticalSize
 
     /// Sideways, the picture gets the whole screen and the buttons float over its corners.
     private var fullScreen: Bool { verticalSize == .compact }
+
+    /// What goes on the screen: everything, or with a controller in hand only what it has no room for.
+    private var screenControls: Gamepad? {
+        guard let controls, showsControls else { return nil }
+        guard let controller = hardware.controller else { return controls }
+        return controls.onScreen(with: controller)
+    }
+
+    private func hold(_ change: GamepadKeyChange) {
+        channel?.send(LinkSurface.control(.input(.hold(key: change.key, pressed: change.pressed))))
+    }
+
+    /// A game shows its controller from the start; the keyboard stays beside it for typing a name or a word.
+    @ViewBuilder private var inputButtons: some View {
+        if controls != nil {
+            Button("Controls", systemImage: showsControls ? "gamecontroller.fill" : "gamecontroller") { showsControls.toggle() }
+        }
+        Button("Keyboard", systemImage: "keyboard") { feed.toggleKeyboard() }
+    }
 
     var body: some View {
         NavigationStack {
             ZStack {
                 SurfaceView(feed: feed) { control in channel?.send(LinkSurface.control(control)) }
                     .ignoresSafeArea(edges: fullScreen ? .all : .bottom)
+                if let screenControls, showing { GamepadOverlay(gamepad: screenControls, onKey: hold) }
                 if !showing {
                     if let failure { Text(failure).foregroundStyle(.secondary).padding() }
                     else { ProgressView().tint(.white) }
@@ -549,7 +574,7 @@ struct LiveSurfaceScreen: View {
                     HStack {
                         Button("Done") { dismiss() }
                         Spacer()
-                        Button("Keyboard", systemImage: "keyboard") { feed.toggleKeyboard() }.labelStyle(.iconOnly)
+                        inputButtons.labelStyle(.iconOnly)
                     }
                     .buttonStyle(.glass).padding(.horizontal, 12)
                 }
@@ -560,13 +585,11 @@ struct LiveSurfaceScreen: View {
             .statusBarHidden(fullScreen)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } }
-                ToolbarItem(placement: .primaryAction) {
-                    Button("Keyboard", systemImage: "keyboard") { feed.toggleKeyboard() }
-                }
+                ToolbarItemGroup(placement: .primaryAction) { inputButtons }
             }
         }
         .task { await follow() }
-        .onDisappear { channel?.cancel() }
+        .onDisappear { hardware.detach(); channel?.cancel() }
     }
 
     private func follow() async {
@@ -579,6 +602,9 @@ struct LiveSurfaceScreen: View {
                 switch LinkSurface.message(frame) {
                 case .packets(let packets)?: feed.receive(packets)
                 case .failed(let reason)?: failure = reason; showing = false
+                case .controls(let gamepad)?:
+                    controls = gamepad
+                    hardware.attach(gamepad, onKey: hold)
                 default: break
                 }
             }
@@ -586,6 +612,104 @@ struct LiveSurfaceScreen: View {
         } catch {
             failure = error.localizedDescription
         }
+    }
+}
+
+/// A game controller in hand, playing the keys a game declared: the d-pad and left stick steer
+/// its first pad, the right stick its second, and buttons go by position from the one under the thumb.
+@MainActor @Observable final class HardwareGamepad {
+    /// What the controller in hand has, or nil with none.
+    private(set) var controller: GamepadController?
+    @ObservationIgnored private var gamepad: Gamepad?
+    @ObservationIgnored private var onKey: (GamepadKeyChange) -> Void = { _ in }
+    @ObservationIgnored private var connected: GCController?
+    /// What each stick and button holds, so a d-pad and a stick steering the same pad add up.
+    @ObservationIgnored private var held: [String: Set<String>] = [:]
+    @ObservationIgnored private var observers: [NSObjectProtocol] = []
+
+    func attach(_ gamepad: Gamepad, onKey: @escaping (GamepadKeyChange) -> Void) {
+        self.gamepad = gamepad
+        self.onKey = onKey
+        if observers.isEmpty {
+            let center = NotificationCenter.default
+            for name in [NSNotification.Name.GCControllerDidConnect, .GCControllerDidDisconnect] {
+                observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.connect() }
+                })
+            }
+        }
+        connect()
+    }
+
+    func detach() {
+        observers.forEach(NotificationCenter.default.removeObserver)
+        observers = []
+        use(nil)
+    }
+
+    private func connect() { use(GCController.current ?? GCController.controllers().first) }
+
+    private func use(_ next: GCController?) {
+        if let connected, connected !== next { release(connected) }
+        connected = next
+        set([:])
+        guard let next, let gamepad else { controller = nil; return }
+        let pads = gamepad.pads
+        func steer(_ source: String, pad index: Int) -> GCControllerDirectionPadValueChangedHandler? {
+            guard index < pads.count else { return nil }
+            return { [weak self] _, x, y in MainActor.assumeIsolated { self?.set(source, pads[index].held(x: x, y: y)) } }
+        }
+        func press(_ source: String, _ key: String?) -> GCControllerButtonValueChangedHandler? {
+            guard let key else { return nil }
+            return { [weak self] _, _, pressed in MainActor.assumeIsolated { self?.set(source, pressed ? [key] : []) } }
+        }
+        var buttons: [GCControllerButtonInput]
+        if let full = next.extendedGamepad {
+            full.dpad.valueChangedHandler = steer("dpad", pad: 0)
+            full.leftThumbstick.valueChangedHandler = steer("left stick", pad: 0)
+            full.rightThumbstick.valueChangedHandler = steer("right stick", pad: 1)
+            buttons = [full.buttonA, full.buttonB, full.buttonX, full.buttonY, full.leftShoulder, full.rightShoulder,
+                       full.leftTrigger, full.rightTrigger]
+            full.buttonMenu.valueChangedHandler = press("menu", gamepad.menu)
+            controller = GamepadController(pads: 2, buttons: buttons.indices.map(String.init), menu: true)
+        } else if let remote = next.microGamepad {
+            remote.dpad.valueChangedHandler = steer("dpad", pad: 0)
+            buttons = [remote.buttonA, remote.buttonX]
+            remote.buttonMenu.valueChangedHandler = press("menu", gamepad.menu)
+            controller = GamepadController(pads: 1, buttons: buttons.indices.map(String.init), menu: true)
+        } else {
+            controller = nil
+            return
+        }
+        for (index, button) in buttons.enumerated() {
+            button.pressedChangedHandler = press("button \(index)", index < gamepad.buttons.count ? gamepad.buttons[index].key : nil)
+        }
+    }
+
+    private func release(_ old: GCController) {
+        if let full = old.extendedGamepad {
+            [full.dpad, full.leftThumbstick, full.rightThumbstick].forEach { $0.valueChangedHandler = nil }
+            [full.buttonA, full.buttonB, full.buttonX, full.buttonY, full.leftShoulder, full.rightShoulder, full.leftTrigger,
+             full.rightTrigger].forEach { $0.pressedChangedHandler = nil }
+            full.buttonMenu.valueChangedHandler = nil
+        } else if let remote = old.microGamepad {
+            remote.dpad.valueChangedHandler = nil
+            [remote.buttonA, remote.buttonX].forEach { $0.pressedChangedHandler = nil }
+            remote.buttonMenu.valueChangedHandler = nil
+        }
+    }
+
+    private func set(_ source: String, _ keys: Set<String>) {
+        var next = held
+        next[source] = keys
+        set(next)
+    }
+
+    private func set(_ next: [String: Set<String>]) {
+        let before = held.values.reduce(into: Set<String>()) { $0.formUnion($1) }
+        held = next
+        let after = next.values.reduce(into: Set<String>()) { $0.formUnion($1) }
+        GamepadKeyChange.changes(from: before, to: after).forEach(onKey)
     }
 }
 

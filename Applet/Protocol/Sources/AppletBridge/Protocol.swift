@@ -168,6 +168,8 @@ public struct AppletResponse: Codable, Sendable {
     public var features: [String]?
     /// Each permission the manifest declares: granted, denied or not-requested.
     public var permissions: [String: String]?
+    /// The controls the manifest declares, for a viewer to show as a controller.
+    public var controls: Gamepad?
     public init(error: String? = nil, errorCode: String? = nil) {
         self.error = error
         self.errorCode = errorCode

@@ -65,6 +65,20 @@ final class PackageTests: XCTestCase {
         XCTAssertFalse(String(decoding: b, as: UTF8.self).contains("first"))
         XCTAssertGreaterThan(end, cursor)
     }
+    /// A game declares its controls in noodlet.json; the phone shows them in place of the keyboard.
+    func testManifestDeclaresControls() throws {
+        let root = try temporary().appendingPathComponent("Game.noodlet")
+        func install(_ controls: String) throws -> NoodletPackage {
+            let manifest = #"{"title":"Game","runtime":"html","entry":"index.html","controls":\#(controls)}"#
+            return try NoodletPackage.install(["noodlet.json": Data(manifest.utf8), "index.html": Data("<p>".utf8)], to: root)
+        }
+        let package = try install(#"{"pads":[{"left":"left","right":"right"}],"buttons":[{"key":"space","label":"Jump"}],"menu":"escape"}"#)
+        XCTAssertEqual(package.manifest.controls, Gamepad(pads: [Gamepad.Pad(left: "left", right: "right")],
+                                                          buttons: [Gamepad.Button(key: "space", label: "Jump")], menu: "escape"))
+        XCTAssertThrowsError(try install(#"{"buttons":[{"key":"F1"}]}"#))
+        XCTAssertThrowsError(try install(#"{}"#))
+        XCTAssertNil(try NoodletPackage.install(files(), to: try temporary().appendingPathComponent("Plain.noodlet")).manifest.controls)
+    }
     func testInvalidRequestBounds() throws {
         var r = AppletRequest(.click)
         r.x = .nan

@@ -183,6 +183,8 @@ final class LinkVersion1Tests: XCTestCase {
             "computerFailed": .computerCreated(requestID: a, computer: nil, error: "No space"), "browsersChanged": .browsersChanged,
             "surfaceOpened": .surfaceOpened(sessionID: a), "surfaceFailed": .surfaceFailed(reason: "The computer is stopped."),
             "readChanged": .readChanged(conversationID: b, upTo: date), "groupsChanged": .groupsChanged,
+            "surfaceControls": .surfaceControls(controls: Gamepad(pads: [Gamepad.Pad(left: "left", right: "right")],
+                                                                  buttons: [Gamepad.Button(key: "space", label: "Jump")], menu: "escape")),
         ]
     }
 
@@ -212,7 +214,7 @@ final class LinkVersion1Tests: XCTestCase {
         XCTAssertEqual(LinkSurface.message(bytes), .packets([packet]))
         let controls: [SurfaceControl] = [.input(.pointer(.down, x: 10, y: 20, clickCount: 2)), .input(.scroll(x: 1, y: 2, dx: 0, dy: -40)),
                                           .input(.key(.enter)), .input(.text("hi")), .view(width: 1206, height: 2622), .keyFrame,
-                                          .rate(bitsPerSecond: 1_500_000)]
+                                          .rate(bitsPerSecond: 1_500_000), .input(.hold(key: "z", pressed: true))]
         XCTAssertEqual(Self.controlJSON.map { SurfaceControl(Data($0.utf8)) }, controls)
     }
 
@@ -278,7 +280,8 @@ final class LinkVersion1Tests: XCTestCase {
         "surfaceFailed": #"{"surfaceFailed":{"reason":"The computer is stopped."}}"#,
         "surfaceOpened": #"{"surfaceOpened":{"sessionID":"00000000-0000-0000-0000-00000000000A"}}"#,
         "readChanged": #"{"readChanged":{"conversationID":"00000000-0000-0000-0000-00000000000B","upTo":1790000000}}"#,
-        "groupsChanged": #"{"groupsChanged":{}}"#
+        "groupsChanged": #"{"groupsChanged":{}}"#,
+        "surfaceControls": #"{"surfaceControls":{"controls":{"pads":[{"left":"left","right":"right"}],"buttons":[{"key":"space","label":"Jump"}],"menu":"escape"}}}"#
     ]
     private static let controlJSON = [
         #"{"input":{"_0":{"pointer":{"_0":"down","clickCount":2,"x":10,"y":20}}}}"#,
@@ -287,7 +290,8 @@ final class LinkVersion1Tests: XCTestCase {
         #"{"input":{"_0":{"text":{"_0":"hi"}}}}"#,
         #"{"view":{"height":2622,"width":1206}}"#,
         #"{"keyFrame":{}}"#,
-        #"{"rate":{"bitsPerSecond":1500000}}"#
+        #"{"rate":{"bitsPerSecond":1500000}}"#,
+        #"{"input":{"_0":{"hold":{"key":"z","pressed":true}}}}"#
     ]
 
     func testVersion1RequestsStillRead() throws {

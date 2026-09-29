@@ -12,6 +12,7 @@ import XCTest
     final class FakeApplet: @unchecked Sendable {
         private let lock = NSLock()
         let session = UUID()
+        var controls: Gamepad?
         private(set) var opened: [UUID] = []
         /// The folder each noodlet came from.
         var sources: [UUID: String] = [:]
@@ -23,6 +24,7 @@ import XCTest
                 case .open:
                     opened.append(request.noodletID ?? UUID())
                     response.sessionID = session
+                    response.controls = controls
                 case .list:
                     response.features = [SurfaceSocket.feature]
                 case .info:
@@ -112,6 +114,26 @@ import XCTest
         await waitUntil { !f.surfaces.inputs.isEmpty }
         XCTAssertEqual(f.surfaces.inputs.map(\.view), [f.applet.session.uuidString])
         XCTAssertEqual(f.surfaces.inputs.map(\.input), [.text("go")])
+    }
+
+    /// A game's controls come down before its video, so the phone shows them from the start.
+    func testANoodletsControlsReachThePhone() async throws {
+        let f = try await fixture()
+        let bot = try f.hub.bots.create(LinkBotDraft(name: "Alfred", provider: "claude-code"), for: f.ada)
+        let controls = Gamepad(pads: [Gamepad.Pad(left: "left", right: "right")], buttons: [Gamepad.Button(key: "space")])
+        f.applet.controls = controls
+        let link = try post(made(in: folder(of: bot, f), f), in: bot, byBot: true, hub: f.hub)
+        let channel = try await f.device.channel(.openSurface(conversationID: bot.conversationID, attachmentID: link))
+        defer { channel.cancel() }
+        var received: [Gamepad] = []
+        for try await frame in channel.frames {
+            if case .controls(let gamepad)? = LinkSurface.message(frame) { received.append(gamepad) }
+            if case .packets? = LinkSurface.message(frame) { break }
+        }
+        XCTAssertEqual(received, [controls])
+        channel.send(LinkSurface.control(.input(.hold(key: "space", pressed: true))))
+        await waitUntil { !f.surfaces.inputs.isEmpty }
+        XCTAssertEqual(f.surfaces.inputs.map(\.input), [.hold(key: "space", pressed: true)])
     }
 
     /// A click is a press and a release; if the release overtook the press, the page would

@@ -15,6 +15,8 @@ public struct NoodletManifest: Codable, Sendable, Equatable {
   public var permissions: [String]?
   /// Groups the noodlet under one library sidebar category; untagged noodlets appear only in All.
   public var category: String?
+  /// The keys a game listens for, shown as a controller to people watching on a phone.
+  public var controls: Gamepad?
   public static let knownCategories = [
     "games", "productivity", "utilities", "developer", "data",
     "creativity", "media", "writing", "learning", "lifestyle",
@@ -33,7 +35,7 @@ public struct NoodletManifest: Codable, Sendable, Equatable {
     self.network = network
   }
   enum CodingKeys: String, CodingKey {
-    case version, title, runtime, entry, summary, symbol, network, window, permissions, category
+    case version, title, runtime, entry, summary, symbol, network, window, permissions, category, controls
   }
   public init(from decoder: Decoder) throws {
     let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -47,9 +49,11 @@ public struct NoodletManifest: Codable, Sendable, Equatable {
     window = try c.decodeIfPresent(NoodletWindowOptions.self, forKey: .window)
     permissions = try c.decodeIfPresent([String].self, forKey: .permissions)
     category = try c.decodeIfPresent(String.self, forKey: .category)
+    controls = try c.decodeIfPresent(Gamepad.self, forKey: .controls)
   }
   public func validate() throws {
     try window?.validate()
+    do { try controls?.validate() } catch let error as Gamepad.Invalid { throw AppletError(error.message) }
     for permission in permissions ?? [] where !Self.knownPermissions.contains(permission) {
       throw AppletError("Unknown permission \(permission.prefix(40)). Use \(Self.knownPermissions.joined(separator: ", ")).")
     }

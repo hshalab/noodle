@@ -320,6 +320,9 @@ public enum LinkEvent: Codable, Equatable, Sendable {
     case surfaceOpened(sessionID: UUID)
     /// What a surface channel was opened for could not be shown, and why; the channel ends.
     case surfaceFailed(reason: String)
+    /// The keys a game on a surface channel declared, sent before its video, for a viewer
+    /// without a keyboard to show as a controller.
+    case surfaceControls(controls: Gamepad)
 }
 
 /// What a device sets on a browser it makes or edits on the Hub. Nil fields stay as they are.

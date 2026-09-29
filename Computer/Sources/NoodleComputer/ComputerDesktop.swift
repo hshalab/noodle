@@ -65,6 +65,8 @@ final class DesktopSurface: @unchecked Sendable {
     }
 
     func send(_ input: SurfaceInput) async throws {
+        // The desktop takes whole key presses, so a held key is pressed once and its release dropped.
+        if case .hold(_, pressed: false) = input { return }
         let request = Self.request(for: input)
         try await perform { try Self.write(request, to: $0) }
     }
@@ -149,6 +151,8 @@ final class DesktopSurface: @unchecked Sendable {
             let keysyms: [SurfaceInput.Key: UInt32] = [.enter: 0xff0d, .tab: 0xff09, .escape: 0xff1b, .backspace: 0xff08,
                                                        .space: 0x20, .left: 0xff51, .up: 0xff52, .right: 0xff53, .down: 0xff54]
             return Data([4]) + withUnsafeBytes(of: (keysyms[key] ?? 0).littleEndian) { Data($0) }
+        case .hold(let key, _):
+            return request(for: SurfaceInput.Key(rawValue: key).map(SurfaceInput.key) ?? .text(key))
         case .text(let text):
             let bytes = Data(text.utf8.prefix(65_536))
             return Data([5]) + withUnsafeBytes(of: UInt32(bytes.count).littleEndian) { Data($0) } + bytes

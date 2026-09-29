@@ -168,7 +168,7 @@ struct BrowserAddressDraft: Equatable {
         case .scroll(let x, let y, let dx, let dy):
             guard y >= top else { return }
             try selectedTab(profile()).apply(.scroll(x: x, y: y - top, dx: dx, dy: dy))
-        case .key, .text:
+        case .key, .text, .hold:
             guard var typing = draft else { return try selectedTab(profile()).apply(input) }
             switch typing.take(input) {
             case .go(let value)?:

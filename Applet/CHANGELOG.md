@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Games can list the keys they use in their manifest. People watching on iPhone or iPad then get a controller instead of the keyboard, and holding a button holds the key.
+
 ### Fixed
 
 - Closing a game no longer leaves its sound playing until you quit Applet. The menu bar kept the closed noodlet running out of sight; a stopped noodlet's page now always ends.

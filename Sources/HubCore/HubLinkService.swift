@@ -221,7 +221,7 @@ import os
                 let (link, bot) = try await hubBots().companionLink(attachmentID, in: conversationID, for: user)
                 // Starting a computer or a noodlet can outlast a request, so the channel opens first
                 // and anything that then goes wrong comes down it.
-                let open: @MainActor () async throws -> SurfaceSocket
+                let open: @MainActor () async throws -> (SurfaceSocket, Gamepad?)
                 switch link {
                 case .browser(let browser, let tab):
                     // Every browser on the owner's own Mac is theirs.
@@ -229,29 +229,34 @@ import os
                         throw LinkError("That browser is not yours or no longer exists.")
                     }
                     let browsers = try hubBrowsers()
-                    open = { try await browsers.openSurface(browser: browser, tab: tab, for: user) }
+                    open = { (try await browsers.openSurface(browser: browser, tab: tab, for: user), nil) }
                 case .computer(let computer, let terminal, _):
                     guard try access.isPersonal || hubComputers().computers(for: user).contains(where: { $0.id == computer }) else {
                         throw LinkError("That computer is not yours or no longer exists.")
                     }
                     let computers = try hubComputers()
-                    open = { try await computers.openSurface(computer: computer, terminal: terminal, bot: bot, for: user) }
+                    open = { (try await computers.openSurface(computer: computer, terminal: terminal, bot: bot, for: user), nil) }
                 case .noodlet(let noodlet):
                     let applets = try hubBots().applets
                     open = {
                         var start = AppletRequest(.open)
                         start.noodletID = noodlet
                         start.mode = "background"
-                        guard let session = try await applets.companion(start).sessionID else {
+                        let started = try await applets.companion(start)
+                        guard let session = started.sessionID else {
                             throw LinkError("Noodle Applet did not start the noodlet.")
                         }
-                        return try await applets.companionSurface(AppletRequest(.surfaceStream, sessionID: session))
+                        return (try await applets.companionSurface(AppletRequest(.surfaceStream, sessionID: session)), started.controls)
                     }
                 }
                 return .stream { stream in
                     Task { @MainActor in
                         stream.send(LinkProtocol.encode(LinkEvent.surfaceOpened(sessionID: UUID())))
-                        do { Self.relay(try await open(), to: stream) }
+                        do {
+                            let (socket, controls) = try await open()
+                            if let controls { stream.send(LinkProtocol.encode(LinkEvent.surfaceControls(controls: controls))) }
+                            Self.relay(socket, to: stream)
+                        }
                         catch {
                             stream.send(LinkProtocol.encode(LinkEvent.surfaceFailed(reason: error.localizedDescription)))
                             stream.close()

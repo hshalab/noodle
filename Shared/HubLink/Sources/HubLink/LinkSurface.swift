@@ -1,12 +1,13 @@
 import Foundation
 
-/// What travels on a surface's channel: `surfaceOpened` as JSON first, then video as binary
-/// packets, and the viewer's controls going back the other way.
+/// What travels on a surface's channel: `surfaceOpened` as JSON first, a game's controls if it
+/// has any, then video as binary packets, and the viewer's controls going back the other way.
 public enum LinkSurface {
     public enum Message: Equatable, Sendable {
         case opened(session: UUID)
         case packets([SurfacePacket])
         case failed(String)
+        case controls(Gamepad)
     }
 
     /// Packets start with their format byte, never "{" as a JSON event does.
@@ -15,6 +16,7 @@ public enum LinkSurface {
         switch LinkProtocol.decodeEvent(frame) {
         case .surfaceOpened(let session)?: return .opened(session: session)
         case .surfaceFailed(let reason)?: return .failed(reason)
+        case .surfaceControls(let controls)?: return .controls(controls)
         default: return nil
         }
     }

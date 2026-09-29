@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### What to Test
+
+- Ask a bot to make a simple game with arrow keys and a jump button, then open the game from its message: a d-pad and buttons show over it instead of the keyboard, and holding one keeps moving. Needs Noodle Applet, the Mac or Hub on the next update.
+- The controller button at the top hides and shows the controls; the keyboard button beside it still types into the game.
+- Connect a game controller: it plays the game, and only the buttons it has no room for stay on the screen.
+
+### Added
+
+- Games your bots make show a controller over the live view instead of the keyboard, and game controllers play them too.
+
 ### Fixed
 
 - Reaching a Noodle Hub no longer sometimes waits 10 seconds and fails with "The Hub did not answer in time" when a Hub has recently started or stopped on the same Mac.

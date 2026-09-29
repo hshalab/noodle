@@ -10,6 +10,7 @@ All notable changes to Noodle are documented here, following
 
 - Settings > Companion Apps lists Noodle Mobile, with a link to join its TestFlight beta.
 - Klaviyo and Evernote can be added as tools.
+- Games your bots make can show a controller on iPhone and iPad instead of the keyboard, when the game says which keys it uses.
 
 ### Changed
 

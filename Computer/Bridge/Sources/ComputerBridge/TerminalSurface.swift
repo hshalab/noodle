@@ -49,6 +49,10 @@ public enum TerminalSurface {
             let sequences: [SurfaceInput.Key: String] = [.enter: "\r", .tab: "\t", .escape: "\u{1b}", .backspace: "\u{7f}", .space: " ",
                                                          .up: "\u{1b}[A", .down: "\u{1b}[B", .right: "\u{1b}[C", .left: "\u{1b}[D"]
             return sequences[key].map { Data($0.utf8) }
+        // A terminal takes whole key presses, so a held key is typed once and its release dropped.
+        case .hold(let key, let pressed):
+            guard pressed else { return nil }
+            return bytes(for: SurfaceInput.Key(rawValue: key).map(SurfaceInput.key) ?? .text(key))
         case .pointer, .scroll: return nil
         }
     }

@@ -11,6 +11,8 @@ public enum SurfaceInput: Codable, Equatable, Sendable {
     case scroll(x: Double, y: Double, dx: Double, dy: Double)
     case key(Key)
     case text(String)
+    /// A key held down or let go, as a game reads it: a named key, a lowercase letter or a digit.
+    case hold(key: String, pressed: Bool)
 }
 
 /// What travels up a live view, from the viewer to the surface: what the person does, how many

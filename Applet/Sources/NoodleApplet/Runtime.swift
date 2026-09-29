@@ -497,6 +497,7 @@ import AppletCore
     response.title = package.manifest.title
     response.runtime = package.manifest.runtime
     response.permissions = AppletPermissions.status(package, defaults: defaults)
+    response.controls = package.manifest.controls
     response.state = "available"
     return response
   }
@@ -520,6 +521,11 @@ import AppletCore
     case .pointer: return
     case .scroll(_, _, let dx, let dy): request = AppletRequest(.scroll, sessionID: session.id); request.toX = dx; request.toY = dy
     case .text(let text): request = AppletRequest(.type, sessionID: session.id); request.text = text
+    // A native noodlet takes whole key presses, so a held key is pressed once.
+    case .hold(_, pressed: false): return
+    case .hold(let key, pressed: true):
+      if let named = SurfaceInput.Key(rawValue: key) { return try await deliver(.key(named), to: session) }
+      request = AppletRequest(.type, sessionID: session.id); request.text = key
     case .key(let key):
       let names: [SurfaceInput.Key: String] = [.enter: "Enter", .tab: "Tab", .escape: "Escape", .backspace: "Backspace", .space: " ",
                                                .left: "ArrowLeft", .right: "ArrowRight", .up: "ArrowUp", .down: "ArrowDown"]

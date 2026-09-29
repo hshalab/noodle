@@ -393,7 +393,7 @@ enum HubThread: HubConversation {
             if let computer { making.removeValue(forKey: id)?.resume(returning: computer) }
             else { making.removeValue(forKey: id)?.resume(throwing: LinkError(error ?? "The Hub could not make the computer.")) }
         // Live views have their own channels.
-        case .surfaceOpened, .surfaceFailed:
+        case .surfaceOpened, .surfaceFailed, .surfaceControls:
             return
         case .readChanged(let id, let upTo):
             noteRead(id, upTo: upTo)
