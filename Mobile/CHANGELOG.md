@@ -5,6 +5,9 @@
 ### What to Test
 
 - Type a message of several lines, or press return a few times: the field grows over the conversation, and the conversation and its scroll bar stay where they are.
+- Turn on Airplane Mode and send a message: it says Sending… for a while, then Not delivered in red with a red mark beside it. Turn Airplane Mode off within a few seconds instead, and it goes through by itself.
+- Tap the red mark, or hold the message: Try Again sends it, Edit and Send puts it back in the field with its files, and Delete removes it. Once anything newer is in the conversation, Try Again is gone and the message is never sent by itself.
+- Quit and reopen Noodle with a message that did not go through: it is still there, still marked.
 
 ### Changed
 
@@ -14,6 +17,7 @@
 ### Fixed
 
 - Adding lines to a message no longer moves the conversation or its scroll bar.
+- A message that does not go through is tried again by itself while it is still the newest, and otherwise stays marked Not delivered, with Try Again, Edit and Send, and Delete, instead of an error under the conversation that stayed until the next message.
 
 ## [0.8.0] - 2026-09-29
 

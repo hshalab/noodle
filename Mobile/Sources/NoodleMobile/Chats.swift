@@ -100,6 +100,7 @@ enum HubThread: HubConversation {
         pinned = Set((try? JSONDecoder().decode([UUID].self, from: Data(contentsOf: pairing.directory.appendingPathComponent("pins.json")))) ?? [])
         seen = try? JSONDecoder().decode([UUID: Date].self, from: Data(contentsOf: seenURL))
         drafts = (try? JSONDecoder().decode([UUID: String].self, from: Data(contentsOf: draftsURL))) ?? [:]
+        unsent = (try? JSONDecoder().decode([UUID: UnsentMessage].self, from: Data(contentsOf: unsentURL))) ?? [:]
         backgrounds = (try? JSONDecoder().decode([UUID: ConversationBackground].self,
                                                  from: Data(contentsOf: pairing.directory.appendingPathComponent("backgrounds.json")))) ?? [:]
         if let cache = try? JSONDecoder().decode(Cache.self, from: Data(contentsOf: cacheURL)) {
@@ -115,6 +116,7 @@ enum HubThread: HubConversation {
     private var cacheURL: URL { pairing.directory.appendingPathComponent("chats.json") }
     private var seenURL: URL { pairing.directory.appendingPathComponent("read.json") }
     private var draftsURL: URL { pairing.directory.appendingPathComponent("drafts.json") }
+    private var unsentURL: URL { pairing.directory.appendingPathComponent("unsent.json") }
 
     func background(for conversation: some HubConversation) -> ConversationBackground {
         backgrounds[conversation.conversationID] ?? ConversationBackground()
@@ -171,7 +173,7 @@ enum HubThread: HubConversation {
         seen = (seen ?? [:]).merging([conversation.conversationID: latest]) { $1 }
         saveSeen()
         Task { await HubNotifications.clearDelivered(conversation: conversation.conversationID) }
-        guard let kept = messages.last(where: { !sending.contains($0.id) && !undelivered.contains($0.id) }) else { return }
+        guard let kept = messages.last(where: { unsent[$0.id] == nil }) else { return }
         let mark = LinkReadMark(conversationID: conversation.conversationID, messageID: kept.id)
         // A Hub from before read state was shared does not know the request; this phone keeps its own.
         Task { _ = try? await pairing.request(.markRead(mark)) }
@@ -376,6 +378,7 @@ enum HubThread: HubConversation {
         case .messageChanged(let message):
             // Only a message already here; a new one arrives with its conversation's change.
             guard conversations[message.conversationID]?.contains(where: { $0.id == message.id }) == true else { return }
+            settle([message])
             merge([message], into: message.conversationID)
         case .botPhase(let id, let phase):
             guard let index = agents.firstIndex(where: { $0.id == id }) else { return }
@@ -430,6 +433,8 @@ enum HubThread: HubConversation {
         isLoaded = true
         error = nil
         saveCache()
+        // The Hub answers again: a message that did not go through goes now, if nothing newer has come.
+        for id in unsent.keys { await deliver(id, pauses: [.zero]) }
         // Pictures come after the chats show, each fetched once.
         await pairing.fetchPictures(bots)
         guard agents.map(\.id) == bots.map(\.id) else { return }
@@ -452,16 +457,41 @@ enum HubThread: HubConversation {
         conversations = conversations.filter { kept.contains($0.key) }
     }
 
-    /// Messages shown before the Hub has them, and those it never got.
+    /// Your messages the Hub has not confirmed, kept on this phone with their files to send again.
+    private var unsent: [UUID: UnsentMessage] = [:]
+    /// Messages being sent, or tried again.
     private(set) var sending: Set<UUID> = []
-    private(set) var undelivered: Set<UUID> = []
+    /// The pauses before each try at sending a message. It is tried again only while nothing newer has come.
+    var retryPauses: [Duration] = [.zero, .seconds(2), .seconds(5), .seconds(15)]
+
+    private struct UnsentMessage: Codable {
+        var outgoing: LinkOutgoingMessage
+        var attachments: [LinkAttachment]
+        /// What was typed, without the words a message of files alone gets.
+        var typed: String
+        /// Why the last try failed.
+        var reason: String?
+    }
 
     /// How far your message got, in the Mac's words.
     func delivery(of message: LinkMessage) -> String {
-        if undelivered.contains(message.id) { return "Not delivered" }
         if sending.contains(message.id) { return "Sending…" }
+        if unsent[message.id] != nil { return "Not delivered" }
         return message.delivered ? "Delivered" : "Sent"
     }
+
+    /// Whether the Hub does not have your message yet, while it is sent or after it failed.
+    func isUnsent(_ message: LinkMessage) -> Bool { unsent[message.id] != nil }
+
+    /// Whether your message did not go through and nothing is trying it now.
+    func hasFailed(_ message: LinkMessage) -> Bool { unsent[message.id] != nil && !sending.contains(message.id) }
+
+    func unsentReason(of message: LinkMessage) -> String? { unsent[message.id]?.reason }
+
+    /// Only while nothing newer has come: out of its place, a message may no longer make sense.
+    func canTryAgain(_ message: LinkMessage) -> Bool { hasFailed(message) && isNewest(message) }
+
+    private func isNewest(_ message: LinkMessage) -> Bool { conversations[message.conversationID]?.last?.id == message.id }
 
     func send(_ body: String, files: [OutgoingFile] = [], to conversation: some HubConversation) async throws {
         let attachments = try files.map { file in
@@ -469,38 +499,99 @@ enum HubThread: HubConversation {
                            byteCount: try file.url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0, voice: file.voice,
                            pixelSize: file.mediaType.hasPrefix("image/") ? LinkPixelSize(pictureAt: file.url) : nil)
         }
-        // As on the Mac, a message of files alone says how many.
-        let text = body.isEmpty && !files.isEmpty ? "Sent \(files.count) attachment\(files.count == 1 ? "" : "s")" : body
+        // As on the Mac, a message of files alone says how many, and a recording alone what it is.
+        let text = !body.isEmpty || files.isEmpty ? body
+            : files.count == 1 && files[0].voice != nil ? Self.voiceBody
+            : "Sent \(files.count) attachment\(files.count == 1 ? "" : "s")"
         let outgoing = LinkOutgoingMessage(conversationID: conversation.conversationID, id: UUID(), body: text,
                                            attachmentIDs: attachments.map(\.id))
+        // Kept first, files included, so a message that does not go through can go later.
+        for (file, attachment) in zip(files, attachments) { try keep(file.url, as: attachment) }
+        unsent[outgoing.id] = UnsentMessage(outgoing: outgoing, attachments: attachments, typed: body)
+        saveUnsent()
         // Shown at once; the Hub's copy replaces it.
-        sending.insert(outgoing.id)
-        defer { sending.remove(outgoing.id) }
         merge([LinkMessage(id: outgoing.id, conversationID: conversation.conversationID, author: .you, body: text,
                            createdAt: Date(), delivered: false, attachments: attachments)], into: conversation.conversationID)
-        let sent: LinkMessage
-        do {
-            // Files first: the Hub refuses a message that points at a file it lacks.
-            for (file, attachment) in zip(files, attachments) {
-                try keep(file.url, as: attachment)
-                try await pairing.upload(file.url, as: attachment, to: conversation.conversationID)
-            }
-            guard case .message(let message) = try await pairing.request(.send(outgoing)) else {
-                throw LinkError("The Hub sent an unexpected answer.")
-            }
-            sent = message
-        } catch {
-            undelivered.insert(outgoing.id)
-            throw error
-        }
-        merge([sent], into: conversation.conversationID)
-        try await load(conversation.conversationID)
         saveCache()
+        await deliver(outgoing.id, pauses: retryPauses)
+    }
+
+    func tryAgain(_ message: LinkMessage) async {
+        guard canTryAgain(message) else { return }
+        await deliver(message.id, pauses: [.zero])
+    }
+
+    /// Tries after each pause until the Hub has the message, and stops once something newer has come.
+    /// It goes with the same ID each time, so a Hub that took it already keeps the one copy.
+    private func deliver(_ id: UUID, pauses: [Duration]) async {
+        guard !sending.contains(id) else { return }
+        sending.insert(id)
+        defer { sending.remove(id) }
+        for pause in pauses {
+            try? await Task.sleep(for: pause)
+            guard let message = unsent[id], let shown = conversations[message.outgoing.conversationID]?.first(where: { $0.id == id }),
+                  isNewest(shown) else { return }
+            let conversationID = message.outgoing.conversationID
+            do {
+                // Files first: the Hub refuses a message that points at a file it lacks.
+                for attachment in message.attachments {
+                    try await pairing.upload(fileURL(for: attachment), as: attachment, to: conversationID)
+                }
+                guard case .message(let sent) = try await pairing.request(.send(message.outgoing)) else {
+                    throw LinkError("The Hub sent an unexpected answer.")
+                }
+                settle([sent])
+                merge([sent], into: conversationID)
+                try? await load(conversationID)
+                saveCache()
+                return
+            } catch {
+                unsent[id]?.reason = error.localizedDescription
+                saveUnsent()
+            }
+        }
+    }
+
+    /// Your messages the Hub now has, as when it took one whose answer was lost, need no sending again.
+    private func settle(_ messages: [LinkMessage]) {
+        let arrived = messages.map(\.id).filter { unsent[$0] != nil }
+        guard !arrived.isEmpty else { return }
+        for id in arrived { unsent[id] = nil }
+        saveUnsent()
+    }
+
+    /// A message that did not go through, taken off the conversation to be edited: what was typed,
+    /// and its files as if picked again.
+    func takeBack(_ message: LinkMessage, in conversation: some HubConversation) throws -> (text: String, files: [OutgoingFile]) {
+        guard let kept = unsent[message.id], hasFailed(message) else { throw LinkError("The message is being sent.") }
+        let staging = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let files = try kept.attachments.map { attachment in
+            let url = staging.appendingPathComponent(attachment.id.uuidString, isDirectory: true)
+                .appendingPathComponent(fileURL(for: attachment).lastPathComponent)
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try FileManager.default.copyItem(at: fileURL(for: attachment), to: url)
+            return OutgoingFile(url: url, filename: attachment.filename, mediaType: attachment.mediaType, voice: attachment.voice)
+        }
+        delete(message, in: conversation)
+        return (kept.typed, files)
+    }
+
+    /// Removes a message that did not go through, and the copies of its files kept to send it.
+    func delete(_ message: LinkMessage, in conversation: some HubConversation) {
+        guard hasFailed(message), let kept = unsent.removeValue(forKey: message.id) else { return }
+        for attachment in kept.attachments { try? FileManager.default.removeItem(at: fileURL(for: attachment).deletingLastPathComponent()) }
+        conversations[conversation.conversationID]?.removeAll { $0.id == message.id }
+        saveUnsent()
+        saveCache()
+    }
+
+    private func saveUnsent() {
+        try? JSONEncoder().encode(unsent).write(to: unsentURL, options: .atomic)
     }
 
     /// A recording, sent as the Mac sends one: the audio with its transcript, under "Voice message".
     func sendVoice(_ audio: URL, voice: LinkVoice, to conversation: some HubConversation) async throws {
-        try await send(Self.voiceBody, files: [OutgoingFile(url: audio, filename: "Voice message.caf", mediaType: "audio/x-caf",
+        try await send("", files: [OutgoingFile(url: audio, filename: "Voice message.caf", mediaType: "audio/x-caf",
                                                             voice: voice)], to: conversation)
     }
 
@@ -543,6 +634,7 @@ enum HubThread: HubConversation {
     private func load(_ conversationID: UUID) async throws {
         guard var at = read[conversationID] else {
             let page = try await self.page(LinkMessagePage(conversationID: conversationID, limit: Self.pageSize))
+            settle(page.messages)
             merge(page.messages, into: conversationID)
             let first = page.start ?? 0
             start[conversationID] = first
@@ -552,6 +644,7 @@ enum HubThread: HubConversation {
         }
         while true {
             let page = try await self.page(LinkMessagePage(conversationID: conversationID, after: at, limit: 2 * Self.pageSize))
+            settle(page.messages)
             merge(page.messages, into: conversationID)
             if let pending = page.messages.firstIndex(where: { $0.author == .you && !$0.delivered }) {
                 read[conversationID] = at + pending
@@ -570,6 +663,7 @@ enum HubThread: HubConversation {
         let id = conversation.conversationID
         guard let first = start[id], first > 0 else { return }
         let page = try await self.page(LinkMessagePage(conversationID: id, before: first, limit: Self.pageSize))
+        settle(page.messages)
         let known = Set((conversations[id] ?? []).map(\.id))
         conversations[id] = page.messages.filter { !known.contains($0.id) } + (conversations[id] ?? [])
         start[id] = page.start ?? 0
@@ -1004,7 +1098,7 @@ struct ChatView: View {
                 }
                 ForEach(messages) { message in
                     Bubble(chats: chats, thread: thread, message: message, author: authors[message.id],
-                           delivery: message.id == latestOwn ? chats.delivery(of: message) : nil)
+                           delivery: message.id == latestOwn || chats.isUnsent(message) ? chats.delivery(of: message) : nil)
                         .id(message.id)
                 }
             }
@@ -1103,6 +1197,7 @@ struct ChatView: View {
             return .handled
         })
         .sheet(item: $previewing) { WebPreview(url: $0.url).ignoresSafeArea() }
+        .environment(\.unsentActions) { unsentActions(for: $0, in: thread) }
         .environment(\.focusMessage) { focus in
             var instant = Transaction()
             instant.disablesAnimations = true
@@ -1110,7 +1205,7 @@ struct ChatView: View {
         }
         // Over the whole screen, bars included, as in Messages; the overlay animates itself in and out.
         .fullScreenCover(item: $focused) { focus in
-            MessageActions(focus: focus) { emoji in
+            MessageActions(focus: focus, unsent: unsentActions(for: focus.message, in: thread)) { emoji in
                 Task { try? await chats.toggleReaction(emoji, on: focus.message, in: thread) }
             } close: {
                 var instant = Transaction()
@@ -1148,6 +1243,11 @@ struct ChatView: View {
             mentions
             if let problem {
                 Text(problem).font(.footnote).foregroundStyle(.red)
+                    // It goes by itself; a message that did not go through says so on the message instead.
+                    .task(id: problem) {
+                        try? await Task.sleep(for: .seconds(6))
+                        if !Task.isCancelled { self.problem = nil }
+                    }
             }
             if !files.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -1326,6 +1426,23 @@ struct ChatView: View {
         }
     }
 
+    /// A message that did not go through: tried again only while it is the newest, or taken back to edit.
+    private func unsentActions(for message: LinkMessage, in thread: HubThread) -> UnsentActions? {
+        guard chats.hasFailed(message) else { return nil }
+        return UnsentActions(reason: chats.unsentReason(of: message),
+                             tryAgain: chats.canTryAgain(message) ? { Task { await chats.tryAgain(message) } } : nil,
+                             edit: {
+                                 do {
+                                     let (text, picked) = try chats.takeBack(message, in: thread)
+                                     draft = [text, draft].filter { !$0.isEmpty }.joined(separator: "\n")
+                                     files += picked
+                                 } catch {
+                                     problem = error.localizedDescription
+                                 }
+                             },
+                             delete: { chats.delete(message, in: thread) })
+    }
+
     private func send() {
         let body = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty || !files.isEmpty, let thread = chats.thread(threadID) else { return }
@@ -1362,12 +1479,13 @@ private struct Bubble: View {
     let message: LinkMessage
     /// In a group, the bot's name above the first of its messages in a row.
     let author: String?
-    /// Shown under your latest message only.
+    /// Shown under your latest message, and under any that did not go through.
     let delivery: String?
     @State private var expanded = false
     @State private var pressing = false
     @State private var textFrame = CGRect.zero
     @Environment(\.focusMessage) private var focusMessage
+    @Environment(\.unsentActions) private var unsentActions
     @AppStorage(AttachmentLayout.key) private var attachmentLayout = AttachmentLayout.standard.rawValue
 
     /// The gap between messages in the conversation.
@@ -1381,12 +1499,20 @@ private struct Bubble: View {
             Text(message.body).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity).padding(.vertical, 4)
         case .you:
+            let failed = unsentActions(message)
             HStack {
                 Spacer(minLength: 48)
+                // As in Messages, a message that did not go through has a red mark beside it, offering what to do.
+                if let failed {
+                    Menu { failed.menu } label: {
+                        Image(systemName: "exclamationmark.circle").font(.title2).foregroundStyle(.red)
+                    }
+                    .accessibilityLabel("Not Delivered")
+                }
                 VStack(alignment: .trailing, spacing: 4) {
                     content(foreground: .white, background: .accentColor)
                     if let delivery {
-                        Text(delivery).font(.caption2).foregroundStyle(.secondary)
+                        Text(delivery).font(.caption2).foregroundStyle(failed == nil ? AnyShapeStyle(.secondary) : AnyShapeStyle(.red))
                     }
                 }
             }

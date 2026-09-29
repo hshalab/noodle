@@ -4,6 +4,26 @@ import SwiftUI
 extension EnvironmentValues {
     /// Lifts a message out of the conversation with its reactions and actions, as a long press does in Messages.
     @Entry var focusMessage: @MainActor (MessageFocus) -> Void = { _ in }
+    /// What can be done with your message that did not go through; nil for any other.
+    @Entry var unsentActions: @MainActor (LinkMessage) -> UnsentActions? = { _ in nil }
+}
+
+/// Your message that did not go through: why, and what can be done with it instead of reacting.
+struct UnsentActions {
+    let reason: String?
+    /// Only while it is still the newest message.
+    let tryAgain: (() -> Void)?
+    /// Puts its text and files back in the message field.
+    let edit: () -> Void
+    let delete: () -> Void
+
+    @ViewBuilder var menu: some View {
+        Section(reason ?? "Not delivered") {
+            if let tryAgain { Button("Try Again", systemImage: "arrow.clockwise", action: tryAgain) }
+            Button("Edit and Send", systemImage: "pencil", action: edit)
+            Button("Delete", systemImage: "trash", role: .destructive, action: delete)
+        }
+    }
 }
 
 /// A message held up over the conversation, where its text bubble was on screen.
@@ -69,6 +89,8 @@ struct MessageActions: View {
     nonisolated private static let menuWidth: CGFloat = 220
 
     let focus: MessageFocus
+    /// Set for your message that did not go through, which cannot be reacted to.
+    var unsent: UnsentActions?
     let react: (String) -> Void
     let close: () -> Void
     @State private var shown = false
@@ -88,6 +110,8 @@ struct MessageActions: View {
                     .scaleEffect(shown ? 1.03 : 1)
                     .offset(x: layout.bubble.minX - area.minX, y: (shown ? layout.bubble.minY : focus.frame.minY) - area.minY)
                 reactionBar
+                    .opacity(unsent == nil ? 1 : 0)
+                    .allowsHitTesting(unsent == nil)
                     .frame(width: layout.bar.width)
                     .scaleEffect(shown ? 1 : 0.4, anchor: isYours ? .bottomTrailing : .bottomLeading)
                     .opacity(shown ? 1 : 0)
@@ -160,16 +184,26 @@ struct MessageActions: View {
 
     private var menu: some View {
         VStack(spacing: 0) {
-            Button { choose { UIPasteboard.general.string = focus.message.body } } label: {
-                Label("Copy", systemImage: "doc.on.doc")
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 18).padding(.vertical, 14)
-                    .contentShape(Rectangle())
+            if let unsent {
+                if let tryAgain = unsent.tryAgain { item("Try Again", systemImage: "arrow.clockwise", action: tryAgain) }
+                item("Edit and Send", systemImage: "pencil", action: unsent.edit)
             }
-            .buttonStyle(.plain)
+            item("Copy", systemImage: "doc.on.doc") { UIPasteboard.general.string = focus.message.body }
+            if let unsent { item("Delete", systemImage: "trash", role: .destructive, action: unsent.delete) }
         }
         .font(.body)
         .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+    }
+
+    private func item(_ title: String, systemImage: String, role: ButtonRole? = nil, action: @escaping () -> Void) -> some View {
+        Button(role: role) { choose(action) } label: {
+            Label(title, systemImage: systemImage)
+                .foregroundStyle(role == .destructive ? AnyShapeStyle(.red) : AnyShapeStyle(.primary))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 18).padding(.vertical, 14)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private func choose(_ action: () -> Void) {

@@ -25,7 +25,18 @@ private actor FakeHub {
     /// Where it listens, which it tells the phone when pairing, as the real Hub does.
     var endpoints: [LinkEndpoint] = []
 
+    /// Sends answered with a timeout. When `keepsFailedSends`, the message is taken all the same, as when only the answer is lost.
+    var failingSends = 0
+    var keepsFailedSends = false
+
     func listen(at endpoint: LinkEndpoint) { endpoints = [endpoint] }
+
+    func failSends(_ count: Int, keeping: Bool = false) {
+        failingSends = count
+        keepsFailedSends = keeping
+    }
+
+    func bodies(saying body: String) -> Int { messages.count { $0.body == body } }
 
     func setPicture(_ data: Data) { bot.draft.avatarImageData = data }
 
@@ -133,7 +144,11 @@ private actor FakeHub {
             if offset == 0 { downloads += 1 }
             let end = min(offset + LinkProtocol.chunkSize, file.data.count)
             return .chunk(data: file.data.subdata(in: offset..<end), total: file.data.count)
+        case .success(.send) where failingSends > 0 && !keepsFailedSends:
+            failingSends -= 1
+            return .failure("The Hub did not answer in time.")
         case .success(.send(let outgoing)):
+            if messages.contains(where: { $0.id == outgoing.id }) { return .message(messages.first { $0.id == outgoing.id }!) }
             let attachments = outgoing.attachmentIDs.compactMap { files[$0]?.attachment }
             guard attachments.count == outgoing.attachmentIDs.count else { return .failure("A file is missing.") }
             let sent = LinkMessage(id: outgoing.id, conversationID: bot.conversationID, author: .you, body: outgoing.body,
@@ -141,6 +156,10 @@ private actor FakeHub {
             messages.append(sent)
             messages.append(LinkMessage(id: UUID(), conversationID: bot.conversationID, author: .bot(bot.id),
                                         body: "You said: \(outgoing.body)", createdAt: Date(), delivered: true))
+            if failingSends > 0 {
+                failingSends -= 1
+                return .failure("The Hub did not answer in time.")
+            }
             return .message(sent)
         case .success(.kick(let id)) where id == bot.id:
             restarts.append("kick")
@@ -830,6 +849,116 @@ private actor RecordedSubscriptions: PushSubscriptions {
         let image = try #require(UIImage(data: stored)?.cgImage)
         #expect(max(image.width, image.height) == 512)
         #expect(stored.starts(with: [0xFF, 0xD8]))
+    }
+
+    /// A send that fails is tried again by itself while nothing newer has come, and arrives once.
+    @Test func aFailedSendIsTriedAgainWhileItIsTheNewest() async throws {
+        let hub = FakeHub()
+        let (chats, server) = try await paired(to: hub)
+        defer { server.stop() }
+        try await chats.reload()
+        let scout = await hub.bot
+        chats.retryPauses = [.zero, .zero, .zero]
+        await hub.failSends(2)
+
+        try await chats.send("Hi", to: scout)
+
+        let sent = try #require(chats.messages(of: scout).first { $0.body == "Hi" })
+        #expect(chats.delivery(of: sent) == "Delivered")
+        #expect(await hub.bodies(saying: "Hi") == 1)
+    }
+
+    /// When it keeps failing, the message itself says so, rather than an error under the conversation,
+    /// and still does after the app is opened again.
+    @Test func aSendThatKeepsFailingIsMarkedOnTheMessage() async throws {
+        let hub = FakeHub()
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let (chats, server) = try await paired(to: hub, directory: directory)
+        defer { server.stop() }
+        try await chats.reload()
+        let scout = await hub.bot
+        chats.retryPauses = [.zero, .zero]
+        await hub.failSends(10)
+
+        try await chats.send("Hi", to: scout)
+
+        let sent = try #require(chats.messages(of: scout).last)
+        #expect(sent.body == "Hi")
+        #expect(chats.delivery(of: sent) == "Not delivered")
+        #expect(chats.unsentReason(of: sent) == "The Hub did not answer in time.")
+        let relaunched = HubChats(pairing: HubPairing(directory: directory, deviceName: "iPhone"))
+        #expect(relaunched.messages(of: scout).last?.id == sent.id)
+        #expect(relaunched.delivery(of: sent) == "Not delivered")
+    }
+
+    /// Once the conversation has moved on, a failed message is never sent by itself: out of its place it
+    /// may no longer make sense. Still the newest, it goes when the Hub answers again.
+    @Test func aFailedMessageIsSentAgainOnlyWhileItIsTheNewest() async throws {
+        let hub = FakeHub()
+        let (chats, server) = try await paired(to: hub)
+        defer { server.stop() }
+        try await chats.reload()
+        let scout = await hub.bot
+        chats.retryPauses = [.zero]
+        await hub.failSends(10)
+        try await chats.send("First", to: scout)
+        try await chats.send("Second", to: scout)
+        await hub.failSends(0)
+
+        try await chats.reload()
+
+        let messages = chats.messages(of: scout)
+        let first = try #require(messages.first { $0.body == "First" })
+        let second = try #require(messages.first { $0.body == "Second" })
+        #expect(await hub.bodies(saying: "First") == 0)
+        #expect(chats.delivery(of: first) == "Not delivered")
+        #expect(!chats.canTryAgain(first))
+        #expect(await hub.bodies(saying: "Second") == 1)
+        #expect(chats.delivery(of: second) == "Delivered")
+    }
+
+    /// The Hub may have taken a message whose answer was lost; its copy settles it, with no second one.
+    @Test func aMessageTheHubGotDespiteTheFailureIsNotSentTwice() async throws {
+        let hub = FakeHub()
+        let (chats, server) = try await paired(to: hub)
+        defer { server.stop() }
+        try await chats.reload()
+        let scout = await hub.bot
+        chats.retryPauses = [.zero]
+        await hub.failSends(1, keeping: true)
+        try await chats.send("Hi", to: scout)
+
+        try await chats.reload()
+
+        let sent = try #require(chats.messages(of: scout).first { $0.body == "Hi" })
+        #expect(chats.delivery(of: sent) == "Delivered")
+        #expect(chats.unsentReason(of: sent) == nil)
+        #expect(await hub.bodies(saying: "Hi") == 1)
+    }
+
+    /// Edit and Send puts a failed message's text and files back to send anew; Delete drops it.
+    @Test func aFailedMessageCanBeTakenBackOrDeleted() async throws {
+        let hub = FakeHub()
+        let (chats, server) = try await paired(to: hub)
+        defer { server.stop() }
+        try await chats.reload()
+        let scout = await hub.bot
+        chats.retryPauses = [.zero]
+        await hub.failSends(10)
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).txt")
+        try Data("notes".utf8).write(to: file)
+        try await chats.send("Look", files: [OutgoingFile(url: file, filename: "notes.txt", mediaType: "text/plain")], to: scout)
+        try await chats.send("Hi", to: scout)
+        let look = try #require(chats.messages(of: scout).first { $0.body == "Look" })
+        let hi = try #require(chats.messages(of: scout).first { $0.body == "Hi" })
+
+        let (text, files) = try chats.takeBack(look, in: scout)
+        chats.delete(hi, in: scout)
+
+        #expect(text == "Look")
+        #expect(files.map(\.filename) == ["notes.txt"])
+        #expect(try Data(contentsOf: try #require(files.first).url) == Data("notes".utf8))
+        #expect(!chats.messages(of: scout).contains { $0.id == look.id || $0.id == hi.id })
     }
 
     /// A longer message grows the field over the conversation, as in Messages; the conversation keeps
