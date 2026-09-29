@@ -83,14 +83,16 @@ Right-click to rename, duplicate, or permanently delete a file or empty folder.
 
 Edit a computer to change its name, description, icon, background, and terminal
 colours. Backgrounds support images, animated HEIC, and muted looping video.
+While a computer is stopped, you can also change its CPUs, memory and networking;
+the disk capacity is set when the computer is created.
 
 The optional description (up to 500 characters) says what the computer is for,
 such as which project it builds. Assigned bots see it with the name and use it to
 choose the right computer. It is not shown on preview cards in conversations.
 
 A Desktop computer keeps its own screen resolution and scales to fit its window.
-Turn on **Resize desktop with window** in the editor to make the desktop follow the
-window's size instead.
+Turn on **Resize desktop with window**, when creating the computer or in its editor,
+to make the desktop follow the window's size instead.
 
 Choose **Update** from the computer's context menu or editor to fetch its latest
 image. The computer stops during the update and restarts afterward. Your files

@@ -256,11 +256,7 @@ enum ComputerDisplayMode: String {
             if computer.kind == .container {
                 try ContainerComputer.requireSupportedImage(computer)
             }
-            guard computer.kind == .localMac || (computer.cpuCount <= VZVirtualMachineConfiguration.maximumAllowedCPUCount &&
-                UInt64(computer.memoryGiB) * 1_073_741_824 <= VZVirtualMachineConfiguration.maximumAllowedMemorySize
-            ) else {
-                throw ComputerError("The requested CPU or memory allocation exceeds this Mac’s virtualization limits.")
-            }
+            try Self.requireVirtualizationLimits(computer)
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
             computer.macAddress = computer.kind == .localMac ? nil : VZMACAddress.randomLocallyAdministered().string
             if computer.kind == .localMac {
@@ -727,6 +723,28 @@ enum ComputerDisplayMode: String {
         do {
             session.computer = try library.save(computer)
         } catch { self.error = error.localizedDescription }
+    }
+
+    /// What a stopped computer runs with; it takes effect at the next start.
+    func changeResources(_ session: ComputerSession, cpus: Int, memoryGiB: Int, networkEnabled: Bool) throws {
+        guard session.computer.kind != .localMac, session.phase == .stopped,
+              session.virtual == nil, session.container == nil else {
+            throw ComputerError("Stop the computer before changing its resources.")
+        }
+        var computer = session.computer
+        computer.cpuCount = cpus
+        computer.memoryGiB = memoryGiB
+        computer.networkEnabled = networkEnabled
+        try Self.requireVirtualizationLimits(computer)
+        session.computer = try library.save(computer)
+    }
+
+    private static func requireVirtualizationLimits(_ computer: Computer) throws {
+        guard computer.kind == .localMac || (computer.cpuCount <= VZVirtualMachineConfiguration.maximumAllowedCPUCount &&
+            UInt64(computer.memoryGiB) * 1_073_741_824 <= VZVirtualMachineConfiguration.maximumAllowedMemorySize
+        ) else {
+            throw ComputerError("The requested CPU or memory allocation exceeds this Mac’s virtualization limits.")
+        }
     }
 
     func remove(_ session: ComputerSession) {

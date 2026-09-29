@@ -775,6 +775,9 @@ struct EditComputerView: View {
   @State private var updating = false
   @State private var appearance = ComputerAppearance()
   @State private var resizesDesktop = false
+  @State private var cpus = 0
+  @State private var memory = 0
+  @State private var network = true
   private var stopLabel: String { session.computer.usesVirtualMachine ? "Force Stop" : "Stop" }
 
   var body: some View {
@@ -787,6 +790,12 @@ struct EditComputerView: View {
         Button("Save") {
           store.rename(session, name: name, description: description, appearance: appearance,
                        resizesDesktop: session.computer.hasDesktop ? resizesDesktop : nil)
+          let computer = session.computer
+          if computer.kind != .localMac,
+             (cpus, memory, network) != (computer.cpuCount, computer.memoryGiB, computer.networkEnabled) {
+            do { try store.changeResources(session, cpus: cpus, memoryGiB: memory, networkEnabled: network) }
+            catch { store.error = error.localizedDescription }
+          }
           dismiss()
         }
         .keyboardShortcut(.defaultAction)
@@ -810,10 +819,20 @@ struct EditComputerView: View {
           if session.computer.kind == .localMac {
             LabeledContent("Resources", value: "Shared with this Mac")
             LabeledContent("Files", value: "Retained in its own account")
-          } else {
-            LabeledContent("CPUs", value: String(session.computer.cpuCount))
-            LabeledContent("Memory", value: "\(session.computer.memoryGiB) GB")
+          } else if session.canDelete {
+            ComputerResourceRow("CPUs", value: $cpus,
+              range: 1...max(2, session.computer.cpuCount, min(32, ProcessInfo.processInfo.processorCount)))
+            ComputerResourceRow("Memory", value: $memory, unit: "GB",
+              range: (session.computer.template?.minimumMemoryGiB ?? 1)...max(64, session.computer.memoryGiB))
             LabeledContent("Disk capacity", value: "\(session.computer.diskGiB) GB")
+            Toggle("Networking", isOn: $network)
+          } else {
+            Group {
+              LabeledContent("CPUs", value: String(session.computer.cpuCount))
+              LabeledContent("Memory", value: "\(session.computer.memoryGiB) GB")
+              LabeledContent("Disk capacity", value: "\(session.computer.diskGiB) GB")
+              LabeledContent("Networking", value: session.computer.networkEnabled ? "On" : "Off")
+            }.help("Stop the computer to change its resources")
           }
           if session.computer.hasDesktop {
             Divider()
@@ -854,6 +873,8 @@ struct EditComputerView: View {
       name = session.computer.name; description = session.computer.description ?? ""
       appearance = session.computer.appearance ?? .init()
       resizesDesktop = session.computer.resizesDesktop
+      cpus = session.computer.cpuCount; memory = session.computer.memoryGiB
+      network = session.computer.networkEnabled
     }
     .alert(session.computer.kind == .localMac ? "Delete \(session.computer.name) and its account?" : "Move \(session.computer.name) to Trash?", isPresented: $deleting) {
       Button("Cancel", role: .cancel) {}
@@ -966,6 +987,7 @@ struct NewComputerView: View {
   @State private var disk: Int
   @State private var advanced = false
   @State private var network = true
+  @State private var resizesDesktop = false
   @State private var failure: String?
   @State private var appearance = ComputerAppearance()
   init(store: ComputerStore) {
@@ -983,6 +1005,7 @@ struct NewComputerView: View {
     computer.memoryGiB = memory
     computer.diskGiB = disk
     computer.networkEnabled = network
+    if template.type == .desktop { computer.resizesDesktopWithWindow = resizesDesktop }
     computer.appearance = appearance
     return computer
   }
@@ -1053,6 +1076,11 @@ struct NewComputerView: View {
                   )
                   .font(.caption).foregroundStyle(.secondary)
                   .fixedSize(horizontal: false, vertical: true)
+                  if template.type == .desktop {
+                    Divider()
+                    Toggle("Resize desktop with window", isOn: $resizesDesktop).toggleStyle(.switch)
+                      .controlSize(.small).fixedSize()
+                  }
                 }.padding(.top, 12)
               }.disclosureGroupStyle(ComputerDisclosureStyle())
             }

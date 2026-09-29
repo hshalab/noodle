@@ -11,6 +11,8 @@
 - Desktop computers can be made with networking off.
 - **New Container** is now **New Linux Container**, beside **New Local Mac**.
 - A Local Mac’s desktop blurs while you resize its window and sharpens once you let go, like a Linux desktop does.
+- **Resize desktop with window** can be turned on when creating a Desktop computer.
+- A stopped Linux computer’s CPUs, memory and networking can be changed in its editor.
 
 ### Removed
 

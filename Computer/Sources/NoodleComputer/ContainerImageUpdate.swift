@@ -73,12 +73,7 @@ extension ContainerComputer {
             try emptyDisk(at: layers.appendingPathComponent("Mount.ext4"), size: 32 * 1_048_576, journal: false)
             if computer.networkEnabled {
                 await status("Preparing workspace networking…", nil)
-                let networkImage = computer.template == .shell ? image
-                    : try await registryRequest(reference: Computer.shellImage) {
-                        try await store.pull(reference: Computer.shellImage, platform: .current)
-                    }
-                _ = try await EXT4Unpacker(capacityInBytes: 256 * 1_048_576, journal: .default)
-                    .unpack(networkImage, for: .current, at: layers.appendingPathComponent("Network.ext4"))
+                try await prepareNetworkDisk(computer: computer, layers: layers, store: store, image: image)
             }
             try Task.checkCancellation()
             return state
@@ -145,6 +140,20 @@ extension ContainerComputer {
                 throw ComputerError("Could not download \(reference). The registry requested an unsafe sign-in exchange. Use a public image from a trusted registry, or ask the registry administrator to fix its authentication settings.")
             }
         }
+    }
+
+    /// Also made at start for a computer whose networking was turned on after it was created without.
+    static func prepareNetworkDisk(computer: Computer, layers: URL, store: ImageStore, image: Containerization.Image? = nil) async throws {
+        let networkImage = if let image, computer.template == .shell { image } else {
+            try await registryRequest(reference: Computer.shellImage) {
+                try await store.pull(reference: Computer.shellImage, platform: .current)
+            }
+        }
+        let staging = layers.appendingPathComponent("Network.ext4.partial")
+        try? FileManager.default.removeItem(at: staging)
+        _ = try await EXT4Unpacker(capacityInBytes: 256 * 1_048_576, journal: .default)
+            .unpack(networkImage, for: .current, at: staging)
+        try FileManager.default.moveItem(at: staging, to: layers.appendingPathComponent("Network.ext4"))
     }
 
     private static func emptyDisk(at url: URL, size: UInt64, journal: Bool) throws {

@@ -50,6 +50,10 @@ actor ContainerComputer {
         try Self.requireSupportedImage(computer)
         let state = try preparedState ?? ContainerDiskState.load(in: directory)
         let layers = state.directory(in: directory)
+        if computer.networkEnabled, !FileManager.default.fileExists(atPath: layers.appendingPathComponent("Network.ext4").path) {
+            try await Self.prepareNetworkDisk(computer: computer, layers: layers,
+                                              store: ImageStore(path: cache.appendingPathComponent("Images")))
+        }
         let savedImage = try JSONDecoder().decode(ContainerizationOCI.Image.self,
             from: Data(contentsOf: layers.appendingPathComponent("ImageConfig.json")))
         guestConfiguration = savedImage.config.map { LinuxProcessConfiguration(from: $0) } ?? LinuxProcessConfiguration()
