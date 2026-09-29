@@ -44,7 +44,7 @@ import WebKit
         guard !deleting.contains(browserID) else { throw BrowserError("This browser is being deleted.") }
         var profile = try library.profile(browserID)
         guard profile.tabs.count < 100 || restoring != nil else { throw BrowserError("This browser has reached its 100-tab limit.") }
-        let info = restoring ?? BrowserTabInfo()
+        let info = restoring ?? BrowserTabInfo(lastUsed: Date())
         if let tab = tabs[info.id] { return tab }
         let tab = BrowserTab(browserID: browserID, info: info, runtime: self, configuration: configuration)
         if restoring == nil {
@@ -83,6 +83,52 @@ import WebKit
         profile.selectedTabID = tabID; try library.update(profile)
         _ = try tab(browserID: browserID, tabID: tabID)
         showWatchedTab(browserID)
+        touch(browserID: browserID, tabID: tabID)
+    }
+    /// A person, a bot or someone watching live used the tab. Saved at most once a minute,
+    /// since people's input arrives many times a second.
+    func touch(browserID: UUID, tabID: UUID, now: Date = Date()) {
+        do {
+            var profile = try library.profile(browserID)
+            guard let index = profile.tabs.firstIndex(where: { $0.id == tabID }) else { return }
+            if let used = profile.tabs[index].lastUsed, now.timeIntervalSince(used) < 60 { return }
+            profile.tabs[index].lastUsed = now; tabs[tabID]?.info.lastUsed = now
+            try library.update(profile)
+        } catch { failure = error.localizedDescription }
+    }
+    /// Closes tabs nobody has used for `age`. A tab on screen, being watched or waiting on a
+    /// dialog counts as in use. One with no record of use has its time start now.
+    func expireTabs(unusedFor age: TimeInterval, now: Date = Date()) {
+        for var profile in library.profiles where !busy.contains(profile.id) && !deleting.contains(profile.id) {
+            var expired: [UUID] = [], stamped = false
+            for index in profile.tabs.indices {
+                let info = profile.tabs[index], tab = tabs[info.id]
+                let inUse = isWatched(profile.id) || tab?.dialog != nil
+                    || tab.map { $0.web.window != nil && $0.web.window !== $0.surface && $0.web.window?.isVisible == true } == true
+                guard let used = info.lastUsed, !inUse else {
+                    profile.tabs[index].lastUsed = now; tab?.info.lastUsed = now; stamped = true; continue
+                }
+                if now.timeIntervalSince(used) >= age { expired.append(info.id) }
+            }
+            do {
+                if stamped { try library.update(profile) }
+                for id in expired { try closeTab(browserID: profile.id, tabID: id) }
+            } catch { failure = error.localizedDescription }
+        }
+    }
+    /// How many days a tab may go unused before it closes, from Settings > General. None never closes them.
+    static func tabExpiry(_ defaults: UserDefaults) -> TimeInterval? {
+        let days = defaults.object(forKey: "BrowserTabExpiryDays") as? Int ?? 7
+        return days > 0 ? TimeInterval(days) * 86_400 : nil
+    }
+    private var expiry: Task<Void, Never>?
+    func startTabExpiry(defaults: UserDefaults = .standard) {
+        expiry = Task { [weak self] in
+            while !Task.isCancelled {
+                if let age = Self.tabExpiry(defaults) { self?.expireTabs(unusedFor: age) }
+                try? await Task.sleep(for: .seconds(3600))
+            }
+        }
     }
     func closeTab(browserID: UUID, tabID: UUID) throws {
         var profile = try library.profile(browserID)
@@ -142,6 +188,7 @@ import WebKit
     }
     func shutdown() {
         server = nil
+        expiry?.cancel(); expiry = nil
         for tab in tabs.values { tab.stop() }
         tabs.removeAll()
     }
@@ -250,6 +297,7 @@ import WebKit
         }
         let tab = try tab(browserID: id, tabID: request.tabID!)
         response.tabID = tab.id
+        touch(browserID: id, tabID: tab.id)
         if ![.inspect, .screenshot, .present].contains(request.operation) { tab.beginAgentInteraction() }
         switch request.operation {
         case .navigate: tab.navigate(try BrowserRequest.navigationURL(request.url!))

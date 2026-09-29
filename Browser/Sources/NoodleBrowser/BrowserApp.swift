@@ -127,6 +127,7 @@ struct NoodleBrowserApp: App {
             Task { await BrowserUITest.runAndExit(delegate: self) }; return
         }
         runtime.startServer()
+        runtime.startTabExpiry()
         if notification.userInfo?[NSApplication.launchIsDefaultUserInfoKey] as? Bool == true, !externalLaunch {
             DispatchQueue.main.async { if !self.externalLaunch { self.reopenLibrary() } }
         }

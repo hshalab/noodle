@@ -83,4 +83,49 @@ final class BrowserRuntimeTests: XCTestCase {
         var download = BrowserRequest(.download, browserID: b.id); download.fileID = UUID()
         do { _ = try await runtime.perform(download); XCTFail("Unknown download") } catch {}
     }
+    @MainActor func testTabsNobodyUsedForTheExpiryAreClosed() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let library = BrowserLibrary(root: root), now = Date(), day: TimeInterval = 86_400
+        var a = try library.create(name: "A")
+        let old = BrowserTabInfo(lastUsed: now - 8 * day), recent = BrowserTabInfo(lastUsed: now - day), unknown = BrowserTabInfo()
+        a.tabs = [old, recent, unknown]; a.selectedTabID = old.id; try library.update(a)
+        let runtime = BrowserRuntime(library: library)
+        runtime.expireTabs(unusedFor: 7 * day, now: now)
+        let tabs = try library.profile(a.id).tabs
+        XCTAssertEqual(tabs.map(\.id), [recent.id, unknown.id])
+        XCTAssertEqual(try library.profile(a.id).selectedTabID, recent.id)
+        // A tab with no record of use has its time start now rather than being closed.
+        XCTAssertEqual(tabs.last?.lastUsed, now)
+        runtime.expireTabs(unusedFor: 7 * day, now: now + 6.5 * day)
+        XCTAssertEqual(try library.profile(a.id).tabs.map(\.id), [unknown.id])
+    }
+    @MainActor func testPeopleBotsAndLiveViewersUsingATabKeepItOpen() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let library = BrowserLibrary(root: root), long = Date() - 30 * 86_400
+        var a = try library.create(name: "A")
+        let first = BrowserTabInfo(lastUsed: long), second = BrowserTabInfo(lastUsed: long), third = BrowserTabInfo(lastUsed: long)
+        a.tabs = [first, second, third]; a.selectedTabID = first.id; try library.update(a)
+        let runtime = BrowserRuntime(library: library)
+        defer { runtime.shutdown() }
+        func used(_ id: UUID) throws -> Date { try XCTUnwrap(library.profile(a.id).tabs.first { $0.id == id }?.lastUsed) }
+        // A bot.
+        var reload = BrowserRequest(.reload, browserID: a.id); reload.tabID = first.id
+        _ = try await runtime.perform(reload)
+        XCTAssertGreaterThan(try used(first.id), long)
+        // A person choosing a tab.
+        try runtime.selectTab(browserID: a.id, tabID: second.id)
+        XCTAssertGreaterThan(try used(second.id), long)
+        // Someone watching live, acting on the selected tab.
+        try runtime.selectTab(browserID: a.id, tabID: third.id)
+        var profile = try library.profile(a.id)
+        profile.tabs[2].lastUsed = long; try library.update(profile)
+        runtime.tabs[third.id]?.info.lastUsed = long
+        try BrowserLiveView(browserID: a.id, runtime: runtime).apply(.scroll(x: 10, y: 400, dx: 0, dy: 10))
+        XCTAssertGreaterThan(try used(third.id), long)
+        // A new tab starts as used.
+        let opened = try await runtime.perform(.init(.open, browserID: a.id))
+        XCTAssertNotNil(try used(XCTUnwrap(opened.tabID)))
+    }
 }

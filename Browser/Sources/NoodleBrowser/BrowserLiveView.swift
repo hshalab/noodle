@@ -154,6 +154,7 @@ struct BrowserAddressDraft: Equatable {
 
     func apply(_ input: SurfaceInput) throws {
         let top = BrowserLiveChrome.height
+        if let id = try profile().selectedTabID { runtime?.touch(browserID: browserID, tabID: id) }
         switch input {
         case .pointer(let phase, let x, let y, let count):
             if phase == .down { pressedOnStrip = y < top; draft = nil }

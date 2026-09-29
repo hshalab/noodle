@@ -106,8 +106,12 @@ public struct BrowserTabInfo: Codable, Identifiable, Equatable, Sendable {
     public var url: String
     public var loading: Bool
     public var error: String?
-    public init(id: UUID = UUID(), title: String = "New Tab", url: String = "about:blank", loading: Bool = false, error: String? = nil) {
-        self.id = id; self.title = title; self.url = url; self.loading = loading; self.error = error
+    /// When a person, a bot or someone watching live last used the tab. Tabs unused for
+    /// long enough are closed.
+    public var lastUsed: Date?
+    public init(id: UUID = UUID(), title: String = "New Tab", url: String = "about:blank", loading: Bool = false, error: String? = nil,
+                lastUsed: Date? = nil) {
+        self.id = id; self.title = title; self.url = url; self.loading = loading; self.error = error; self.lastUsed = lastUsed
     }
 }
 public struct BrowserDownloadInfo: Codable, Identifiable, Equatable, Sendable {

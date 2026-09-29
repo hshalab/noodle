@@ -51,15 +51,19 @@ import WebKit
         web.setAllMediaPlaybackSuspended((try? runtime.library.profile(browserID).muted) ?? true, completionHandler: nil)
         inputMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .mouseMoved, .scrollWheel, .keyDown]) { [weak self] event in
             guard let self, event.window === self.web.window, event.window?.isVisible == true else { return event }
+            var used = false
             if event.type != .keyDown {
                 if self.web.bounds.contains(self.web.convert(event.locationInWindow, from: nil)) {
                     self.resetPointer()
                     if event.type == .leftMouseDown { self.humanInput = true }
+                    used = event.type != .mouseMoved
                 }
             } else if let view = event.window?.firstResponder as? NSView, view === self.web || view.isDescendant(of: self.web) {
                 self.resetPointer()
                 self.humanInput = true
+                used = true
             }
+            if used { self.runtime?.touch(browserID: self.browserID, tabID: self.id) }
             return event
         }
         web.allowsBackForwardNavigationGestures = true

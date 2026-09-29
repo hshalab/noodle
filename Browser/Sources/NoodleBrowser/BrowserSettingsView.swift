@@ -27,6 +27,7 @@ struct BrowserSettingsView: View {
 private struct BrowserGeneralSettingsView: View {
     @AppStorage("BrowserRestoreSelection") private var restoreSelection = true
     @AppStorage("BrowserSearchEngine") private var searchEngine = "duckduckgo"
+    @AppStorage("BrowserTabExpiryDays") private var tabExpiryDays = 7
     var body: some View {
         Form {
             CompanionVisibilitySettings()
@@ -34,6 +35,9 @@ private struct BrowserGeneralSettingsView: View {
                 Toggle("Restore selected browser on launch", isOn: $restoreSelection)
                 Picker("Search engine", selection: $searchEngine) {
                     Text("DuckDuckGo").tag("duckduckgo"); Text("Google").tag("google"); Text("Bing").tag("bing")
+                }
+                Picker("Close tabs not used for", selection: $tabExpiryDays) {
+                    Text("1 day").tag(1); Text("7 days").tag(7); Text("30 days").tag(30); Text("Never").tag(0)
                 }
             }
         }.formStyle(.grouped)

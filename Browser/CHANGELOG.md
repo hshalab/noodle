@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Tabs nobody has used for 7 days close on their own, to free up memory. A tab counts as used when you click or type in it, or a bot or someone watching live uses it. Choose the time, or Never, in Settings > General.
+
 ### Fixed
 
 - A page watched live from another device keeps animating, and counts as seen, when no Browser window shows it on this Mac. Games, videos and other animation used to freeze until the window was opened.
