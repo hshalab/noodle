@@ -6,6 +6,7 @@
 
 - Send sharper live video when a noodlet cannot be captured at full speed, using the whole rate the viewer's connection takes. It used to go at about a third of it.
 - Stop live video from stuttering every two seconds on a slow connection: a key frame goes only to a viewer that needs one. Update Noodle and Noodle for iPhone as well, so their live views ask for one when they cannot go on.
+- Record noodlets at twice the bit rate, so fast motion such as rain in a game stays sharp instead of turning blocky. Recordings are about twice as large, still capped at 12 Mbps.
 
 ### Fixed
 

@@ -27,8 +27,8 @@ import AppletBridge
         videoURL = url.deletingPathExtension().appendingPathExtension("video.mp4")
         self.size = CGSize(width: Int(size.width) / 2 * 2, height: Int(size.height) / 2 * 2)
         writer = try AVAssetWriter(outputURL: videoURL, fileType: .mp4)
-        // Screen recordings are mostly still with sharp text, so the bit rate is budgeted per
-        // pixel and capped: enough for a readable noodlet, small enough to post.
+        // The bit rate is budgeted per pixel and capped: enough for a game in motion to stay
+        // sharp, small enough to post.
         let pixels = Double(self.size.width * self.size.height) * Double(Self.framesPerSecond)
         input = AVAssetWriterInput(
             mediaType: .video,
@@ -36,7 +36,7 @@ import AppletBridge
                 AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: Int(self.size.width),
                 AVVideoHeightKey: Int(self.size.height),
                 AVVideoCompressionPropertiesKey: [
-                    AVVideoAverageBitRateKey: Int(min(max(pixels * 0.2, 2_000_000), 12_000_000)),
+                    AVVideoAverageBitRateKey: Int(min(max(pixels * 0.4, 2_000_000), 12_000_000)),
                     AVVideoExpectedSourceFrameRateKey: Self.framesPerSecond,
                     AVVideoMaxKeyFrameIntervalKey: Self.framesPerSecond * 2,
                     AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
