@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-09-29
+
 ### Added
 
 - Tabs nobody has used for 7 days close on their own, to free up memory. A tab counts as used when you click or type in it, or a bot or someone watching live uses it. Choose the time, or Never, in Settings > General.

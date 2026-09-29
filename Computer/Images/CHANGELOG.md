@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-29
+
 ### Changed
 
 - Draw the desktop with Xorg on the computer's virtual GPU, shown natively by Noodle Computer, and remove KasmVNC, its web client and the desktop password. Nothing on the desktop listens on the network.

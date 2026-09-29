@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-09-29
+
 ### Added
 
 - A noodlet can draw its own window buttons. With `"titlebar": "none"` in its `noodlet.json` the native close, minimise and zoom buttons are hidden, and its own buttons call `noodle.window` in HTML or `NoodletContext.window` in Swift to close, minimise, zoom or go full screen.

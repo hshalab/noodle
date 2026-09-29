@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-29
+
 ### What to Test
 
 - Pull down on the bots list and type in Search: only bots whose name, description or conversation match are listed, in one list without the pinned circles. Accents and capitals do not matter.
