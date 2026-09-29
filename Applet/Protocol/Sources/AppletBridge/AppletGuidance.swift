@@ -171,6 +171,9 @@ public enum AppletGuidance {
         own: HTML calls `noodle.window.close()` / `minimize()` / `zoom()` /
         `toggleFullScreen()`, Swift the same on `NoodletContext.window`. Each returns false
         while the window is out of sight.
+        macOS rounds windows with a title bar only. With titlebar "none", cornerRadius
+        (0–100 points) drops the title bar and shapes the window itself: 0 is square, more
+        rounds the content, and full screen is always square. Not for preview windows.
         Dimensions are content points, 120–4096; minimum cannot exceed maximum.
         Resizing defaults on. Played on a TV, a resizable window fills the screen; a fixed
         one (resizable false, or equal min and max) keeps its size, scaled to fit on black.

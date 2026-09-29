@@ -133,6 +133,24 @@ final class NativeRunnerTests: XCTestCase {
         XCTAssertEqual(lines, ["3 true", "false false false false"])
     }
 
+    /// Square corners drop the title bar, and the window still takes the keyboard.
+    func testSquareCornersDropTheTitleBar() throws {
+        let lines = try runBackground("""
+            import SwiftUI
+            struct Noodlet: View {
+                var body: some View {
+                    Color.red.ignoresSafeArea().onTapGesture {
+                        let window = NSApp.windows.first { $0.contentView != nil }!
+                        print(window.styleMask.contains(.titled), window.canBecomeKey, window.collectionBehavior.contains(.fullScreenPrimary))
+                    }
+                }
+            }
+            """, window: #"{"titlebar":"none","cornerRadius":0}"#) { send in
+            XCTAssertNil(try send("check", ["operation": "click", "x": 100, "y": 150])["error"])
+        }
+        XCTAssertEqual(lines, ["false true true"])
+    }
+
     /// Builds `source` with the native runtime, runs it in background mode, which never orders
     /// the window in, and returns what it printed after `drive` sends it commands.
     private func runBackground(

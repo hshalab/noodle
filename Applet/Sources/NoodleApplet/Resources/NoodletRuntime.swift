@@ -208,6 +208,10 @@ public struct NoodletSecrets: Sendable {
             let panel = NSPanel(contentRect: CGRect(origin: .zero, size: size), styleMask: [.titled, .closable, .resizable, .utilityWindow, .hudWindow, .nonactivatingPanel], backing: .buffered, defer: false)
             panel.hidesOnDeactivate = false; panel.isFloatingPanel = true; panel.becomesKeyOnlyIfNeeded = false
             window = panel
+        } else if options["cornerRadius"] is NSNumber {
+            window = NoodletUntitledWindow(contentRect: CGRect(origin: .zero, size: size), styleMask: [.closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
+            // Titled windows get this from AppKit.
+            if options["type"] as? String != "floating" { window.collectionBehavior.insert(.fullScreenPrimary) }
         } else {
         window = NSWindow(contentRect: CGRect(origin: .zero, size: size), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         }
@@ -224,11 +228,17 @@ public struct NoodletSecrets: Sendable {
         if !plainTitlebar || options["type"] as? String == "preview" { window.titleVisibility = .hidden; window.titlebarAppearsTransparent = true; window.styleMask.insert(.fullSizeContentView); window.isMovableByWindowBackground = true }
         let background = options["background"] as? String ?? "opaque"
         if background != "opaque" { window.isOpaque = false; window.backgroundColor = .clear }
+        var root: NSView = host
         if background == "translucent" {
             let effect = NSVisualEffectView(frame: host.bounds)
             effect.material = .hudWindow; effect.blendingMode = .behindWindow; effect.state = .active
-            effect.addSubview(host); window.contentView = effect
-        } else { window.contentView = host }
+            effect.addSubview(host); root = effect
+        }
+        if let radius = options["cornerRadius"] as? Double, radius > 0 {
+            window.isOpaque = false; window.backgroundColor = .clear
+            root = NoodletShapeView(root, radius: radius, filled: background == "opaque")
+        }
+        window.contentView = root
         if !plainTitlebar || options["type"] as? String == "preview", let container = window.contentView {
             let drag = NoodletTitlebarDragView(); drag.translatesAutoresizingMaskIntoConstraints = false
             container.addSubview(drag, positioned: .above, relativeTo: nil)
@@ -327,7 +337,7 @@ public struct NoodletSecrets: Sendable {
             context.cgContext.scaleBy(x: scale.width, y: scale.height)
             try body()
         }
-        try drawing { NSGraphicsContext.current?.cgContext.clear(CGRect(origin: .zero, size: host.bounds.size)); window.backgroundColor.setFill(); host.bounds.fill() }
+        try drawing { NSGraphicsContext.current?.cgContext.clear(CGRect(origin: .zero, size: host.bounds.size)); ((host.superview as? NoodletShapeView)?.fill ?? window.backgroundColor).setFill(); host.bounds.fill() }
         host.cacheDisplay(in:host.bounds,to:bitmap)
         func compositeSprites(_ view: NSView) throws {
             if let sk = view as? SKView, let scene = sk.scene {
@@ -435,6 +445,45 @@ public struct NoodletSecrets: Sendable {
     }
 }
 struct RuntimeError: LocalizedError { let message: String; init(_ text: String) { message=text }; var errorDescription: String? { message } }
+
+/// A noodlet window with a cornerRadius: no title bar, yet it takes the keyboard and closes with ⌘W.
+@MainActor final class NoodletUntitledWindow: NSWindow {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
+    // The inherited one refuses without a close button.
+    override func performClose(_ sender: Any?) { if delegate?.windowShouldClose?(self) != false { close() } }
+}
+
+/// Clips a noodlet window to its cornerRadius, over the window background when opaque.
+/// Full screen is square, like the screen.
+@MainActor final class NoodletShapeView: NSView {
+    private let radius: CGFloat
+    let fill: NSColor?
+    init(_ content: NSView, radius: CGFloat, filled: Bool) {
+        self.radius = radius; fill = filled ? .windowBackgroundColor : nil
+        super.init(frame: content.frame)
+        wantsLayer = true; layer?.masksToBounds = true; layer?.cornerCurve = .continuous
+        content.frame = bounds; content.autoresizingMask = [.width, .height]; addSubview(content)
+        shape()
+    }
+    required init?(coder: NSCoder) { nil }
+    override var wantsUpdateLayer: Bool { true }
+    override func updateLayer() { layer?.backgroundColor = fill?.cgColor }
+    override func layout() { super.layout(); shape() }
+    private func shape() {
+        let radius = window?.styleMask.contains(.fullScreen) == true ? 0 : radius
+        // Material behind the window is shaped only by its mask.
+        if let effect = subviews.first as? NSVisualEffectView { effect.maskImage = radius > 0 ? Self.mask(radius) : nil } else { layer?.cornerRadius = radius }
+        window?.invalidateShadow()
+    }
+    private static func mask(_ radius: CGFloat) -> NSImage {
+        let image = NSImage(size: CGSize(width: radius * 2 + 1, height: radius * 2 + 1), flipped: false) { rect in
+            NSColor.black.setFill(); NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill(); return true
+        }
+        image.capInsets = NSEdgeInsets(top: radius, left: radius, bottom: radius, right: radius); image.resizingMode = .stretch
+        return image
+    }
+}
 
 @MainActor final class NoodletTitlebarDragView: NSView {
     override var mouseDownCanMoveWindow: Bool { true }

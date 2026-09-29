@@ -31,4 +31,16 @@ final class WindowTests: XCTestCase {
             XCTAssertEqual(json["titlebar"] as? NSObject, original["titlebar"] as? NSObject, text)
         }
     }
+    func testCornerRadiusNeedsTheNoodletsOwnTitlebar() throws {
+        XCTAssertNil(try decode("{}").cornerRadius)
+        let square = try decode(#"{"titlebar":"none","cornerRadius":0}"#)
+        try square.validate()
+        XCTAssertEqual(square.cornerRadius, 0)
+        try decode(#"{"titlebar":"none","type":"floating","cornerRadius":12.5}"#).validate()
+        for text in [#"{"cornerRadius":0}"#, #"{"titlebar":false,"cornerRadius":0}"#,
+                     #"{"titlebar":"none","type":"preview","cornerRadius":0}"#,
+                     #"{"titlebar":"none","cornerRadius":-1}"#, #"{"titlebar":"none","cornerRadius":101}"#] {
+            XCTAssertThrowsError(try decode(text).validate(), text)
+        }
+    }
 }

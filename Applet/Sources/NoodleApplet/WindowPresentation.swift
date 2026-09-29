@@ -31,7 +31,10 @@ struct WindowPlace: Codable, Equatable {
       panel.becomesKeyOnlyIfNeeded = false
       return panel
     }
-    let window = NSWindow(contentRect: frame, styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
+    let window =
+      options.cornerRadius == nil
+      ? NSWindow(contentRect: frame, styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
+      : UntitledWindow(contentRect: frame, styleMask: [.closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
     window.isReleasedWhenClosed = false
     return window
   }
@@ -42,6 +45,8 @@ struct WindowPlace: Codable, Equatable {
     if !options.resizable { window.styleMask.remove(.resizable) }
     window.level = options.type != .standard ? .floating : .normal
     if options.type != .standard { window.collectionBehavior.insert(.fullScreenAuxiliary) }
+    // Titled windows get this from AppKit.
+    if options.cornerRadius != nil && options.type == .standard { window.collectionBehavior.insert(.fullScreenPrimary) }
     let ownTitlebar = options.titlebar == .none
     if options.titlebar != .visible || options.type == .preview {
       window.titleVisibility = .hidden
@@ -59,6 +64,7 @@ struct WindowPlace: Codable, Equatable {
       window.isOpaque = false
       window.backgroundColor = .clear
     }
+    var root = content
     if options.background == .translucent {
       let effect = NSVisualEffectView(frame: CGRect(origin: .zero, size: size))
       effect.material = .hudWindow
@@ -67,10 +73,14 @@ struct WindowPlace: Codable, Equatable {
       content.frame = effect.bounds
       content.autoresizingMask = [.width, .height]
       effect.addSubview(content)
-      window.contentView = effect
-    } else {
-      window.contentView = content
+      root = effect
     }
+    if let radius = options.cornerRadius, radius > 0 {
+      window.isOpaque = false
+      window.backgroundColor = .clear
+      root = WindowShapeView(root, radius: radius, filled: options.background == .opaque)
+    }
+    window.contentView = root
     if options.titlebar != .visible || options.type == .preview, let container = window.contentView {
       let drag = NoodletTitlebarDragView()
       drag.translatesAutoresizingMaskIntoConstraints = false
@@ -113,6 +123,63 @@ extension WindowPresentation {
     default: window.toggleFullScreen(nil)
     }
     return true
+  }
+}
+
+/// A noodlet window with a cornerRadius: no title bar, yet it takes the keyboard and closes with ⌘W.
+@MainActor private final class UntitledWindow: NSWindow {
+  override var canBecomeKey: Bool { true }
+  override var canBecomeMain: Bool { true }
+  // The inherited one refuses without a close button.
+  override func performClose(_ sender: Any?) {
+    if delegate?.windowShouldClose?(self) != false { close() }
+  }
+}
+
+/// Clips a noodlet window to its cornerRadius, over the window background when opaque.
+/// Full screen is square, like the screen.
+@MainActor private final class WindowShapeView: NSView {
+  private let radius: CGFloat
+  private let filled: Bool
+  init(_ content: NSView, radius: CGFloat, filled: Bool) {
+    self.radius = radius
+    self.filled = filled
+    super.init(frame: content.frame)
+    wantsLayer = true
+    layer?.masksToBounds = true
+    layer?.cornerCurve = .continuous
+    content.frame = bounds
+    content.autoresizingMask = [.width, .height]
+    addSubview(content)
+    shape()
+  }
+  required init?(coder: NSCoder) { nil }
+  override var wantsUpdateLayer: Bool { true }
+  override func updateLayer() { layer?.backgroundColor = filled ? NSColor.windowBackgroundColor.cgColor : nil }
+  override func layout() {
+    super.layout()
+    shape()
+  }
+  private func shape() {
+    let radius = window?.styleMask.contains(.fullScreen) == true ? 0 : radius
+    // Material behind the window is shaped only by its mask.
+    if let effect = subviews.first as? NSVisualEffectView {
+      effect.maskImage = radius > 0 ? Self.mask(radius) : nil
+    } else {
+      layer?.cornerRadius = radius
+    }
+    window?.invalidateShadow()
+  }
+  private static func mask(_ radius: CGFloat) -> NSImage {
+    let side = radius * 2 + 1
+    let image = NSImage(size: CGSize(width: side, height: side), flipped: false) { rect in
+      NSColor.black.setFill()
+      NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
+      return true
+    }
+    image.capInsets = NSEdgeInsets(top: radius, left: radius, bottom: radius, right: radius)
+    image.resizingMode = .stretch
+    return image
   }
 }
 

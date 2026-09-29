@@ -32,6 +32,8 @@ public struct NoodletWindowOptions: Codable, Sendable, Equatable {
   public var resizable = true
   public var rememberFrame = false
   public var titlebar = Titlebar.visible
+  /// Set, the window has no title bar, which is what macOS rounds, and this radius instead.
+  public var cornerRadius: Double?
   public var width: Int?
   public var height: Int?
   public var minWidth: Int?
@@ -40,7 +42,7 @@ public struct NoodletWindowOptions: Codable, Sendable, Equatable {
   public var maxHeight: Int?
   public init() {}
   enum CodingKeys: String, CodingKey {
-    case type, background, resizable, rememberFrame, titlebar, width, height, minWidth, minHeight,
+    case type, background, resizable, rememberFrame, titlebar, cornerRadius, width, height, minWidth, minHeight,
       maxWidth, maxHeight
   }
   public init(from decoder: Decoder) throws {
@@ -50,6 +52,7 @@ public struct NoodletWindowOptions: Codable, Sendable, Equatable {
     resizable = try c.decodeIfPresent(Bool.self, forKey: .resizable) ?? true
     rememberFrame = try c.decodeIfPresent(Bool.self, forKey: .rememberFrame) ?? false
     titlebar = try c.decodeIfPresent(Titlebar.self, forKey: .titlebar) ?? .visible
+    cornerRadius = try c.decodeIfPresent(Double.self, forKey: .cornerRadius)
     width = try c.decodeIfPresent(Int.self, forKey: .width)
     height = try c.decodeIfPresent(Int.self, forKey: .height)
     minWidth = try c.decodeIfPresent(Int.self, forKey: .minWidth)
@@ -58,6 +61,14 @@ public struct NoodletWindowOptions: Codable, Sendable, Equatable {
     maxHeight = try c.decodeIfPresent(Int.self, forKey: .maxHeight)
   }
   public func validate() throws {
+    if let cornerRadius {
+      guard titlebar == .none, type != .preview else {
+        throw AppletError(#"cornerRadius needs "titlebar": "none" and a standard or floating window."#)
+      }
+      guard (0...100).contains(cornerRadius) else {
+        throw AppletError("cornerRadius must be between 0 and 100 points.")
+      }
+    }
     for value in [width, height, minWidth, minHeight, maxWidth, maxHeight].compactMap({ $0 }) {
       guard (120...4096).contains(value) else {
         throw AppletError("Window dimensions must be between 120 and 4096 points.")
