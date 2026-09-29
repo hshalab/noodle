@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-09-29
+
 ### What to Test
 
 - Type a message of several lines, or press return a few times: the field grows over the conversation, and the conversation and its scroll bar stay where they are.

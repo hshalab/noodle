@@ -6,6 +6,8 @@ All notable changes to Noodle are documented here, following
 
 ## [Unreleased]
 
+## [0.35.0] - 2026-09-29
+
 ### Changed
 
 - Live views of a Noodle Hub's browser, computer or noodlet ask for a fresh picture whenever they cannot show the next one. Newer Noodle Browser, Computer and Applet send one only when asked, which keeps video from stuttering every two seconds on a slow connection.

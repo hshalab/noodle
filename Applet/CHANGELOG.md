@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-09-29
+
 ### Changed
 
 - Send sharper live video when a noodlet cannot be captured at full speed, using the whole rate the viewer's connection takes. It used to go at about a third of it.
