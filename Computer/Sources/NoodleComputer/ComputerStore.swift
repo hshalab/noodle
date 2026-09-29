@@ -527,7 +527,13 @@ enum ComputerDisplayMode: String {
     func stopComputer(_ session: ComputerSession, force: Bool = false) async {
         guard !session.phase.busy else { return }
         if let virtual = session.virtual, !force, virtual.machine.canRequestStop {
-            do { try virtual.requestShutdown() } catch { self.error = error.localizedDescription }
+            do {
+                try await Self.shutDownGuest(
+                    kind: session.computer.kind, request: virtual.requestShutdown,
+                    wait: { try? await Task.sleep(for: .seconds(30)) },
+                    stillRunning: { session.virtual === virtual && virtual.machine.state != .stopped },
+                    forceStop: { await self.stopComputer(session, force: true) })
+            } catch { self.error = error.localizedDescription }
             return
         }
         session.phase = .stopping
@@ -550,6 +556,18 @@ enum ComputerDisplayMode: String {
             session.localMac?.expectDisconnect(false)
             session.phase = .failed(error.localizedDescription)
         }
+    }
+
+    static func shutDownGuest(
+        kind: ComputerKind, request: () throws -> Void, wait: () async -> Void,
+        stillRunning: () -> Bool, forceStop: () async -> Void
+    ) async throws {
+        try request()
+        // Linux guests, such as installers, may ignore the ACPI request. macOS
+        // guests may be asking the user in the guest, so they are left alone.
+        guard kind == .linux else { return }
+        await wait()
+        if stillRunning() { await forceStop() }
     }
 
     func execute(_ text: String, in session: ComputerSession) async {
