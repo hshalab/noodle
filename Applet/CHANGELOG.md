@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- A Running section in the sidebar lists every noodlet that is up, including ones running out of sight for your bots. Control-click one and choose Stop to end it.
+
 ### Fixed
 
 - Closing a noodlet that someone was watching or using from another device now really unloads it. Its page stayed in memory, and viewers were left on a frozen picture instead of seeing the view end.

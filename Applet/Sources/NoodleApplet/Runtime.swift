@@ -670,6 +670,17 @@ import AppletCore
       return response
     }
   }
+  /// Whether any session of the noodlet is up, seen or not.
+  func isRunning(_ key: String) -> Bool {
+    sessions.values.contains { $0.package.key == key && $0.isActive }
+  }
+  func stop(_ key: String) {
+    for session in sessions.values where session.package.key == key && session.isActive {
+      session.stop()
+      _ = status(session)
+    }
+    objectWillChange.send()
+  }
   func open(_ package: NoodletPackage) {
     Task {
       if let error = await openInForeground(package).error { self.error = error }

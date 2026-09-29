@@ -244,6 +244,7 @@ private enum LibrarySection: String, CaseIterable, Identifiable {
   case all = "All"
   case recent = "Recent"
   case pinned = "Pinned"
+  case running = "Running"
   case hidden = "Hidden"
   case hub = "Hub"
   var id: Self { self }
@@ -252,6 +253,7 @@ private enum LibrarySection: String, CaseIterable, Identifiable {
     case .all: "square.grid.2x2"
     case .recent: "clock"
     case .pinned: "pin"
+    case .running: "play.circle"
     case .hidden: "eye.slash"
     case .hub: "server.rack"
     }
@@ -305,10 +307,12 @@ private struct LibraryView: View {
   private var entries: [LibraryEntry] {
     let matches = library.entries.filter {
       (search.isEmpty || $0.title.localizedCaseInsensitiveContains(search))
-        && (section == .hidden) == library.hidden.contains($0.id)
+        // Running lists every noodlet that is up, hidden or from Noodle Hub, so each can be stopped.
+        && (section == .running || (section == .hidden) == library.hidden.contains($0.id))
         // Noodle Hub's bots' noodlets are listed apart, unless pinned or hidden.
-        && ([.hidden, .pinned].contains(section) || (section == .hub) == library.hub.contains($0.id))
+        && ([.hidden, .pinned, .running].contains(section) || (section == .hub) == library.hub.contains($0.id))
         && (section != .pinned || library.pinned.contains($0.id))
+        && (section != .running || runtime.isRunning($0.id))
         && (section != .recent || library.recent.contains($0.id))
         && (category == nil || $0.package.manifest.category == category)
         && (person == nil || library.hubOwners[$0.id] == person)
@@ -365,7 +369,9 @@ private struct LibraryView: View {
                 ? "No pinned noodlets"
                 : section == .recent
                   ? "No recent noodlets"
-                  : section == .hidden ? "No hidden noodlets" : "No noodlets",
+                  : section == .hidden
+                    ? "No hidden noodlets"
+                    : section == .running ? "No running noodlets" : "No noodlets",
               systemImage: section?.symbol ?? "square.grid.2x2")
           }
         }
@@ -524,9 +530,7 @@ private struct LibraryView: View {
     let thumbnail = FileManager.default.fileExists(atPath: cached.path) ? cached
       : ((try? NoodletPackage.child("preview.png", in: entry.package.url)) ?? cached)
     let native = entry.package.manifest.runtime == "swift"
-    let running = runtime.sessions.values.contains {
-      $0.package.key == entry.id && $0.state == "running"
-    }
+    let running = runtime.isRunning(entry.id)
     return VStack(alignment: .leading, spacing: 0) {
       Button {
         runtime.open(entry.package)
@@ -593,12 +597,7 @@ private struct LibraryView: View {
     .contextMenu {
       Button("Open") { runtime.open(entry.package) }
       if running {
-        Button("Stop") {
-          for session in runtime.sessions.values where session.package.key == entry.id {
-            session.stop()
-          }
-          runtime.objectWillChange.send()
-        }
+        Button("Stop") { runtime.stop(entry.id) }
       }
       if let target = runtime.castTarget(for: entry.id) { NoodletCastMenu(target: target) }
       Button("Reveal Package") {

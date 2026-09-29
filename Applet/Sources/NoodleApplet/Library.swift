@@ -68,7 +68,7 @@ struct HubPerson: Hashable, Identifiable, Decodable {
   @Published var error: String?
   @Published var recent: [String]
   @Published var pinned: [String]
-  /// Kept in the library but listed only under Hidden: never in All, Recent, Pinned or the menu bar.
+  /// Kept in the library but listed only under Hidden, and Running while up: never in All, Recent, Pinned or the menu bar.
   @Published var hidden: [String]
   /// Made or opened by Noodle Hub's bots; listed only under Hub, apart from this Mac's own.
   @Published var hub: [String]
