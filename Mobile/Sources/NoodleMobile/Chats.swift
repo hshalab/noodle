@@ -1908,7 +1908,15 @@ struct GroupEditor: View {
                         } label: {
                             HStack(spacing: 12) {
                                 AgentAvatar(draft: bot.draft, size: 32)
-                                Text(bot.draft.name).foregroundStyle(.primary)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(bot.draft.name).foregroundStyle(.primary)
+                                    if !bot.about.isEmpty {
+                                        Text(bot.about)
+                                            .font(.subheadline)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(2)
+                                    }
+                                }
                                 Spacer()
                                 if chosen { Image(systemName: "checkmark").foregroundStyle(.tint) }
                             }

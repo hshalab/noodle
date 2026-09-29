@@ -8,9 +8,11 @@
 - Turn on Airplane Mode and send a message: it says Sending… for a while, then Not delivered in red with a red mark beside it. Turn Airplane Mode off within a few seconds instead, and it goes through by itself.
 - Tap the red mark, or hold the message: Try Again sends it, Edit and Send puts it back in the field with its files, and Delete removes it. Once anything newer is in the conversation, Try Again is gone and the message is never sent by itself.
 - Quit and reopen Noodle with a message that did not go through: it is still there, still marked.
+- Make a new group, or open a group's info: each bot in Members shows its description under its name.
 
 ### Changed
 
+- Choosing a group's bots shows each bot's description under its name.
 - Live views ask for a fresh picture whenever they cannot show the next one, as after Noodle was in the background. Newer Noodle Browser, Computer and Applet send one only when asked, which keeps video from stuttering every two seconds on a slow connection.
 - Live views stay live on a slow connection. They tell the Hub which pictures have arrived, so it sends less as soon as pictures start arriving late, instead of letting them pile up in the network and show a second or more behind. Update the Hub as well.
 
