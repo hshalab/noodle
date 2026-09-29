@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### What to Test
+
+- Pin a bot, then ask it to set its status with Messenger (for example, "set your status to Reviewing PR 42"): the status shows in a bubble over its circle. Needs the Mac or Hub on the next update.
+- While a pinned bot has a reply you have not read, its bubble shows the start of that reply in bold instead. Open the conversation and the bubble goes back to the status, or away.
+
+### Added
+
+- Pinned bots show a bubble over their circle with the start of an unread reply, or else the status the bot set.
+
 ## [0.6.0] - 2026-09-29
 
 ### What to Test

@@ -154,6 +154,9 @@ public enum MessengerCLI {
                     throw error
                 }
 
+            case .setStatus(let status):
+                return .json(MessengerStatus(status: try repository.setAgentStatus(status, agentID: agentID).status))
+
             case .help:
                 return MessengerCommandResult(exitCode: 0, standardOutput: help + "\n")
 
@@ -272,6 +275,11 @@ public enum MessengerCLI {
                 }
                 action = .react(conversationID: conversationID, messageID: messageID,
                                 emoji: emoji, present: values.contains("--react"))
+            case .setStatus:
+                guard let status = Self.option("--set-status", in: values) else { throw MessengerCLIError.invalidArguments }
+                action = .setStatus(status)
+            case .clearStatus:
+                action = .setStatus(nil)
             case .send:
                 guard let rawConversation = Self.option("--conversation", in: values),
                       let conversationID = UUID(uuidString: rawConversation) else {
@@ -373,6 +381,15 @@ public enum MessengerCLI {
     private static var help: String { MessengerDocumentation.cliHelp }
 }
 
+private struct MessengerStatus: Encodable {
+    let status: String?
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(["status": status])
+    }
+}
+
 private struct MessengerEffectReceipt: Encodable {
     let effect: ConversationEffect
     let status: String
@@ -417,6 +434,8 @@ public enum MessengerAction: Codable, Sendable {
         case listMessages(conversationID: UUID)
         case react(conversationID: UUID, messageID: UUID, emoji: String, present: Bool)
         case send(conversationID: UUID, body: String, attachmentURLs: [URL])
+        /// Nil clears it.
+        case setStatus(String?)
         /// Handled by the CLI through the tool bridge; never sent to the Messenger broker.
         case tool(arguments: [String])
         case help

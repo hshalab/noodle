@@ -15,6 +15,10 @@ public struct AgentRecord: Identifiable, Codable, Hashable, Sendable {
     public var avatarSymbolName: String?
     public var avatarColorIndex: Int?
     public var avatarImageData: Data?
+    /// One short line the bot sets itself through Messenger, such as what it is busy with.
+    public var status: String?
+    /// Short enough for the bubble over a pinned bot.
+    public static let statusLimit = 60
 
     public init(
         id: UUID = UUID(),
@@ -28,7 +32,8 @@ public struct AgentRecord: Identifiable, Codable, Hashable, Sendable {
         accentSeed: Int = Int.random(in: 0...5),
         avatarSymbolName: String? = nil,
         avatarColorIndex: Int? = nil,
-        avatarImageData: Data? = nil
+        avatarImageData: Data? = nil,
+        status: String? = nil
     ) {
         self.id = id
         self.displayName = displayName
@@ -42,6 +47,7 @@ public struct AgentRecord: Identifiable, Codable, Hashable, Sendable {
         self.avatarSymbolName = avatarSymbolName
         self.avatarColorIndex = avatarColorIndex
         self.avatarImageData = avatarImageData
+        self.status = status
     }
 }
 

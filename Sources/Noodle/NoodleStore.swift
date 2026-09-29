@@ -244,6 +244,7 @@ final class NoodleStore {
         refreshHubMirrors()
         reload()
         // A device made, changed or deleted one of this Mac's bots.
+        messenger.onAgentChanged = { [weak self] id in Task { @MainActor in self?.reloadStatus(of: id) } }
         thisMac.onBotsEdited = { [weak self] in self?.reload() }
         thisMac.onRead = { [weak self] in self?.readElsewhere($0, upTo: $1) }
         // A device changed this Mac's tools, computers or browsers, in the files these controllers keep.
@@ -454,6 +455,13 @@ final class NoodleStore {
         hubs.leave(pairing)
         refreshHubMirrors()
         reload()
+    }
+
+    /// A bot set its status through Messenger.
+    private func reloadStatus(of id: UUID) {
+        guard let index = agents.firstIndex(where: { $0.id == id }),
+              let saved = try? repository.loadAgents().first(where: { $0.id == id }) else { return }
+        agents[index].status = saved.status
     }
 
     private func hubBotsChanged() {

@@ -175,6 +175,8 @@ final class MessengerDocumentationTests: XCTestCase {
             case .listMessages, .listParticipants: options = conversation
             case .react, .unreact: options = conversation + ["--message", message.id.uuidString, "--emoji", "✅"]
             case .send: options = conversation + ["--body", "Reply"]
+            case .setStatus: options = ["Busy"]
+            case .clearStatus: options = []
             }
             let result = MessengerCLI.runDirect(arguments: prefix + [command.rawValue] + options, environment: [:])
             XCTAssertEqual(result.exitCode, 0, "\(command): \(result.standardError)")

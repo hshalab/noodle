@@ -38,6 +38,8 @@ import NoodleRuntime
     private var transcripts: [UUID: (size: Int, modified: Date, count: Int, reactions: Int)] = [:]
     /// What each bot was last reported doing.
     private var phases: [UUID: AgentRuntimePhase] = [:]
+    /// Each bot's status when last checked; an absent bot has not been checked yet.
+    private var statuses: [UUID: String?] = [:]
     /// The latest Kick a device was asked to confirm, per bot. The runtime refuses it once stale.
     private var kickRequests: [UUID: AgentKickRequest] = [:]
     /// How far each conversation's owner has read it, so all their devices agree.
@@ -466,6 +468,7 @@ import NoodleRuntime
                 }
             }
         }
+        var restated: Set<UUID> = []
         for agent in agents {
             guard let owner = access.owner(ofBot: agent.id) else { continue }
             let phase = runtime.snapshot(for: agent.id).phase
@@ -473,7 +476,11 @@ import NoodleRuntime
                 onChange?(owner, .botPhase(botID: agent.id, phase: link))
             }
             phases[agent.id] = phase
+            // A bot sets its status through Messenger; devices list the bots again to see it.
+            if let known = statuses[agent.id], known != agent.status { restated.insert(owner) }
+            statuses[agent.id] = .some(agent.status)
         }
+        restated.forEach { onChange?($0, .botsChanged) }
     }
 
     /// Adds or removes the owner's reaction to a message in one of their bots' conversations.
@@ -652,7 +659,8 @@ import NoodleRuntime
             avatarColorIndex: agent.avatarColorIndex ?? agent.accentSeed, avatarImageData: agent.avatarImageData)
         draft.avatarImageDigest = agent.avatarImageData.map(LinkPicture.digest)
         return LinkBot(id: agent.id, conversationID: conversation.id, draft: draft, createdAt: agent.createdAt,
-                       phase: LinkBotPhase(rawValue: runtime.snapshot(for: agent.id).phase.rawValue), readUpTo: readMarks[conversation.id])
+                       phase: LinkBotPhase(rawValue: runtime.snapshot(for: agent.id).phase.rawValue), readUpTo: readMarks[conversation.id],
+                       status: agent.status)
     }
 
     /// Pictures' sizes, read once each: a stored file never changes.

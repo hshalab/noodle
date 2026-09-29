@@ -142,4 +142,31 @@ final class MessengerBridgeTests: XCTestCase {
         XCTAssertNotEqual(try submit(.init(session: session.token, action: action)).exitCode, 0)
         XCTAssertEqual(try repository.loadMessages(conversationID: conversation.id).filter { $0.body == "once" }.count, 1)
     }
+
+    /// A bot sets and clears only its own status, and Noodle hears of it to show it.
+    func testABotSetsAndClearsItsOwnStatus() throws {
+        let changed = expectation(description: "status change reported")
+        changed.assertForOverFulfill = false
+        broker.onAgentChanged = { [agent] id in if id == agent?.id { changed.fulfill() } }
+        let result = MessengerCLI.run(arguments: ["messenger", "--agent-directory", workspace.path, "--set-status", " Reviewing PR 42 🔍 "])
+        XCTAssertEqual(result.exitCode, 0, result.standardError)
+        wait(for: [changed], timeout: 5)
+        func status(of id: UUID) throws -> String? { try repository.loadAgents().first { $0.id == id }?.status }
+        XCTAssertEqual(try status(of: agent.id), "Reviewing PR 42 🔍")
+        XCTAssertNil(try status(of: other.id))
+        // An edit made from a copy read before the status keeps it.
+        _ = try repository.renameAgent(agent, to: "Renamed")
+        XCTAssertEqual(try status(of: agent.id), "Reviewing PR 42 🔍")
+        XCTAssertEqual(try call(.setStatus(nil)).exitCode, 0)
+        XCTAssertNil(try status(of: agent.id))
+    }
+
+    /// A status is one short line, so it fits the bubble over a pinned bot.
+    func testAStatusIsOneShortLine() throws {
+        XCTAssertEqual(try call(.setStatus(String(repeating: "a", count: 60))).exitCode, 0)
+        XCTAssertNotEqual(try call(.setStatus(String(repeating: "b", count: 61))).exitCode, 0)
+        XCTAssertNotEqual(try call(.setStatus("Two\nlines")).exitCode, 0)
+        XCTAssertNotEqual(try call(.setStatus("   ")).exitCode, 0)
+        XCTAssertEqual(try repository.loadAgents().first { $0.id == agent.id }?.status, String(repeating: "a", count: 60))
+    }
 }

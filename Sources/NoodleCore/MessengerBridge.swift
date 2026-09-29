@@ -54,6 +54,8 @@ public final class MessengerBroker: @unchecked Sendable {
     private var agents: [AgentRecord] = []
     private var claimed: [UUID: Date] = [:]
     private let mailboxMonitor = WorkspaceMailboxMonitor()
+    /// Called on the broker's queue when a bot changed its own record, such as its status.
+    public var onAgentChanged: (@Sendable (UUID) -> Void)?
 
     public init(repository: WorkspaceRepository) { self.repository = repository }
     deinit { timer?.cancel() }
@@ -104,6 +106,7 @@ public final class MessengerBroker: @unchecked Sendable {
                     try mailbox.claim(name, as: stem + ".running")
                     claimed[id] = request.expiresAt
                     response = MessengerCLI.perform(request.action, repository: repository, agentID: agent.id, brokered: true)
+                    if case .setStatus = request.action, response.exitCode == 0 { onAgentChanged?(agent.id) }
                 } catch { response = .init(exitCode: 2, standardError: "messenger: \(error.localizedDescription)\n") }
                 if let data = try? JSONEncoder().encode(response), data.count <= MessengerBridgeClient.maxResponseBytes {
                     try? mailbox.writeData(data, named: stem + ".response")

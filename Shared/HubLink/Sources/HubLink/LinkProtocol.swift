@@ -693,18 +693,21 @@ public struct LinkBot: Codable, Equatable, Identifiable, Sendable {
     /// When the latest message its owner has read was sent. Nil when they have read none, or from
     /// a Hub that does not keep it.
     public var readUpTo: Date?
+    /// The one line the bot set itself, such as what it is busy with. Not part of the draft: devices never set it.
+    public var status: String?
 
     public init(id: UUID, conversationID: UUID, draft: LinkBotDraft, createdAt: Date, phase: LinkBotPhase? = nil,
-                readUpTo: Date? = nil) {
+                readUpTo: Date? = nil, status: String? = nil) {
         self.id = id
         self.conversationID = conversationID
         self.draft = draft
         self.createdAt = createdAt
         self.phase = phase
         self.readUpTo = readUpTo
+        self.status = status
     }
 
-    private enum CodingKeys: String, CodingKey { case id, conversationID, draft, createdAt, phase, readUpTo }
+    private enum CodingKeys: String, CodingKey { case id, conversationID, draft, createdAt, phase, readUpTo, status }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -714,6 +717,7 @@ public struct LinkBot: Codable, Equatable, Identifiable, Sendable {
         createdAt = try c.decode(Date.self, forKey: .createdAt)
         phase = try c.decodeIfPresent(String.self, forKey: .phase).flatMap(LinkBotPhase.init(rawValue:))
         readUpTo = try c.decodeIfPresent(Date.self, forKey: .readUpTo)
+        status = try c.decodeIfPresent(String.self, forKey: .status)
     }
 }
 

@@ -331,6 +331,15 @@ enum HubThread: HubConversation {
 
     func latestMessage(of conversation: some HubConversation) -> LinkMessage? { messages(of: conversation).last }
 
+    /// What the bubble over a pinned circle says: the start of an unread reply, or else the bot's status.
+    func note(for thread: HubThread) -> PinnedNote? {
+        if isUnread(thread), let reply = messages(of: thread).last(where: { if case .bot = $0.author { true } else { false } }) {
+            let text = reply.body.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+            if !text.isEmpty { return .unread(text) }
+        }
+        return thread.bot?.status.map(PinnedNote.status)
+    }
+
     /// In a group, the bot's name heading each run of its messages, by message.
     static func authorLabels(in messages: [LinkMessage], name: (UUID) -> String?) -> [UUID: String] {
         var labels: [UUID: String] = [:]
@@ -647,6 +656,8 @@ struct AgentsView: View {
                         }
                     }
                     .padding(.vertical, 8)
+                    // Room above the first row for its bubbles.
+                    .padding(.top, pinned.prefix(3).contains { $0.chats.note(for: $0.thread) != nil } ? 8 : 0)
                     .listRowSeparator(.hidden)
                 }
                 ForEach(others) { row in
@@ -836,6 +847,10 @@ private struct AgentRow: View {
     }
 }
 
+enum PinnedNote: Equatable {
+    case unread(String), status(String)
+}
+
 /// A pinned bot or group: a large picture with its name beneath, as Messages shows pinned conversations.
 private struct PinnedAgent: View {
     let chats: HubChats
@@ -845,6 +860,10 @@ private struct PinnedAgent: View {
     var body: some View {
         VStack(spacing: 6) {
             ThreadAvatar(chats: chats, thread: thread, size: 76)
+                // Over the picture's top, as Instagram shows notes; the circle keeps its place without one.
+                .overlay(alignment: .top) {
+                    if let note = chats.note(for: thread) { NoteBubble(note: note).offset(y: -14) }
+                }
                 .overlay(alignment: .topLeading) {
                     if unread {
                         Circle().fill(.tint).frame(width: 14, height: 14)
@@ -856,6 +875,28 @@ private struct PinnedAgent: View {
         }
         .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
+    }
+}
+
+/// A short line over a pinned circle: an unread reply in bold, or the bot's status.
+private struct NoteBubble: View {
+    let note: PinnedNote
+
+    var body: some View {
+        let (text, unread) = switch note {
+        case .unread(let text): (text, true)
+        case .status(let text): (text, false)
+        }
+        Text(text)
+            .font(.caption2.weight(unread ? .semibold : .regular))
+            .lineLimit(1)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .frame(maxWidth: 104)
+            .fixedSize(horizontal: false, vertical: true)
+            .background(.regularMaterial, in: Capsule())
+            .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
+            .accessibilityLabel(unread ? "Unread: \(text)" : "Status: \(text)")
     }
 }
 

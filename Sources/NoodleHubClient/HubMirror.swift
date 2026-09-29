@@ -131,7 +131,7 @@ import Observation
         guard case .bot(let bot) = try await pairing.request(.updateBot(id: entry.remote, draft)) else {
             throw LinkError("The Hub sent an unexpected answer.")
         }
-        try apply(bot.draft, to: entry)
+        try apply(bot, to: entry)
         onChange?()
     }
 
@@ -406,7 +406,7 @@ import Observation
         var changed = false
         for bot in bots {
             if let entry = entries.first(where: { $0.remote == bot.id }) {
-                try apply(bot.draft, to: entry)
+                try apply(bot, to: entry)
             } else {
                 _ = try adopt(bot)
                 changed = true
@@ -581,12 +581,17 @@ import Observation
         entries.append(Entry(remote: bot.id, remoteConversation: bot.conversationID, agent: created.agent.id,
                              conversation: created.conversation.id, synced: 0, profile: draft.profile))
         save()
-        return created.agent
+        // The Hub checked it when the bot set it.
+        guard let status = bot.status, let agent = try? repository.setAgentStatus(status, agentID: created.agent.id) else {
+            return created.agent
+        }
+        return agent
     }
 
-    private func apply(_ draft: LinkBotDraft, to entry: Entry) throws {
+    private func apply(_ bot: LinkBot, to entry: Entry) throws {
         guard let agent = try repository.loadAgents().first(where: { $0.id == entry.agent }) else { return }
-        var draft = draft
+        if agent.status != bot.status, (try? repository.setAgentStatus(bot.status, agentID: agent.id)) != nil { onChange?() }
+        var draft = bot.draft
         // A picture that could not be fetched yet keeps the one here.
         if draft.avatarImageData == nil, draft.avatarImageDigest != nil { draft.avatarImageData = agent.avatarImageData }
         update(entry.remote) { $0.profile = draft.profile }

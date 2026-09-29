@@ -28,6 +28,8 @@ private actor FakeHub {
 
     func setPicture(_ data: Data) { bot.draft.avatarImageData = data }
 
+    func setStatus(_ status: String?) { bot.status = status }
+
     /// A group of Scout, made on another device, with something already said in it.
     func addGroup(named name: String, saying body: String) -> LinkGroup {
         let group = LinkGroup(id: UUID(), draft: LinkGroupDraft(name: name, botIDs: [bot.id]), createdAt: Date(timeIntervalSince1970: 5))
@@ -448,6 +450,27 @@ private actor RecordedSubscriptions: PushSubscriptions {
         try await chats.reload()
 
         #expect(!chats.isUnread(try #require(chats.agents.first)))
+    }
+
+    /// A pinned circle's bubble shows the start of an unread reply, or else the bot's status.
+    @Test func aPinnedBubbleShowsAnUnreadReplyBeforeTheStatus() async throws {
+        let hub = FakeHub()
+        let (chats, server) = try await paired(to: hub)
+        defer { server.stop() }
+        func note() throws -> PinnedNote? { chats.note(for: .bot(try #require(chats.agents.first))) }
+        try await chats.reload()
+        #expect(try note() == nil)
+
+        await hub.setStatus("Reviewing PR 42")
+        try await chats.reload()
+        #expect(try note() == .status("Reviewing PR 42"))
+
+        await hub.botSays("Done,\n  all green")
+        try await chats.reload()
+        #expect(try note() == .unread("Done, all green"))
+
+        chats.markRead(try #require(chats.agents.first))
+        #expect(try note() == .status("Reviewing PR 42"))
     }
 
     @Test func aReplyIsUnreadUntilTheConversationIsOpened() async throws {

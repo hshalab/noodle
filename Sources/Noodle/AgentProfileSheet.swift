@@ -29,6 +29,16 @@ struct AgentProfileSheet: View {
                 .font(.title2.weight(.semibold))
                 .multilineTextAlignment(.center)
                 .textSelection(.enabled)
+            if let status = agent.status {
+                Text(status)
+                    .font(.callout)
+                    .multilineTextAlignment(.center)
+                    .textSelection(.enabled)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(.quaternary, in: Capsule())
+                    .accessibilityLabel("Status: \(status)")
+            }
             ScrollView {
                 Text(description)
                     .foregroundStyle(.secondary)

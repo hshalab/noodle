@@ -102,6 +102,19 @@ import XCTest
         XCTAssertNil(mirror.phase(ofAgent: UUID()), "a bot not on the Hub had a phase")
     }
 
+    /// A bot on the Hub shows here the status it set there.
+    func testABotShowsItsStatusFromTheHub() async throws {
+        let f = try await fixture()
+        let mirror = f.mirror()
+        let remote = try f.hub.bots.create(LinkBotDraft(name: "Jeeves", provider: "claude-code"), for: f.ada)
+        _ = try f.hub.repository.setAgentStatus("Polishing silver", agentID: remote.id)
+        await mirror.sync()
+        XCTAssertEqual(try f.local.loadAgents().first?.status, "Polishing silver")
+        _ = try f.hub.repository.setAgentStatus(nil, agentID: remote.id)
+        await mirror.sync()
+        XCTAssertNil(try f.local.loadAgents().first?.status)
+    }
+
     /// A conversation longer than one answer may carry comes over page by page.
     func testALongConversationComesOverWhole() async throws {
         let f = try await fixture()

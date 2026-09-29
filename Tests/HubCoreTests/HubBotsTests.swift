@@ -313,6 +313,22 @@ import XCTest
         XCTAssertEqual(listed.first?.phase, .offline)
     }
 
+    /// A status a bot sets reaches its owner's devices with the bot, and they hear that it changed.
+    func testBotsCarryTheStatusTheySet() async throws {
+        let f = try await fixture()
+        let bot = try await createBot(f)
+        XCTAssertNil(bot.status)
+        f.hub.bots.checkForChanges()
+        let events = try await f.device.subscribe()
+        // A round trip, so the Hub has the subscription before anything changes.
+        _ = try await f.device.request(.bots)
+        _ = try f.hub.repository.setAgentStatus("Reviewing PR 42", agentID: bot.id)
+        f.hub.bots.checkForChanges()
+        for try await event in events { if case .botsChanged = event { break } }
+        guard case .bots(let listed) = try await f.device.request(.bots) else { return XCTFail("no bots") }
+        XCTAssertEqual(listed.first?.status, "Reviewing PR 42")
+    }
+
     func testOtherUsersCannotReachABot() async throws {
         let f = try await fixture()
         let bot = try await createBot(f)

@@ -20,6 +20,7 @@ public enum WorkspaceError: LocalizedError, Equatable {
     case invalidAttachment
     case missingMessage(UUID)
     case invalidReaction
+    case invalidStatus
 
     public var errorDescription: String? {
         switch self {
@@ -39,6 +40,8 @@ public enum WorkspaceError: LocalizedError, Equatable {
             return "The selected message no longer exists."
         case .invalidReaction:
             return "Choose a single emoji for the reaction."
+        case .invalidStatus:
+            return "A status is one line of at most \(AgentRecord.statusLimit) characters. Use --clear-status to remove it."
         }
     }
 }
@@ -314,6 +317,20 @@ public struct WorkspaceRepository: Sendable {
         return String(decoding: try files.read("preferences.md", limit: 4 * 1_048_576), as: UTF8.self)
     }
 
+    /// Sets or, with nil, clears the status the bot shows. Nothing else changes, not even when it was edited.
+    @discardableResult
+    public func setAgentStatus(_ rawStatus: String?, agentID: UUID) throws -> AgentRecord {
+        let status = rawStatus?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let status, status.isEmpty || status.count > AgentRecord.statusLimit || status.contains(where: \.isNewline) {
+            throw WorkspaceError.invalidStatus
+        }
+        let layout = storage(for: agentID)
+        var configuration = try AgentConfiguration.load(from: layout)
+        configuration.agent.status = status
+        try configuration.save(to: layout)
+        return configuration.agent
+    }
+
     public func updateAgentBackstory(_ agent: AgentRecord, backstory: String) throws {
         let layout = storage(for: agent.id)
         var configuration = try AgentConfiguration.load(from: layout)
@@ -427,7 +444,10 @@ public struct WorkspaceRepository: Sendable {
     private func saveAgentRecord(_ agent: AgentRecord) throws {
         let layout = storage(for: agent.id)
         var configuration = try AgentConfiguration.load(from: layout)
+        // Only the bot sets its status, so an edit from an older copy keeps the one it has now.
+        let status = configuration.agent.status
         configuration.agent = agent
+        configuration.agent.status = status
         try configuration.save(to: layout)
     }
 
