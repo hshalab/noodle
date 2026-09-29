@@ -35,10 +35,15 @@ struct ConversationTransition<Content: View>: NSViewRepresentable {
     // different key is supplied. Use it for replacement and cancellation too.
     static let animationKey = "transition"
     private(set) var conversationID: UUID
+    private var content: AnyView
+    private var generation = 0
+    private var closedSinceShown = false
+    private var visibility: NSKeyValueObservation?
 
     init(content: AnyView, conversationID: UUID) {
         self.conversationID = conversationID
-        super.init(rootView: content)
+        self.content = content
+        super.init(rootView: AnyView(content.id(0)))
         // The transcript sizes itself from the chat layout, not from its content.
         sizingOptions = []
         wantsLayer = true
@@ -47,7 +52,8 @@ struct ConversationTransition<Content: View>: NSViewRepresentable {
 
     @MainActor required init(rootView: AnyView) {
         conversationID = UUID()
-        super.init(rootView: rootView)
+        content = rootView
+        super.init(rootView: AnyView(rootView.id(0)))
     }
 
     required init?(coder: NSCoder) { nil }
@@ -59,7 +65,8 @@ struct ConversationTransition<Content: View>: NSViewRepresentable {
 
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        rootView = content
+        self.content = content
+        rootView = AnyView(content.id(generation))
         if switching, !reduceMotion, window != nil, !inLiveResize, !bounds.isEmpty {
             // Replacing the animation under one key also bounds rapid keyboard
             // navigation to the latest selection, with no queued completions.
@@ -77,5 +84,30 @@ struct ConversationTransition<Content: View>: NSViewRepresentable {
     override func viewWillMove(toWindow newWindow: NSWindow?) {
         cancelTransition()
         super.viewWillMove(toWindow: newWindow)
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        NotificationCenter.default.removeObserver(self, name: NSWindow.willCloseNotification, object: nil)
+        visibility = nil
+        guard let window else { return }
+        NotificationCenter.default.addObserver(self, selector: #selector(windowWillClose),
+                                               name: NSWindow.willCloseNotification, object: window)
+        visibility = window.observe(\.isVisible, options: [.new]) { [weak self] _, change in
+            guard change.newValue == true else { return }
+            DispatchQueue.main.async { self?.rebuildIfReopened() }
+        }
+    }
+
+    @objc private func windowWillClose(_ notification: Notification) { closedSinceShown = true }
+
+    /// A closed window keeps this view, and selectable text that arrives meanwhile is drawn
+    /// under a flip AppKit corrects only on reopening, leaving it mirrored. Rebuild the
+    /// transcript once it is on screen again, as switching conversations would.
+    private func rebuildIfReopened() {
+        guard closedSinceShown, window?.isVisible == true else { return }
+        closedSinceShown = false
+        generation += 1
+        rootView = AnyView(content.id(generation))
     }
 }

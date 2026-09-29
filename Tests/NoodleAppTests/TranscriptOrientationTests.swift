@@ -85,6 +85,11 @@ import NoodleWallpaper
                     scroll.reflectScrolledClipView(scroll.contentView)
                 }
                 try? await Task.sleep(for: .milliseconds(200))
+            }),
+            // The reply arrives while the window is closed; ordering it front below reopens it.
+            ("closed", { window in
+                window.close()
+                try? await Task.sleep(for: .milliseconds(300))
             })
         ]
 
