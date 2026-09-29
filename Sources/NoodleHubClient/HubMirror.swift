@@ -19,6 +19,20 @@ import Observation
         var profile: UUID?
     }
 
+    /// A group of bots on the Hub and its local copy.
+    struct GroupEntry: Codable, Equatable {
+        var remote: UUID
+        var conversation: UUID
+        var synced: Int
+    }
+
+    /// A conversation on the Hub, a bot's own or a group's, and its local copy.
+    private struct Thread {
+        var remote: UUID
+        var local: UUID
+        var synced: Int
+    }
+
     public private(set) var isConnected = false
     public private(set) var error: String?
     /// Runs when bots here were added, removed or changed, so the app can reload them.
@@ -45,6 +59,8 @@ import Observation
     @ObservationIgnored private let repository: WorkspaceRepository
     @ObservationIgnored private let url: URL
     private var entries: [Entry] = []
+    @ObservationIgnored private let groupsURL: URL
+    private var groups: [GroupEntry] = []
     /// Local messages the Hub already has, so they are not sent again.
     @ObservationIgnored private var acknowledged: Set<UUID> = []
 
@@ -52,12 +68,23 @@ import Observation
         self.pairing = pairing
         self.repository = repository
         url = directory.appendingPathComponent("mirror.json")
+        groupsURL = directory.appendingPathComponent("groups.json")
         entries = (try? JSONDecoder().decode([Entry].self, from: Data(contentsOf: url))) ?? []
+        groups = (try? JSONDecoder().decode([GroupEntry].self, from: Data(contentsOf: groupsURL))) ?? []
     }
 
     public var localAgentIDs: Set<UUID> { Set(entries.map(\.agent)) }
 
-    public func owns(conversation id: UUID) -> Bool { entries.contains { $0.conversation == id } }
+    public func owns(conversation id: UUID) -> Bool { thread(local: id) != nil }
+
+    private var threads: [Thread] {
+        entries.map { Thread(remote: $0.remoteConversation, local: $0.conversation, synced: $0.synced) }
+            + groups.map { Thread(remote: $0.remote, local: $0.conversation, synced: $0.synced) }
+    }
+
+    private func thread(remote id: UUID) -> Thread? { threads.first { $0.remote == id } }
+
+    private func thread(local id: UUID) -> Thread? { threads.first { $0.local == id } }
 
     /// What the bot a stand-in here keeps on the Hub is doing there, as last heard.
     public func phase(ofAgent id: UUID) -> AgentRuntimePhase? { phases[id] }
@@ -70,8 +97,8 @@ import Observation
     /// Opens the live view of what a link in a conversation here points at, kept on the Hub. Video
     /// comes down the channel as `LinkSurface` messages; send the viewer's controls up it with `LinkSurface.control`.
     public func openSurface(attachment: UUID, in conversation: UUID) async throws -> LinkChannel {
-        guard let entry = entries.first(where: { $0.conversation == conversation }) else { throw LinkError("That conversation is not on this Hub.") }
-        return try await pairing.channel(.openSurface(conversationID: entry.remoteConversation, attachmentID: attachment))
+        guard let thread = thread(local: conversation) else { throw LinkError("That conversation is not on this Hub.") }
+        return try await pairing.channel(.openSurface(conversationID: thread.remote, attachmentID: attachment))
     }
 
     /// The Hub harness a local stand-in runs on.
@@ -83,8 +110,10 @@ import Observation
 
     /// Deletes the local stand-ins, as when leaving the Hub. The bots stay on the Hub.
     public func forgetLocalCopies() {
+        for group in groups { try? forget(group) }
         for entry in entries { try? forget(entry) }
         try? FileManager.default.removeItem(at: url)
+        try? FileManager.default.removeItem(at: groupsURL)
         onChange?()
     }
 
@@ -111,6 +140,42 @@ import Observation
         _ = try await pairing.request(.deleteBot(id: entry.remote))
         try forget(entry)
         onChange?()
+    }
+
+    /// Makes a group on the Hub of bots kept there, by their local stand-ins, and its local copy.
+    public func createGroup(named name: String, publicDescription: String, agentIDs: [UUID]) async throws -> BotConversation {
+        let draft = LinkGroupDraft(name: name, publicDescription: publicDescription, botIDs: try remoteBots(agentIDs))
+        guard case .group(let group) = try await pairing.request(.createGroup(draft)) else {
+            throw LinkError("The Hub sent an unexpected answer.")
+        }
+        let conversation = try adopt(group)
+        onChange?()
+        return conversation
+    }
+
+    public func updateGroup(_ conversation: UUID, named name: String, publicDescription: String, agentIDs: [UUID]) async throws {
+        guard let entry = groups.first(where: { $0.conversation == conversation }) else { throw LinkError("This group is not on the Hub.") }
+        let draft = LinkGroupDraft(name: name, publicDescription: publicDescription, botIDs: try remoteBots(agentIDs))
+        guard case .group(let group) = try await pairing.request(.updateGroup(id: entry.remote, draft)) else {
+            throw LinkError("The Hub sent an unexpected answer.")
+        }
+        try apply(group, to: entry)
+        onChange?()
+    }
+
+    /// Deletes a group here and on the Hub. Its bots stay.
+    public func deleteGroup(_ conversation: UUID) async throws {
+        guard let entry = groups.first(where: { $0.conversation == conversation }) else { throw LinkError("This group is not on the Hub.") }
+        _ = try await pairing.request(.deleteGroup(id: entry.remote))
+        try forget(entry)
+        onChange?()
+    }
+
+    private func remoteBots(_ agentIDs: [UUID]) throws -> [UUID] {
+        try agentIDs.map { id in
+            guard let remote = entries.first(where: { $0.agent == id })?.remote else { throw LinkError("A bot in this group is not on this Hub.") }
+            return remote
+        }
     }
 
     /// Adds a connection on the Hub, or changes one. It reaches no bot until assigned.
@@ -259,10 +324,13 @@ import Observation
     public func sync() async {
         do {
             try await syncBots()
+            do { try await syncGroups() } catch {
+                // A Hub from before groups says it does not know the request; it has none to copy.
+            }
             try await syncConnections()
             try await syncComputers()
             try await syncBrowsers()
-            for entry in entries { try await syncMessages(entry) }
+            for thread in threads { try await syncMessages(thread.remote) }
             try await sendPending()
             error = nil
         } catch {
@@ -293,8 +361,10 @@ import Observation
                     switch event {
                     case .botsChanged:
                         try await syncBots()
+                    case .groupsChanged:
+                        try await syncGroups()
                     case .conversationChanged(let id, _):
-                        if let entry = entries.first(where: { $0.remoteConversation == id }) { try await syncMessages(entry) }
+                        try await syncMessages(id)
                     case .connectionsChanged:
                         try await syncConnections()
                     case .computersChanged:
@@ -316,7 +386,7 @@ import Observation
                     case .messageChanged:
                         break
                     case .readChanged(let id, let upTo):
-                        if let entry = entries.first(where: { $0.remoteConversation == id }) { onRead?(entry.conversation, upTo) }
+                        if let thread = thread(remote: id) { onRead?(thread.local, upTo) }
                     }
                 }
             } catch {
@@ -353,70 +423,101 @@ import Observation
         }
     }
 
+    private func syncGroups() async throws {
+        guard case .groups(let listed) = try await pairing.request(.groups) else { throw LinkError("The Hub sent an unexpected answer.") }
+        var changed = false
+        for group in listed {
+            if let entry = groups.first(where: { $0.remote == group.id }) {
+                if try apply(group, to: entry) { changed = true }
+            } else {
+                _ = try adopt(group)
+                changed = true
+            }
+        }
+        for entry in groups where !listed.contains(where: { $0.id == entry.remote }) {
+            try forget(entry)
+            changed = true
+        }
+        if changed { onChange?() }
+        for group in listed {
+            if let upTo = group.readUpTo, let entry = groups.first(where: { $0.remote == group.id }) { onRead?(entry.conversation, upTo) }
+        }
+    }
+
     /// This Mac's user read a conversation here, up to its latest message the Hub has; their other devices show it read.
     public func markRead(conversation id: UUID) async {
-        guard let entry = entries.first(where: { $0.conversation == id }),
+        guard let thread = thread(local: id),
               let latest = try? repository.loadMessages(conversationID: id)
                 .last(where: { $0.author != .user || $0.delivery != .queued || acknowledged.contains($0.id) }) else { return }
         do {
-            _ = try await pairing.request(.markRead(LinkReadMark(conversationID: entry.remoteConversation, messageID: latest.id)))
+            _ = try await pairing.request(.markRead(LinkReadMark(conversationID: thread.remote, messageID: latest.id)))
         } catch {
             // A Hub from before read state was shared says it does not know the request; the Mac keeps its own.
         }
     }
 
     /// Copies what is new on the Hub a page at a time, so no answer grows with the conversation.
-    private func syncMessages(_ entry: Entry) async throws {
-        var entry = entry
+    private func syncMessages(_ remote: UUID) async throws {
+        guard var thread = thread(remote: remote) else { return }
         while true {
-            let page = try await syncPage(entry)
-            guard let next = entries.first(where: { $0.remote == entry.remote }),
-                  next.synced > entry.synced, next.synced < page.count, page.messages.count > 0 else { return }
-            entry = next
+            let page = try await syncPage(thread)
+            guard let next = self.thread(remote: remote),
+                  next.synced > thread.synced, next.synced < page.count, page.messages.count > 0 else { return }
+            thread = next
         }
     }
 
-    private func syncPage(_ entry: Entry) async throws -> LinkMessages {
+    private func syncPage(_ thread: Thread) async throws -> LinkMessages {
         guard case .messages(let page) = try await pairing.request(.messagePage(LinkMessagePage(
-            conversationID: entry.remoteConversation, after: entry.synced, limit: 100))) else {
+            conversationID: thread.remote, after: thread.synced, limit: 100))) else {
             throw LinkError("The Hub sent an unexpected answer.")
         }
-        var known = Set(try repository.loadMessages(conversationID: entry.conversation).map(\.id))
+        var known = Set(try repository.loadMessages(conversationID: thread.local).map(\.id))
         var delivered: Set<UUID> = []
         var latest: Date?
         for message in page.messages {
             acknowledged.insert(message.id)
             if message.author == .you, message.delivered { delivered.insert(message.id) }
             guard !known.contains(message.id) else { continue }
-            try await fetchMissing(message.attachments, into: entry)
+            try await fetchMissing(message.attachments, into: thread)
             let author: MessageAuthor = switch message.author {
             case .you: .user
-            case .bot: .agent(entry.agent)
+            // A bot since deleted on the Hub keeps its ID, as a deleted bot's messages do here.
+            case .bot(let bot): .agent(entries.first { $0.remote == bot }?.agent ?? bot)
             case .system: .system
             }
-            try repository.append(ChatMessage(id: message.id, conversationID: entry.conversation, author: author, body: message.body,
+            try repository.append(ChatMessage(id: message.id, conversationID: thread.local, author: author, body: message.body,
                                               createdAt: message.createdAt, delivery: message.delivered ? .delivered : .queued,
                                               attachmentIDs: message.attachments.map(\.id)))
             known.insert(message.id)
             latest = message.createdAt
         }
-        if !delivered.isEmpty { try repository.markDelivered(conversationID: entry.conversation, messageIDs: delivered) }
-        if let latest, var conversation = try repository.loadConversations().first(where: { $0.id == entry.conversation }) {
+        if !delivered.isEmpty { try repository.markDelivered(conversationID: thread.local, messageIDs: delivered) }
+        if let latest, var conversation = try repository.loadConversations().first(where: { $0.id == thread.local }) {
             conversation.updatedAt = max(conversation.updatedAt, latest)
             try repository.updateConversation(conversation)
         }
         // Delivery changes after the first read, so the last user message is read again until the bot takes it.
         let pendingFrom = page.messages.firstIndex { $0.author == .you && !$0.delivered }
-        update(entry.remote) { $0.synced = pendingFrom.map { entry.synced + $0 } ?? entry.synced + page.messages.count }
+        setSynced(pendingFrom.map { thread.synced + $0 } ?? thread.synced + page.messages.count, in: thread.remote)
         return page
     }
 
+    private func setSynced(_ count: Int, in remote: UUID) {
+        if let entry = entries.first(where: { $0.remoteConversation == remote }) {
+            update(entry.remote) { $0.synced = count }
+        } else if let index = groups.firstIndex(where: { $0.remote == remote }), groups[index].synced != count {
+            groups[index].synced = count
+            saveGroups()
+        }
+    }
+
     private func sendPending() async throws {
-        for entry in entries {
-            let waiting = try repository.loadMessages(conversationID: entry.conversation)
+        for thread in threads {
+            let waiting = try repository.loadMessages(conversationID: thread.local)
                 .filter { $0.author == .user && $0.delivery == .queued && !acknowledged.contains($0.id) }
             guard !waiting.isEmpty else { continue }
-            let files = Dictionary(try repository.loadAttachments(conversationID: entry.conversation).map { ($0.id, $0) },
+            let files = Dictionary(try repository.loadAttachments(conversationID: thread.local).map { ($0.id, $0) },
                                    uniquingKeysWith: { first, _ in first })
             for message in waiting {
                 // Files first: the Hub refuses a message that points at a file it lacks.
@@ -426,10 +527,10 @@ import Observation
                         id: file.id, filename: file.originalFilename, mediaType: file.mediaType, byteCount: Int(file.byteCount),
                         voice: file.voice.map { LinkVoice(transcript: $0.transcript, duration: $0.duration, waveform: $0.waveform,
                                                           localeIdentifier: $0.localeIdentifier) }),
-                        to: entry.remoteConversation)
+                        to: thread.remote)
                 }
                 let sent = (message.attachmentIDs ?? []).filter { files[$0]?.url == nil }
-                _ = try await pairing.request(.send(LinkOutgoingMessage(conversationID: entry.remoteConversation, id: message.id, body: message.body,
+                _ = try await pairing.request(.send(LinkOutgoingMessage(conversationID: thread.remote, id: message.id, body: message.body,
                                                     attachmentIDs: sent)))
                 acknowledged.insert(message.id)
             }
@@ -437,20 +538,20 @@ import Observation
     }
 
     /// Downloads the files of an incoming message that this copy lacks, keeping their IDs.
-    private func fetchMissing(_ attachments: [LinkAttachment], into entry: Entry) async throws {
+    private func fetchMissing(_ attachments: [LinkAttachment], into thread: Thread) async throws {
         guard !attachments.isEmpty else { return }
-        let present = Set(try repository.loadAttachments(conversationID: entry.conversation).map(\.id))
+        let present = Set(try repository.loadAttachments(conversationID: thread.local).map(\.id))
         for attachment in attachments where !present.contains(attachment.id) {
             // A link travels as its address; one to something live keeps its card, and opens live here.
             if let url = attachment.url {
                 // Pages leave card pictures out; each comes on its own.
                 var image = attachment.card?.image
                 if image == nil, attachment.card != nil,
-                   case .picture(let picture)? = try? await pairing.request(.linkPreview(conversationID: entry.remoteConversation,
+                   case .picture(let picture)? = try? await pairing.request(.linkPreview(conversationID: thread.remote,
                                                                                          attachmentID: attachment.id)) {
                     image = picture
                 }
-                _ = try repository.importLinkAttachment(url, into: entry.conversation, card: attachment.card.map {
+                _ = try repository.importLinkAttachment(url, into: thread.local, card: attachment.card.map {
                     LinkCard(title: $0.title, detail: $0.detail, image: image, symbol: $0.symbol, colour: $0.colour,
                              icon: $0.icon, capturedAt: $0.capturedAt)
                 }, id: attachment.id)
@@ -458,13 +559,13 @@ import Observation
             }
             let staging = FileManager.default.temporaryDirectory.appendingPathComponent("noodle-hub-\(attachment.id.uuidString)")
             defer { try? FileManager.default.removeItem(at: staging) }
-            try await pairing.download(attachment, from: entry.remoteConversation, to: staging)
+            try await pairing.download(attachment, from: thread.remote, to: staging)
             let name = URL(fileURLWithPath: attachment.filename).lastPathComponent
             let voice = attachment.voice.map {
                 VoiceMessage(transcript: $0.transcript, duration: $0.duration, waveform: $0.waveform, localeIdentifier: $0.localeIdentifier)
             }
             let filename = name.isEmpty ? "Attachment" : name
-            _ = try repository.importAttachment(from: staging, into: entry.conversation, mediaType: attachment.mediaType,
+            _ = try repository.importAttachment(from: staging, into: thread.local, mediaType: attachment.mediaType,
                                                 voice: voice, id: attachment.id, originalFilename: filename)
         }
     }
@@ -512,6 +613,47 @@ import Observation
         }
         entries.removeAll { $0.remote == entry.remote }
         save()
+    }
+
+    /// Makes the local copy of a group on the Hub, of its bots' stand-ins here.
+    private func adopt(_ group: LinkGroup) throws -> BotConversation {
+        let conversation = try repository.createGroup(named: group.draft.name, publicDescription: group.draft.publicDescription,
+                                                      participantIDs: localAgents(group.draft.botIDs),
+                                                      existingAgents: try repository.loadAgents())
+        groups.append(GroupEntry(remote: group.id, conversation: conversation.id, synced: 0))
+        saveGroups()
+        return conversation
+    }
+
+    /// Copies a group's name, description and bots. The notice Group Info leaves comes from the Hub with its messages.
+    @discardableResult private func apply(_ group: LinkGroup, to entry: GroupEntry) throws -> Bool {
+        guard var conversation = try repository.loadConversations().first(where: { $0.id == entry.conversation }) else { return false }
+        let bots = localAgents(group.draft.botIDs).sorted { $0.uuidString < $1.uuidString }
+        let description = group.draft.publicDescription.isEmpty ? nil : group.draft.publicDescription
+        guard conversation.displayName != group.draft.name || conversation.publicDescription != description
+                || conversation.participantIDs != bots else { return false }
+        conversation.displayName = group.draft.name
+        conversation.publicDescription = description
+        conversation.participantIDs = bots
+        try repository.updateConversation(conversation)
+        return true
+    }
+
+    private func localAgents(_ bots: [UUID]) -> [UUID] {
+        bots.compactMap { id in entries.first { $0.remote == id }?.agent }
+    }
+
+    private func forget(_ group: GroupEntry) throws {
+        if FileManager.default.fileExists(atPath: repository.conversationDirectory(id: group.conversation).path) {
+            try repository.deleteConversation(id: group.conversation)
+        }
+        groups.removeAll { $0.remote == group.remote }
+        saveGroups()
+    }
+
+    private func saveGroups() {
+        try? FileManager.default.createDirectory(at: groupsURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? JSONEncoder().encode(groups).write(to: groupsURL, options: .atomic)
     }
 
     private func update(_ remote: UUID, _ change: (inout Entry) -> Void) {

@@ -95,6 +95,14 @@ public enum LinkRequest: Codable, Equatable, Sendable {
     case createBot(LinkBotDraft)
     case updateBot(id: UUID, LinkBotDraft)
     case deleteBot(id: UUID)
+    /// This user's groups on the Hub: conversations with several of their bots.
+    case groups
+    /// Makes a group of this user's bots. Answers `group`.
+    case createGroup(LinkGroupDraft)
+    /// Renames a group or changes its bots. Answers `group`.
+    case updateGroup(id: UUID, LinkGroupDraft)
+    /// Deletes a group and its messages. Its bots stay.
+    case deleteGroup(id: UUID)
     /// Starts a failed bot again, as Kick does in Noodle. Answers `done`, or `kickConfirmation`
     /// when the failure needs the person to agree first.
     case kick(botID: UUID)
@@ -264,6 +272,8 @@ public enum LinkResponse: Codable, Equatable, Sendable {
     case status(LinkStatus)
     case bots([LinkBot])
     case bot(LinkBot)
+    case groups([LinkGroup])
+    case group(LinkGroup)
     case messages(LinkMessages)
     case message(LinkMessage)
     case connections([LinkConnection])
@@ -288,6 +298,8 @@ public enum LinkResponse: Codable, Equatable, Sendable {
 public enum LinkEvent: Codable, Equatable, Sendable {
     case conversationChanged(conversationID: UUID, count: Int)
     case botsChanged
+    /// This user's groups changed: made, renamed, deleted, or their bots changed.
+    case groupsChanged
     /// A message already sent changed, as when someone reacted to it.
     case messageChanged(LinkMessage)
     /// What a bot is doing now.
@@ -702,6 +714,37 @@ public struct LinkBot: Codable, Equatable, Identifiable, Sendable {
         createdAt = try c.decode(Date.self, forKey: .createdAt)
         phase = try c.decodeIfPresent(String.self, forKey: .phase).flatMap(LinkBotPhase.init(rawValue:))
         readUpTo = try c.decodeIfPresent(Date.self, forKey: .readUpTo)
+    }
+}
+
+/// What a device sets on a group it makes or edits on the Hub.
+public struct LinkGroupDraft: Codable, Equatable, Sendable {
+    public var name: String
+    public var publicDescription: String
+    /// Bots of the same user, at least one.
+    public var botIDs: [UUID]
+
+    public init(name: String, publicDescription: String = "", botIDs: [UUID]) {
+        self.name = name
+        self.publicDescription = publicDescription
+        self.botIDs = botIDs
+    }
+}
+
+/// A conversation between a user and several of their bots on the Hub. Its ID is the
+/// conversation's, which messages name as for a bot's own conversation.
+public struct LinkGroup: Codable, Equatable, Identifiable, Sendable {
+    public var id: UUID
+    public var draft: LinkGroupDraft
+    public var createdAt: Date
+    /// When the latest message its user has read was sent. Nil when they have read none.
+    public var readUpTo: Date?
+
+    public init(id: UUID, draft: LinkGroupDraft, createdAt: Date, readUpTo: Date? = nil) {
+        self.id = id
+        self.draft = draft
+        self.createdAt = createdAt
+        self.readUpTo = readUpTo
     }
 }
 

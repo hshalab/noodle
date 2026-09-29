@@ -654,7 +654,8 @@ struct GroupInfoSheet: View {
 
                 GroupDescriptionEditor(publicDescription: $publicDescription)
 
-                GroupMemberPicker(agents: store.agents, selectedIDs: $selectedIDs)
+                GroupMemberPicker(agents: store.groupCandidates(on: store.hubMirror(forConversation: conversation.id)),
+                                  selectedIDs: $selectedIDs)
 
                 Text("Add at least one bot. Membership changes apply to future messages.")
                     .font(.caption)
@@ -740,6 +741,8 @@ struct NewGroupSheet: View {
     @State private var name = ""
     @State private var publicDescription = ""
     @State private var selectedIDs = Set<UUID>()
+    /// The joined Hub to keep the group on, or nil for this Mac.
+    @State private var hubID: ObjectIdentifier?
     @FocusState private var nameFocused: Bool
 
     init(participantIDs: Set<UUID> = []) {
@@ -759,7 +762,8 @@ struct NewGroupSheet: View {
                     _ = store.createGroup(
                         named: name,
                         publicDescription: publicDescription,
-                        participantIDs: selectedIDs
+                        participantIDs: selectedIDs,
+                        on: hub
                     )
                 }
                 .buttonStyle(.plain)
@@ -784,7 +788,20 @@ struct NewGroupSheet: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 12)
 
-            GroupMemberPicker(agents: store.agents, selectedIDs: $selectedIDs)
+            // Only someone who joined a Hub chooses: a group is all this Mac's bots, or all one Hub's.
+            if !store.hubMirrors.isEmpty {
+                Picker("Location", selection: $hubID) {
+                    Text("This Mac").tag(ObjectIdentifier?.none)
+                    ForEach(store.hubMirrors, id: \.pairing.directory) { mirror in
+                        Text(mirror.pairing.hub?.name ?? "Noodle Hub").tag(Optional(ObjectIdentifier(mirror)))
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .onChange(of: hubID) { selectedIDs.formIntersection(candidates.map(\.id)) }
+            }
+
+            GroupMemberPicker(agents: candidates, selectedIDs: $selectedIDs)
                 .padding(.horizontal, 16)
                 .padding(.bottom, 16)
 
@@ -796,6 +813,10 @@ struct NewGroupSheet: View {
         .frame(width: 480)
         .onAppear { nameFocused = true }
     }
+
+    private var hub: HubMirror? { store.hubMirrors.first { ObjectIdentifier($0) == hubID } }
+
+    private var candidates: [AgentRecord] { store.groupCandidates(on: hub) }
 
     private var canCreate: Bool {
         ConversationName.error(for: name) == nil && !selectedIDs.isEmpty

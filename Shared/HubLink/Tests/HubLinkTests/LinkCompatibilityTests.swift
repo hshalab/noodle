@@ -131,6 +131,8 @@ final class LinkVersion1Tests: XCTestCase {
             "deleteComputer": .deleteComputer(id: a), "browsers": .browsers, "createBrowser": .createBrowser(d.browser),
             "updateBrowser": .updateBrowser(id: a, d.browser), "deleteBrowser": .deleteBrowser(id: a),
             "assignBrowsers": .assignBrowsers(botID: a, browserIDs: [b]),
+            "groups": .groups, "createGroup": .createGroup(group.draft), "updateGroup": .updateGroup(id: b, group.draft),
+            "deleteGroup": .deleteGroup(id: b),
             "openSurface": .openSurface(conversationID: b, attachmentID: c), "linkPreview": .linkPreview(conversationID: b, attachmentID: c),
             "messagePageBefore": .messagePage(LinkMessagePage(conversationID: b, before: 120, limit: 50)),
             "messagePageAfter": .messagePage(LinkMessagePage(conversationID: b, after: 3, limit: 100)),
@@ -139,6 +141,9 @@ final class LinkVersion1Tests: XCTestCase {
             "kick": .kick(botID: a), "confirmKick": .confirmKick(botID: a, confirmationID: b), "newSession": .newSession(botID: a),
             "toolCatalog": .toolCatalog,
         ]
+    }
+    private var group: LinkGroup {
+        LinkGroup(id: b, draft: LinkGroupDraft(name: "House", publicDescription: "Staff", botIDs: [a]), createdAt: date, readUpTo: date)
     }
     private var nextResponses: [String: LinkResponse] {
         let d = nextDraft
@@ -167,6 +172,7 @@ final class LinkVersion1Tests: XCTestCase {
             "toolCatalog": .toolCatalog([LinkToolPreset(id: "notion", name: "Notion", summary: "Pages.", instructions: "Search first.",
                                                         endpoint: URL(string: "https://mcp.notion.com/mcp")!, badge: "Experimental",
                                                         icon: Data([7]))]),
+            "groups": .groups([group]), "group": .group(group),
         ]
     }
     private var nextEvents: [String: LinkEvent] {
@@ -176,7 +182,7 @@ final class LinkVersion1Tests: XCTestCase {
             "computersChanged": .computersChanged, "computerCreated": .computerCreated(requestID: a, computer: computer, error: nil),
             "computerFailed": .computerCreated(requestID: a, computer: nil, error: "No space"), "browsersChanged": .browsersChanged,
             "surfaceOpened": .surfaceOpened(sessionID: a), "surfaceFailed": .surfaceFailed(reason: "The computer is stopped."),
-            "readChanged": .readChanged(conversationID: b, upTo: date),
+            "readChanged": .readChanged(conversationID: b, upTo: date), "groupsChanged": .groupsChanged,
         ]
     }
 
@@ -238,7 +244,11 @@ final class LinkVersion1Tests: XCTestCase {
         "saveConnection": #"{"version":1,"request":{"saveConnection":{"_0":{"id":"00000000-0000-0000-0000-00000000000A","description":"Notes","endpoint":"https:\/\/mcp.notion.com\/mcp","instructions":"Search first.","name":"Notion"}}}}"#,
         "signIn": #"{"version":1,"request":{"signIn":{"redirect":"noodle:\/\/sign-in","connectionID":"00000000-0000-0000-0000-00000000000A"}}}"#,
         "updateBrowser": #"{"version":1,"request":{"updateBrowser":{"id":"00000000-0000-0000-0000-00000000000A","_1":{"description":"Research","symbol":"briefcase","colour":2,"name":"Work"}}}}"#,
-        "updateComputer": #"{"version":1,"request":{"updateComputer":{"id":"00000000-0000-0000-0000-00000000000A","_1":{"template":"ubuntu","description":"Builds","symbol":"hammer","colour":3,"name":"Workbench"}}}}"#
+        "updateComputer": #"{"version":1,"request":{"updateComputer":{"id":"00000000-0000-0000-0000-00000000000A","_1":{"template":"ubuntu","description":"Builds","symbol":"hammer","colour":3,"name":"Workbench"}}}}"#,
+        "groups": #"{"version":1,"request":{"groups":{}}}"#,
+        "createGroup": #"{"version":1,"request":{"createGroup":{"_0":{"name":"House","publicDescription":"Staff","botIDs":["00000000-0000-0000-0000-00000000000A"]}}}}"#,
+        "updateGroup": #"{"version":1,"request":{"updateGroup":{"id":"00000000-0000-0000-0000-00000000000B","_1":{"name":"House","publicDescription":"Staff","botIDs":["00000000-0000-0000-0000-00000000000A"]}}}}"#,
+        "deleteGroup": #"{"version":1,"request":{"deleteGroup":{"id":"00000000-0000-0000-0000-00000000000B"}}}"#
     ]
     private static let nextResponseJSON: [String: String] = [
         "kickConfirmation": #"{"kickConfirmation":{"_0":{"id":"00000000-0000-0000-0000-00000000000A","title":"Safeguards stopped Alfred","message":"Stopped.","confirmTitle":"Resume","offersNewSession":true}}}"#,
@@ -254,7 +264,9 @@ final class LinkVersion1Tests: XCTestCase {
         "noPicture": #"{"picture":{}}"#,
         "picture": #"{"picture":{"_0":"Bg=="}}"#,
         "toolCatalog": #"{"toolCatalog":{"_0":[{"id":"notion","name":"Notion","summary":"Pages.","instructions":"Search first.","endpoint":"https:\/\/mcp.notion.com\/mcp","badge":"Experimental","icon":"Bw=="}]}}"#,
-        "readBot": #"{"bot":{"_0":{"id":"00000000-0000-0000-0000-00000000000A","conversationID":"00000000-0000-0000-0000-00000000000B","draft":{"name":"Alfred","provider":"codex"},"createdAt":1790000000,"readUpTo":1790000000}}}"#
+        "readBot": #"{"bot":{"_0":{"id":"00000000-0000-0000-0000-00000000000A","conversationID":"00000000-0000-0000-0000-00000000000B","draft":{"name":"Alfred","provider":"codex"},"createdAt":1790000000,"readUpTo":1790000000}}}"#,
+        "groups": #"{"groups":{"_0":[{"id":"00000000-0000-0000-0000-00000000000B","draft":{"name":"House","publicDescription":"Staff","botIDs":["00000000-0000-0000-0000-00000000000A"]},"createdAt":1790000000,"readUpTo":1790000000}]}}"#,
+        "group": #"{"group":{"_0":{"id":"00000000-0000-0000-0000-00000000000B","draft":{"name":"House","publicDescription":"Staff","botIDs":["00000000-0000-0000-0000-00000000000A"]},"createdAt":1790000000,"readUpTo":1790000000}}}"#
     ]
     private static let nextEventJSON: [String: String] = [
         "browsersChanged": #"{"browsersChanged":{}}"#,
@@ -265,7 +277,8 @@ final class LinkVersion1Tests: XCTestCase {
         "signInPage": #"{"signInPage":{"connectionID":"00000000-0000-0000-0000-00000000000A","url":"https:\/\/example.com\/auth"}}"#,
         "surfaceFailed": #"{"surfaceFailed":{"reason":"The computer is stopped."}}"#,
         "surfaceOpened": #"{"surfaceOpened":{"sessionID":"00000000-0000-0000-0000-00000000000A"}}"#,
-        "readChanged": #"{"readChanged":{"conversationID":"00000000-0000-0000-0000-00000000000B","upTo":1790000000}}"#
+        "readChanged": #"{"readChanged":{"conversationID":"00000000-0000-0000-0000-00000000000B","upTo":1790000000}}"#,
+        "groupsChanged": #"{"groupsChanged":{}}"#
     ]
     private static let controlJSON = [
         #"{"input":{"_0":{"pointer":{"_0":"down","clickCount":2,"x":10,"y":20}}}}"#,

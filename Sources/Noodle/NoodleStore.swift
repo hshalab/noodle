@@ -750,7 +750,27 @@ final class NoodleStore {
         }
     }
 
-    func createGroup(named name: String, publicDescription: String, participantIDs: Set<UUID>) -> Bool {
+    /// The bots a group kept on `hub` may have, or on this Mac when nil. Groups never mix the two.
+    func groupCandidates(on hub: HubMirror?) -> [AgentRecord] {
+        if let hub { return agents.filter { hub.localAgentIDs.contains($0.id) } }
+        return agents.filter { !runtime.remoteAgentIDs.contains($0.id) }
+    }
+
+    func createGroup(named name: String, publicDescription: String, participantIDs: Set<UUID>, on hub: HubMirror? = nil) -> Bool {
+        if let hub {
+            creationSheet = nil
+            Task {
+                do {
+                    let conversation = try await hub.createGroup(named: name, publicDescription: publicDescription,
+                                                                 agentIDs: Array(participantIDs))
+                    selectedConversationID = conversation.id
+                    refreshAppShortcuts()
+                } catch {
+                    errorMessage = error.localizedDescription
+                }
+            }
+            return true
+        }
         do {
             let conversation = try repository.createGroup(
                 named: name,
@@ -777,6 +797,19 @@ final class NoodleStore {
         publicDescription: String,
         participantIDs: Set<UUID>
     ) -> Bool {
+        if let hub = hubMirror(forConversation: conversation.id) {
+            groupBeingEdited = nil
+            Task {
+                do {
+                    try await hub.updateGroup(conversation.id, named: name, publicDescription: publicDescription,
+                                              agentIDs: Array(participantIDs))
+                    refreshAppShortcuts()
+                } catch {
+                    errorMessage = error.localizedDescription
+                }
+            }
+            return true
+        }
         do {
             let membershipChanged = participantIDs != Set(conversation.participantIDs)
             let normalizedDescription = publicDescription.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -824,6 +857,20 @@ final class NoodleStore {
                 }
             }
             agentBeingEdited = nil
+            return true
+        }
+
+        if agent == nil, let hub = hubMirror(forConversation: conversation.id) {
+            Task {
+                do {
+                    try await hub.deleteGroup(conversation.id)
+                    drafts.clear(conversation.id)
+                    if selectedConversationID == conversation.id { selectedConversationID = nil }
+                } catch {
+                    errorMessage = error.localizedDescription
+                }
+            }
+            groupBeingEdited = nil
             return true
         }
 

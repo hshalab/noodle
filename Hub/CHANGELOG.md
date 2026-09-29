@@ -7,6 +7,7 @@
 - Kick and New Session work from Noodle on iPhone and iPad for bots on the Hub, with the same questions as in Noodle.
 - Noodle for iPhone lists the tool services the Hub offers when adding a tool, as Noodle's New Tool does.
 - Noodle for iPhone can set the reasoning effort of a bot on the Hub, from the efforts its model offers.
+- The Hub keeps groups of a user's own bots, made and edited from Noodle on the Mac. A group whose last bot is deleted goes with it.
 
 ## [0.6.0] - 2026-09-28
 

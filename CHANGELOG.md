@@ -12,6 +12,7 @@ All notable changes to Noodle are documented here, following
 - When this Mac serves your devices (Settings > Hub), your phone can create, edit, delete and assign the Mac's own tools, computers and browsers, and sign tools in. Changes show up in Noodle on the Mac, and bots use them straight away.
 - Noodle for iPhone lists the tool services this Mac offers as a Hub when adding a tool, as the Mac's New Tool does.
 - Noodle for iPhone can set a bot's reasoning effort on this Mac, from the efforts its model offers.
+- Groups can be kept on a Noodle Hub you joined. New Group asks where to keep the group once you have joined a Hub, and offers only bots from that place, so a group never mixes this Mac's bots with a Hub's.
 - Web links previewed in Quick Look can be annotated like attachments, with ⌘⇧A for selected text or ⌘⇧R for a region. Saving adds the annotation to your draft, with the link it refers to.
 
 ### Changed

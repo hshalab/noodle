@@ -6,7 +6,7 @@ import NoodleCore
 import NoodleRuntime
 
 /// Bots paired devices keep on the Hub. Each belongs to one user, runs on a harness that
-/// user's plan lends, and talks only with that user.
+/// user's plan lends, and talks only with that user, alone or in groups of their bots.
 @MainActor public final class HubBots {
     /// Where an owner's devices are told that something changed.
     public var onChange: ((_ user: UUID, LinkEvent) -> Void)?
@@ -30,7 +30,7 @@ import NoodleRuntime
     /// Following bots that something else runs, as Noodle does its own.
     private var watching = false
     private var loop: Task<Void, Never>?
-    /// Runs after a device made, changed or deleted a bot, for whatever runs the bots.
+    /// Runs after a device made, changed or deleted a bot or group, for whatever runs the bots.
     public var onBotsEdited: (() -> Void)?
     /// Bots here that devices never see: on the owner's own Mac, its copies of bots another Hub keeps.
     public var isHidden: (UUID) -> Bool = { _ in false }
@@ -241,8 +241,50 @@ import NoodleRuntime
     }
 
     public func delete(_ id: UUID, for user: HubUser) throws {
-        try remove(try owned(id, by: user))
+        let leftGroups = try remove(try owned(id, by: user))
         onChange?(user.id, .botsChanged)
+        if leftGroups { onChange?(user.id, .groupsChanged) }
+        onBotsEdited?()
+    }
+
+    public func groups(for user: HubUser) throws -> [LinkGroup] {
+        let agents = try repository.loadAgents()
+        return try repository.loadConversations()
+            .filter { $0.kind == .group && owner(of: $0, among: agents) == user.id }
+            .map(group)
+    }
+
+    public func createGroup(_ draft: LinkGroupDraft, for user: HubUser) throws -> LinkGroup {
+        let bots = try draft.botIDs.map { try owned($0, by: user) }
+        let conversation = try repository.createGroup(named: draft.name, publicDescription: draft.publicDescription,
+                                                      participantIDs: bots.map(\.id), existingAgents: bots)
+        onChange?(user.id, .groupsChanged)
+        onBotsEdited?()
+        // As saved, so it matches every later read of the same group.
+        return group(try repository.loadConversations().first { $0.id == conversation.id } ?? conversation)
+    }
+
+    public func updateGroup(_ id: UUID, with draft: LinkGroupDraft, for user: HubUser) throws -> LinkGroup {
+        let before = try ownedGroup(id, by: user)
+        let bots = try draft.botIDs.map { try owned($0, by: user) }
+        let updated = try repository.updateGroup(conversationID: id, named: draft.name, publicDescription: draft.publicDescription,
+                                                 participantIDs: bots.map(\.id), existingAgents: try repository.loadAgents())
+        // As Group Info does in Noodle: the bots hear who joined or left, and of a new description.
+        if running || watching,
+           Set(before.participantIDs) != Set(updated.participantIDs) || before.publicDescription != updated.publicDescription {
+            runtime.notify(bots, repository: repository)
+        }
+        onChange?(user.id, .groupsChanged)
+        onBotsEdited?()
+        return group(updated)
+    }
+
+    /// Deletes a group and its messages. Its bots stay.
+    public func deleteGroup(_ id: UUID, for user: HubUser) throws {
+        _ = try ownedGroup(id, by: user)
+        try repository.deleteConversation(id: id)
+        if readMarks.removeValue(forKey: id) != nil { try? saveReadMarks() }
+        onChange?(user.id, .groupsChanged)
         onBotsEdited?()
     }
 
@@ -272,7 +314,7 @@ import NoodleRuntime
     /// Deletes every bot of a user who is being removed.
     public func removeBots(of user: HubUser) {
         for agent in (try? repository.loadAgents()) ?? [] where access.owner(ofBot: agent.id) == user.id {
-            try? remove(agent)
+            _ = try? remove(agent)
         }
     }
 
@@ -366,7 +408,7 @@ import NoodleRuntime
 
     public func send(_ body: String, id: UUID, attachmentIDs: [UUID] = [], in conversationID: UUID,
                      for user: HubUser) throws -> LinkMessage {
-        let agent = try ownedConversation(conversationID, by: user)
+        let bots = try ownedConversation(conversationID, by: user).bots
         let files = try attachments(in: conversationID)
         if let existing = try repository.loadMessages(conversationID: conversationID).first(where: { $0.id == id }) {
             return linkMessage(existing, files: files)
@@ -374,22 +416,24 @@ import NoodleRuntime
         guard attachmentIDs.allSatisfy({ files[$0] != nil }) else {
             throw LinkError("An attachment has not reached the Hub yet.")
         }
-        let profile = try repository.loadAgentHarnessProfile(agent)
-        // On the owner's own Mac, a bot runs on whatever Noodle gives it.
-        guard access.isPersonal || agent.harnessIdentifier.flatMap(HarnessProvider.init(rawValue:)).map({
-            lends(HubHarness(provider: $0, profile: profile), to: user)
-        }) == true else {
-            let name = agent.harnessIdentifier.flatMap(HarnessProvider.init(rawValue:))?.displayName ?? "this harness"
-            throw LinkError("Your plan no longer lends \(name).")
-        }
-        if let provider = agent.harnessIdentifier.flatMap(HarnessProvider.init(rawValue:)),
-           !access.lends(HubHarness(provider: provider, profile: profile), model: agent.modelIdentifier, to: user) {
-            throw LinkError(agent.modelIdentifier.map { "Your plan no longer lends \($0) on \(provider.displayName)." }
-                            ?? "Your plan needs a model chosen for \(provider.displayName).")
+        for agent in bots {
+            let profile = try repository.loadAgentHarnessProfile(agent)
+            // On the owner's own Mac, a bot runs on whatever Noodle gives it.
+            guard access.isPersonal || agent.harnessIdentifier.flatMap(HarnessProvider.init(rawValue:)).map({
+                lends(HubHarness(provider: $0, profile: profile), to: user)
+            }) == true else {
+                let name = agent.harnessIdentifier.flatMap(HarnessProvider.init(rawValue:))?.displayName ?? "this harness"
+                throw LinkError("Your plan no longer lends \(name).")
+            }
+            if let provider = agent.harnessIdentifier.flatMap(HarnessProvider.init(rawValue:)),
+               !access.lends(HubHarness(provider: provider, profile: profile), model: agent.modelIdentifier, to: user) {
+                throw LinkError(agent.modelIdentifier.map { "Your plan no longer lends \($0) on \(provider.displayName)." }
+                                ?? "Your plan needs a model chosen for \(provider.displayName).")
+            }
         }
         let message = try repository.sendUserMessage(conversationID: conversationID, body: body,
                                                      attachmentIDs: attachmentIDs, id: id)
-        if running || watching { runtime.notify([agent], repository: repository) }
+        if running || watching { runtime.notify(bots, repository: repository) }
         checkForChanges()
         return linkMessage(message, files: files)
     }
@@ -401,9 +445,8 @@ import NoodleRuntime
     /// Tells owners about conversations whose messages changed since the last check.
     public func checkForChanges() {
         guard let agents = try? repository.loadAgents(), let conversations = try? repository.loadConversations() else { return }
-        for conversation in conversations where conversation.kind == .direct {
-            guard let bot = conversation.participantIDs.first, agents.contains(where: { $0.id == bot }), !isHidden(bot),
-                  let owner = access.owner(ofBot: bot) else { continue }
+        for conversation in conversations {
+            guard let owner = owner(of: conversation, among: agents) else { continue }
             let url = repository.conversationDirectory(id: conversation.id).appendingPathComponent("messages.json")
             guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
                   let size = (attributes[.size] as? NSNumber)?.intValue,
@@ -474,10 +517,16 @@ import NoodleRuntime
         try JSONEncoder().encode(readMarks).write(to: readMarksURL, options: .atomic)
     }
 
-    private func remove(_ agent: AgentRecord) throws {
-        let conversations = (try? repository.loadConversations().filter { $0.participantIDs.first == agent.id }.map(\.id)) ?? []
+    /// Deletes a bot, and any group left without bots. Returns whether it was in a group.
+    private func remove(_ agent: AgentRecord) throws -> Bool {
+        let joined = (try? repository.loadConversations().filter { $0.participantIDs.contains(agent.id) }) ?? []
+        let conversations = joined.filter { $0.kind == .direct || $0.participantIDs == [agent.id] }.map(\.id)
         if running { runtime.stop(agentID: agent.id, revokeAccess: false) }
         try repository.deleteAgent(agent)
+        // Nobody would see a group without bots again.
+        for group in joined where group.kind == .group && group.participantIDs == [agent.id] {
+            try? repository.deleteConversation(id: group.id)
+        }
         if running {
             runtime.stop(agentID: agent.id)
             try? messenger.start(agents: try repository.loadAgents())
@@ -492,6 +541,7 @@ import NoodleRuntime
             conversations.forEach { readMarks[$0] = nil }
             try? saveReadMarks()
         }
+        return joined.contains { $0.kind == .group }
     }
 
     /// Reads the user's current plan, not the one they were on when `user` was read.
@@ -519,16 +569,15 @@ import NoodleRuntime
         return agent
     }
 
-    /// The bot of a direct conversation the user owns.
-    /// The browser tab, computer or noodlet a link in the user's conversation names, and the
-    /// conversation's bot. Only a link that bot posted counts, and a noodlet only if it came from
-    /// that bot's folder. Anything else opens nothing.
+    /// The browser tab, computer or noodlet a link in the user's conversation names, and the bot
+    /// that posted it. Only a link one of the conversation's bots posted counts, and a noodlet only
+    /// if it came from that bot's folder. Anything else opens nothing.
     public func companionLink(_ attachmentID: UUID, in conversationID: UUID, for user: HubUser) async throws -> (link: CompanionLink, bot: UUID) {
-        let bot = try ownedConversation(conversationID, by: user)
-        guard let link = try attachments(in: conversationID)[attachmentID]?.companion,
-              try repository.loadMessages(conversationID: conversationID).contains(where: {
-                  $0.author == .agent(bot.id) && ($0.attachmentIDs ?? []).contains(attachmentID)
-              }) else {
+        let bots = try ownedConversation(conversationID, by: user).bots
+        let poster = try repository.loadMessages(conversationID: conversationID)
+            .first { ($0.attachmentIDs ?? []).contains(attachmentID) }
+            .flatMap { message in bots.first { message.author == .agent($0.id) } }
+        guard let link = try attachments(in: conversationID)[attachmentID]?.companion, let bot = poster else {
             throw LinkError("That is not something this bot shared.")
         }
         if case .noodlet(let noodlet) = link {
@@ -558,13 +607,38 @@ import NoodleRuntime
         return response.mediaType == "image/png" ? response.data : nil
     }
 
-    private func ownedConversation(_ id: UUID, by user: HubUser) throws -> AgentRecord {
+    /// A conversation the user owns and its bots: one bot's own, or a group of theirs.
+    private func ownedConversation(_ id: UUID, by user: HubUser) throws -> (conversation: BotConversation, bots: [AgentRecord]) {
+        let agents = try repository.loadAgents()
         guard let conversation = try repository.loadConversations().first(where: { $0.id == id }),
-              conversation.kind == .direct, let bot = conversation.participantIDs.first else {
+              owner(of: conversation, among: agents) == user.id else {
             throw LinkError("There is no such conversation.")
         }
-        do { return try owned(bot, by: user) }
-        catch { throw LinkError("There is no such conversation.") }
+        return (conversation, conversation.participantIDs.compactMap { id in agents.first { $0.id == id } })
+    }
+
+    private func ownedGroup(_ id: UUID, by user: HubUser) throws -> BotConversation {
+        guard let conversation = try? ownedConversation(id, by: user).conversation, conversation.kind == .group else {
+            throw LinkError("There is no such group.")
+        }
+        return conversation
+    }
+
+    /// The user all of a conversation's bots belong to, when they are one user's and shown to devices.
+    private func owner(of conversation: BotConversation, among agents: [AgentRecord]) -> UUID? {
+        let bots = conversation.participantIDs
+        guard !bots.isEmpty, conversation.kind == .group || bots.count == 1,
+              bots.allSatisfy({ id in !isHidden(id) && agents.contains { $0.id == id } }) else { return nil }
+        let owners = Set(bots.map(access.owner(ofBot:)))
+        guard owners.count == 1, let owner = owners.first ?? nil else { return nil }
+        return owner
+    }
+
+    private func group(_ conversation: BotConversation) -> LinkGroup {
+        LinkGroup(id: conversation.id,
+                  draft: LinkGroupDraft(name: conversation.displayName, publicDescription: conversation.publicDescription ?? "",
+                                        botIDs: conversation.participantIDs),
+                  createdAt: conversation.createdAt, readUpTo: readMarks[conversation.id])
     }
 
     private func bot(_ agent: AgentRecord, conversations: [BotConversation]) throws -> LinkBot? {
