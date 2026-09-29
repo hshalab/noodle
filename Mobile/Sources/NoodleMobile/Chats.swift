@@ -706,7 +706,7 @@ struct AgentsView: View {
                 }
                 .sharedBackgroundVisibility(.hidden)
             }
-            .refreshable {
+            .wordmarkRefreshable {
                 for hub in chats { try? await hub.reload() }
             }
             .sheet(isPresented: $showingMore, onDismiss: openChosen) {
@@ -1399,27 +1399,43 @@ private struct Bubble: View {
         Task { try? await chats.toggleReaction(emoji, on: message, in: thread) }
     }
 
-    /// One badge per emoji, with a count; yours are tinted, and tapping one adds or takes back yours.
+    /// As in Messages: one round badge per emoji over the bubble's top corner, away from the
+    /// conversation's edge, with a count when more than one reacted. Yours are tinted, and tapping
+    /// one adds or takes back yours.
     @ViewBuilder private var reactions: some View {
         let counts = Dictionary(grouping: message.reactions, by: \.emoji)
         let emojis = message.reactions.map(\.emoji).reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }
-        if !emojis.isEmpty {
-            HStack(spacing: 4) {
-                ForEach(emojis, id: \.self) { emoji in
-                    let mine = counts[emoji]?.contains { $0.author == .you } == true
-                    Button { react(emoji) } label: {
-                        Text("\(emoji) \(counts[emoji]?.count ?? 0)").font(.caption)
-                            .padding(.horizontal, 7).padding(.vertical, 3)
-                            .background(mine ? AnyShapeStyle(.tint.opacity(0.2)) : AnyShapeStyle(Color(.secondarySystemBackground)),
-                                        in: Capsule())
-                    }
-                    .buttonStyle(.plain)
+        HStack(spacing: -6) {
+            ForEach(emojis, id: \.self) { emoji in
+                let count = counts[emoji]?.count ?? 0
+                let mine = counts[emoji]?.contains { $0.author == .you } == true
+                Button { react(emoji) } label: {
+                    Text(count > 1 ? "\(emoji) \(count)" : emoji).font(.footnote)
+                        .foregroundStyle(mine ? .white : .primary)
+                        .padding(.horizontal, 6).frame(minWidth: 28, minHeight: 28)
+                        .background(mine ? AnyShapeStyle(.tint) : AnyShapeStyle(Color(.tertiarySystemBackground)), in: Capsule())
+                        .overlay(Capsule().stroke(Color(.systemBackground), lineWidth: 2))
                 }
+                .buttonStyle(.plain)
             }
         }
     }
 
     @ViewBuilder private func content(foreground: Color, background: Color) -> some View {
+        let trailing = message.author == .you
+        VStack(alignment: trailing ? .trailing : .leading, spacing: 4) {
+            bubbleContent(foreground: foreground, background: background)
+        }
+        .padding(.top, message.reactions.isEmpty ? 0 : 16)
+        .overlay(alignment: trailing ? .topLeading : .topTrailing) {
+            reactions.offset(x: trailing ? -10 : 10)
+        }
+        if let url = LinkPreview.firstURL(in: message.body) {
+            LinkPreviewCard(url: url)
+        }
+    }
+
+    @ViewBuilder private func bubbleContent(foreground: Color, background: Color) -> some View {
         if !message.attachments.isEmpty {
             let mode = AttachmentLayout(rawValue: attachmentLayout) ?? .standard
             let together = mode != .vertical && message.attachments.count > 1
@@ -1438,10 +1454,6 @@ private struct Bubble: View {
                 .onLongPressGesture(minimumDuration: 0.35) { lift() } onPressingChanged: { pressing = $0 }
                 .accessibilityAction(named: "React") { lift() }
                 .accessibilityAction(named: "Copy") { UIPasteboard.general.string = message.body }
-        }
-        reactions
-        if let url = LinkPreview.firstURL(in: message.body) {
-            LinkPreviewCard(url: url)
         }
     }
 

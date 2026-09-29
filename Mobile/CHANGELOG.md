@@ -6,14 +6,21 @@
 
 - Ask a bot to make a simple game with arrow keys and a jump button, then open the game from its message: a d-pad and buttons show over it instead of the keyboard, and holding one keeps moving. Needs Noodle Applet, the Mac or Hub on the next update.
 - The controller button at the top hides and shows the controls; the keyboard button beside it still types into the game.
+- Pull the bots list down slowly: the Noodle word writes itself as you pull, is whole when letting go refreshes, and goes once the list has refreshed.
+- React to a message: the reaction sits over the bubble's top corner, as in Messages, and tapping it takes yours back.
 - Connect a game controller: it plays the game, and once you press something on it, only the buttons it has no room for stay on the screen.
 
 ### Added
 
 - Games your bots make show a controller over the live view instead of the keyboard, and game controllers play them too.
 
+### Changed
+
+- Pulling the bots list to refresh writes the Noodle word instead of showing a spinner.
+
 ### Fixed
 
+- Reactions sit over the message's corner, as in Messages, instead of on their own line under it.
 - Reaching a Noodle Hub no longer sometimes waits 10 seconds and fails with "The Hub did not answer in time" when a Hub has recently started or stopped on the same Mac.
 
 ## [0.7.0] - 2026-09-29
