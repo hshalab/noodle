@@ -385,6 +385,8 @@ import AppletCore
         try validateClock(start, package: session.package)
         // A noodlet the user is watching stays up until its next version takes its place.
         let place = start.mode == "foreground" ? await session.place() : nil
+        // One the user has closed comes back out of sight: only they bring a noodlet to the front.
+        if place == nil, start.mode == "foreground" { start.mode = "background" }
         func retire() {
           session.stop()
           _ = status(session)

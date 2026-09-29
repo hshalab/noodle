@@ -5,6 +5,7 @@
 ### Fixed
 
 - Closing a noodlet that someone was watching or using from another device now really unloads it. Its page stayed in memory, and viewers were left on a frozen picture instead of seeing the view end.
+- A bot updating a noodlet you had closed no longer brings it back as a window with sound. It restarts out of sight and muted; only a noodlet still open on your screen is replaced in place.
 
 ## [0.14.0] - 2026-09-29
 
