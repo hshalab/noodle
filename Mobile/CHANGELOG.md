@@ -9,6 +9,7 @@
 - Tap the red mark, or hold the message: Try Again sends it, Edit and Send puts it back in the field with its files, and Delete removes it. Once anything newer is in the conversation, Try Again is gone and the message is never sent by itself.
 - Quit and reopen Noodle with a message that did not go through: it is still there, still marked.
 - Make a new group, or open a group's info: each bot in Members shows its description under its name.
+- Pull the list of conversations down until it clicks, and keep holding: the word stays in the gap above the list and does not jump over the pinned bots, also after you let go.
 
 ### Changed
 
@@ -19,6 +20,7 @@
 ### Fixed
 
 - Adding lines to a message no longer moves the conversation or its scroll bar.
+- Pulling to refresh past the click no longer makes the word jump and draw over the pinned bots and the first conversations.
 - A message that does not go through is tried again by itself while it is still the newest, and otherwise stays marked Not delivered, with Try Again, Edit and Send, and Delete, instead of an error under the conversation that stayed until the next message.
 
 ## [0.8.0] - 2026-09-29
