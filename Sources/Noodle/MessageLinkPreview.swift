@@ -1,6 +1,7 @@
 import AppKit
 import CryptoKit
 import MapKit
+import NoodleCore
 import SwiftUI
 @preconcurrency import LinkPresentation
 
@@ -182,6 +183,13 @@ enum WebLinkPreview {
         let data = try PropertyListSerialization.data(fromPropertyList: ["URL": url.absoluteString], format: .xml, options: 0)
         try data.write(to: file, options: .atomic)
         return file
+    }
+    /// The unsaved link attachment an annotation refers to, named as an attached link would be.
+    static func source(for url: URL, conversationID: UUID) throws -> (source: ConversationAttachment, data: Data) {
+        let data = try PropertyListSerialization.data(fromPropertyList: ["URL": url.absoluteString], format: .xml, options: 0)
+        let name = (url.host ?? "Link") + ".webloc"
+        return (ConversationAttachment(conversationID: conversationID, originalFilename: name, storedFilename: name,
+            mediaType: "application/x-webloc", byteCount: Int64(data.count), url: url), data)
     }
 }
 

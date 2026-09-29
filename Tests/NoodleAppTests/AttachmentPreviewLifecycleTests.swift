@@ -200,7 +200,7 @@ import XCTest
         }
     }
 
-    func testWebLinkPreviewsItsBookmarkWithoutAnAttachmentToAnnotate() throws {
+    func testWebLinkPreviewsItsBookmarkWithALinkSourceToAnnotate() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
         let page = try XCTUnwrap(URL(string: "https://example.com/page"))
@@ -213,11 +213,13 @@ import XCTest
 
         let c = controller()
         c.stage([(source("One.txt"), URL(fileURLWithPath: "/tmp/One.txt"))], at: 0)
-        c.stageLink(bookmark, title: "example.com")
+        let link = try WebLinkPreview.source(for: page, conversationID: UUID()).source
+        c.stageLink(bookmark, title: "example.com", source: link)
         XCTAssertEqual(c.numberOfPreviewItems(in: nil), 1)
         XCTAssertEqual(c.previewPanel(nil, previewItemAt: 0).previewItemTitle, "example.com")
         XCTAssertEqual(c.currentURL, bookmark)
-        XCTAssertNil(c.attachment(at: 0))
+        XCTAssertEqual(c.attachment(at: 0), link)
+        XCTAssertEqual(c.attachment(at: 0)?.url, page)
     }
 
     func testNativeCloseAndRepeatedCleanupEndTheSessionOnce() {

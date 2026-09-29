@@ -201,7 +201,9 @@ struct ChatView: View {
         .environment(\.openURL, OpenURLAction { url in
             guard let link = WebLinkPreview.previewed(url, enabled: WebLinkPreview.isEnabled()) else { return .systemAction }
             screenCapturePreview.close()
-            attachmentPreview.showLink(link)
+            attachmentPreview.showLink(link, conversationID: id) { note, content, source, raw in
+                try store.saveConversationAnnotation(note, content: content, source: source, sourceData: raw)
+            }
             return .handled
         })
     }

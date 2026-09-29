@@ -111,6 +111,24 @@ final class ConversationAnnotationTests: XCTestCase {
         XCTAssertEqual(delivery.attachments.first?.annotation?.comment, revised.comment)
     }
 
+    func testWebLinkAnnotationSavesItsSourceAsALinkAttachment() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("conversation-note-link-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let repository = WorkspaceRepository(rootURL: root)
+        try repository.prepare()
+        let bot = try repository.createAgent(named: "Reviewer")
+        let page = try XCTUnwrap(URL(string: "https://example.com/page"))
+        let (source, raw) = try WebLinkPreview.source(for: page, conversationID: bot.conversation.id)
+        XCTAssertEqual(source.url, page)
+        let note = AttachmentAnnotation(source: source, quote: "Heading", comment: "Look here")
+        let saved = try ConversationAnnotationContent.save(note, content: Data(note.textRepresentation.utf8),
+            source: source, sourceData: raw, repository: repository)
+        XCTAssertEqual(saved.source.url, page)
+        XCTAssertEqual(saved.source.originalFilename, "example.com.webloc")
+        XCTAssertEqual(saved.attachment.annotation?.sourceAttachmentID, saved.source.id)
+        XCTAssertEqual(try repository.loadAttachments(conversationID: bot.conversation.id).first { $0.id == saved.source.id }?.url, page)
+    }
+
     func testInvalidMessageReferenceRollsBackSourceAndOldMetadataStillDecodes() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("conversation-note-invalid-\(UUID())")
         defer { try? FileManager.default.removeItem(at: root) }

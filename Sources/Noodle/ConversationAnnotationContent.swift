@@ -14,7 +14,7 @@ enum ConversationAnnotationContent {
         guard note.isValid, note.sourceAttachmentID == source.id,
               note.sourceFilename == source.originalFilename else { throw WorkspaceError.invalidAttachment }
         let savedSource = try repository.importAttachment(data: sourceData, originalFilename: source.originalFilename,
-            into: source.conversationID, mediaType: source.mediaType)
+            into: source.conversationID, mediaType: source.mediaType, linkURL: source.url)
         do {
             let savedNote = AttachmentAnnotation(source: savedSource, quote: note.quote, comment: note.comment,
                 region: note.region, sourceMessageID: note.sourceMessageID)

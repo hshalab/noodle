@@ -182,22 +182,26 @@ private struct AttachmentPreviewMount: NSViewControllerRepresentable {
         }
     }
     /// A web link from the conversation, through the bookmark Quick Look renders.
-    /// It has no attachment behind it, so it cannot be annotated.
-    func showLink(_ link: URL) {
+    /// Its link attachment is saved only with an annotation, alongside the note.
+    func showLink(_ link: URL, conversationID: UUID,
+                  save: @escaping (AttachmentAnnotation, Data, ConversationAttachment, Data) throws -> Void) {
         guard let hostWindow = resolveHostWindow() else { return }
-        let bookmark: URL
-        do { bookmark = try WebLinkPreview.bookmark(for: link) } catch { reportError?(error); return }
+        let bookmark: URL, source: ConversationAttachment, sourceData: Data
+        do {
+            bookmark = try WebLinkPreview.bookmark(for: link)
+            (source, sourceData) = try WebLinkPreview.source(for: link, conversationID: conversationID)
+        } catch { reportError?(error); return }
         trace("link requested")
         if Self.active !== self { Self.active?.close() }
         let title = link.host ?? link.absoluteString
         present(bookmark, title: title, in: hostWindow) {
-            self.save = nil
-            stageLink(bookmark, title: title)
+            self.save = { note, content, source in try save(note, content, source, sourceData) }
+            stageLink(bookmark, title: title, source: source)
         }
     }
-    func stageLink(_ bookmark: URL, title: String) {
+    func stageLink(_ bookmark: URL, title: String, source: ConversationAttachment) {
         items = [items.first { $0.previewItemURL == bookmark && $0.previewItemTitle == title } ?? Item(url: bookmark, title: title)]
-        sources = []; startIndex = 0
+        sources = [source]; startIndex = 0
     }
     /// `load` stages the items. It runs once this controller is the active owner.
     private func present(_ url: URL, title: String, in hostWindow: NSWindow, load: () -> Void) {
