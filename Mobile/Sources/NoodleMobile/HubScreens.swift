@@ -300,7 +300,7 @@ struct HubsView: View {
                     ProfileView(pairing: pairing)
                 }
             }
-            .refreshable { await hubs.refreshAll() }
+            .wordmarkRefreshable { await hubs.refreshAll() }
             .pairing(isPresented: $adding, problem: $problem)
         }
     }
@@ -361,7 +361,7 @@ struct ProfileView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $pairingDevice) { PairDeviceView(pairing: pairing) }
-        .refreshable { await pairing.refresh() }
+        .wordmarkRefreshable { await pairing.refresh() }
         .confirmationDialog("Leave \(pairing.hubName)?", isPresented: $leaving, titleVisibility: .visible) {
             Button("Leave", role: .destructive) {
                 dismiss()

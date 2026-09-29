@@ -14,6 +14,8 @@ struct NoodleMobileApp: App {
     init() {
         let shared = AppGroup.hubs ?? URL.applicationSupportDirectory.appendingPathComponent("Hubs", isDirectory: true)
         _hubs = State(initialValue: HubMemberships(directory: shared, deviceName: UIDevice.current.name))
+        // Pulling to refresh writes the wordmark instead of turning the spinner.
+        UIRefreshControl.appearance().tintColor = .clear
     }
 
     var body: some Scene {

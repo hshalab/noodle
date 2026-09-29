@@ -244,7 +244,7 @@ struct HubToolsScreen: View {
         .sheet(isPresented: $adding) {
             NewHubToolSheet(chats: chats, agent: agent, kind: kind)
         }
-        .refreshable { try? await chats.loadTools() }
+        .wordmarkRefreshable { try? await chats.loadTools() }
     }
 
     private func delete(_ id: UUID) async throws {

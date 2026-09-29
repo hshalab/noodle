@@ -16,7 +16,7 @@
 
 ### Changed
 
-- Pulling the bots list to refresh writes the Noodle word instead of showing a spinner.
+- Pulling a list to refresh writes the Noodle word instead of showing a spinner.
 
 ### Fixed
 
