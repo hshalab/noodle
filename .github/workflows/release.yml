@@ -330,7 +330,7 @@ jobs:
     secrets: inherit
 
   tag:
-    needs: [versions, workflow-lint, checks, test-noodle, test-shared, test-noodle-macos27, test-computer, test-applet, test-browser, test-hub, test-mobile, test-bridge, prepare-noodle, prepare-computer, prepare-applet, prepare-browser, prepare-hub, prepare-mobile, prepare-images]
+    needs: [versions, workflow-lint, checks, test-noodle, test-shared, test-noodle-macos27, test-computer, test-applet, test-applet-rendering, test-browser, test-hub, test-mobile, test-bridge, prepare-noodle, prepare-computer, prepare-applet, prepare-browser, prepare-hub, prepare-mobile, prepare-images]
     # Explicitly accept unselected/skipped products, never a failed/cancelled build.
     if: >-
       always() && !cancelled() && github.event_name != 'pull_request' &&
@@ -341,6 +341,7 @@ jobs:
        (needs.test-noodle.result == 'success' && needs.test-shared.result == 'success' && needs.test-bridge.result == 'success')) &&
       (needs.versions.outputs.computer != 'true' || needs.test-computer.result == 'success') &&
       (needs.versions.outputs.applet != 'true' || needs.test-applet.result == 'success') &&
+      (needs.versions.outputs.applet != 'true' || needs.test-applet-rendering.result == 'success') &&
       (needs.versions.outputs.browser != 'true' || needs.test-browser.result == 'success') &&
       (needs.versions.outputs.hub != 'true' || needs.test-hub.result == 'success') &&
       (needs.versions.outputs.mobile != 'true' || needs.test-mobile.result == 'success') &&

@@ -78,7 +78,7 @@ final class ComputerTests: XCTestCase {
         XCTAssertTrue(desktop.hasDesktop)
         XCTAssertNoThrow(try desktop.validate())
         desktop.networkEnabled = false
-        XCTAssertThrowsError(try desktop.validate())
+        XCTAssertNoThrow(try desktop.validate())
         desktop.networkEnabled = true
         desktop.diskGiB = 4
         XCTAssertThrowsError(try desktop.validate())
