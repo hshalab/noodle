@@ -26,6 +26,7 @@ public struct CompanionAppsSettingsView: View {
                     ForEach(CompanionApp.allCases) { app in
                         companionRow(app)
                     }
+                    mobileRow
                 }
             }
             .formStyle(.grouped)
@@ -102,6 +103,34 @@ public struct CompanionAppsSettingsView: View {
                     .accessibilityLabel(installation == nil ? "Install \(app.name)" : updates ? "Update \(app.name)" : "Open \(app.name)")
                     .help(installation == nil ? "Download \(app.name)"
                           : updates ? "Open \(app.name) and check for updates" : "Open \(app.name)")
+                }
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    /// TestFlight until Mobile is on the App Store.
+    static let mobileURL = URL(string: "https://testflight.apple.com/join/wYKkNSP9")!
+
+    private var mobileRow: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "iphone")
+                .font(.system(size: 24))
+                .foregroundStyle(.secondary)
+                .frame(width: 32, height: 32)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Noodle Mobile").fontWeight(.semibold)
+                Text("Chat with the agents on your Noodle Hub from iPhone and iPad.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack {
+                    Text("Requires iOS 26 or later.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Link("Join Beta", destination: Self.mobileURL)
+                        .help("Open the TestFlight invitation on your iPhone or iPad")
                 }
             }
         }

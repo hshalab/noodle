@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Settings > Companion Apps lists Noodle Mobile, with a link to join its TestFlight beta.
+
 ## [0.8.0] - 2026-09-29
 
 ### Added
