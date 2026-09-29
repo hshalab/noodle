@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Closing a noodlet that someone was watching or using from another device now really unloads it. Its page stayed in memory, and viewers were left on a frozen picture instead of seeing the view end.
+
 ## [0.14.0] - 2026-09-29
 
 ### Added

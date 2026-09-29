@@ -19,6 +19,9 @@ import AppletCore
   }
   let size: CGSize
   var web: WebRunner?, native: NativeRunner?, recording: AppletRecording?
+  /// The live view, and where its viewers click and type in an HTML noodlet. While
+  /// one is watched, bots cannot drive this session.
+  var streamer: SurfaceStreamer?, injector: (view: NSView, injector: SurfaceEventInjector)?
   init(package: NoodletPackage, owner: String, mode: String, size: CGSize, root: URL,
        testClock: Bool = false) throws {
     self.package = package
@@ -72,6 +75,9 @@ import AppletCore
     web = nil
     native?.stop()
     native = nil
+    injector = nil
+    streamer?.stop()
+    streamer = nil
     lock = nil
     state = "stopped"
     log.append("lifecycle", "Stopped.")
@@ -86,10 +92,6 @@ import AppletCore
   @Published private(set) var frontPackage: NoodletPackage?
   private var server: AppletConnectionServer?
   private var artifacts: [UUID: (owner: String, url: URL)] = [:]
-  /// Where a person watching an HTML noodlet remotely clicks and types, one per session.
-  private var surfaceInjectors: [UUID: (view: NSView, injector: SurfaceEventInjector)] = [:]
-  /// Live views of sessions. While one is watched, bots cannot drive that session.
-  private var surfaceStreamers: [UUID: SurfaceStreamer] = [:]
   private let defaults: UserDefaults
   /// Returns why a noodlet may not use the permissions it declares. Replaced in tests.
   lazy var authorize: (NoodletPackage) async -> String? = { [defaults] in
@@ -349,7 +351,7 @@ import AppletCore
       switch request.operation {
       case .surfaceStream:
         guard let socket else { throw AppletError("A live view needs a connection of its own.") }
-        let streamer = surfaceStreamers[session.id] ?? SurfaceStreamer(capture: { [weak session] in
+        let streamer = session.streamer ?? SurfaceStreamer(capture: { [weak session] in
           guard let session else { return nil }
           if session.state == "running", let native = session.native { return (try await native.liveFrame(), session.size) }
           guard let picture = try await session.snapshot().cgImage(forProposedRect: nil, context: nil, hints: nil) else {
@@ -361,7 +363,7 @@ import AppletCore
           try await self.deliver(input, to: session)
         })
         streamer.watchingChanged = { [weak session] watched in session?.web?.watched = watched }
-        surfaceStreamers[session.id] = streamer
+        session.streamer = streamer
         streamer.attach(socket)
         return status(session)
       case .status: return status(session)
@@ -451,7 +453,7 @@ import AppletCore
         response.mediaType = "video/mp4"
         return response
       case .inspect, .eval, .click, .type, .key, .scroll, .drag, .step:
-        guard surfaceStreamers[session.id]?.isWatched != true else {
+        guard session.streamer?.isWatched != true else {
           throw AppletError("A person is using this noodlet right now. Try again when they're done.", code: "session-busy")
         }
         guard session.state == "running" else {
@@ -498,15 +500,15 @@ import AppletCore
   }
   /// What a person watching remotely did: real events in an HTML noodlet, the noodlet's own
   /// controls in a native one.
-  private func deliver(_ input: SurfaceInput, to session: AppletSession) async throws {
+  func deliver(_ input: SurfaceInput, to session: AppletSession) async throws {
     guard session.state == "running" else {
       throw AppletError("Session \(session.id) is \(session.state).", code: "session-not-running")
     }
     if let web = session.web {
-      if surfaceInjectors[session.id]?.view !== web.web {
-        surfaceInjectors[session.id] = (web.web, SurfaceEventInjector(view: web.web))
+      if session.injector?.view !== web.web {
+        session.injector = (web.web, SurfaceEventInjector(view: web.web))
       }
-      try surfaceInjectors[session.id]?.injector.deliver(input)
+      try session.injector?.injector.deliver(input)
       return
     }
     guard let native = session.native else { throw AppletError("The noodlet has no view.") }
