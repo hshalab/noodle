@@ -25,8 +25,11 @@ struct NoodleComputerApp: App {
         .frame(minWidth: 850, minHeight: 580)
         .background(ComputerLibraryWindowHost(library: delegate.libraryWindow))
     }
-    .defaultLaunchBehavior(CommandLine.arguments.contains("--noodle-background") ? .suppressed : .automatic)
-    .restorationBehavior(CommandLine.arguments.contains("--noodle-background") ? .disabled : .automatic)
+    // A quiet start from Noodle arrives as a URL, so the scene cannot tell it apart
+    // from a user launch; the delegate opens the library for a user launch.
+    .defaultLaunchBehavior(.suppressed)
+    .restorationBehavior(.disabled)
+    .handlesExternalEvents(matching: [])
     .defaultSize(width: 1080, height: 720)
     .windowToolbarStyle(.unified(showsTitle: false))
     .commands {
@@ -133,11 +136,16 @@ enum ComputerLaunchCheck {
     }
   }
   private var needsLibrary = false
-  private var openedDocument = false
+  /// Set by any URL, the quiet start included; the library then stays closed.
+  private(set) var openedDocument = false
   private var documentRequest = UUID()
   private var documentStarts: [UUID: Task<Void, Never>] = [:]
   func application(_ application: NSApplication, open urls: [URL]) {
     for url in urls {
+      if url == ComputerLaunch.backgroundURL() {
+        openedDocument = true
+        continue
+      }
       if url == ComputerLaunch.updateCheckURL() {
         openedDocument = true
         reopenLibrary()
@@ -203,7 +211,19 @@ enum ComputerLaunchCheck {
     // scripts/verify-launch-hooks.sh rejects a release that carries this marker.
     NSLog("noodle.development-hooks.enabled")
     #endif
-    guard CommandLine.arguments.contains("--noodle-background") else { return }
+    guard CommandLine.arguments.contains("--noodle-background") else {
+      guard !ComputerLaunchCheck.isVerificationRun else { return }
+      // Launch URLs can arrive just after this, so decide on the next turn.
+      let userLaunch = notification.userInfo?[NSApplication.launchIsDefaultUserInfoKey] as? Bool == true
+      DispatchQueue.main.async { [weak self] in
+        guard let self else { return }
+        if userLaunch, !self.openedDocument { self.presentLibrary() }
+        // The provider can own the library without creating a SwiftUI window.
+        do { _ = try Self.loadLibrary() }
+        catch { fputs("Computer provider: \(error.localizedDescription)\n", stderr) }
+      }
+      return
+    }
     // Also cover Launch Services reopening a previously registered single-window
     // app. This affects only this process; an explicit later open unhides it.
     if !openedDocument { NSApp.hide(nil) }

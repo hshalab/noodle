@@ -23,4 +23,15 @@ import XCTest
         XCTAssertEqual(ComputerLaunch.updateCheckURL(for: .development).absoluteString, "noodlecomputer-dev://updates/check")
         XCTAssertEqual(ComputerLaunch.updateCheckURL(for: .testing).absoluteString, "noodlecomputer-tests://updates/check")
     }
+
+    /// Sandboxed callers lose launch arguments, so a quiet start must arrive as a URL
+    /// that the app takes as its own and that keeps the library closed.
+    func testBackgroundURLStartsQuietlyWithoutOpeningTheLibrary() {
+        XCTAssertEqual(ComputerLaunch.backgroundURL(for: .production).absoluteString, "noodlecomputer://provider/start")
+        XCTAssertEqual(ComputerLaunch.backgroundURL(for: .testing).absoluteString, "noodlecomputer-tests://provider/start")
+        let delegate = ComputerAppDelegate()
+        XCTAssertFalse(delegate.openedDocument)
+        delegate.application(NSApplication.shared, open: [ComputerLaunch.backgroundURL()])
+        XCTAssertTrue(delegate.openedDocument)
+    }
 }

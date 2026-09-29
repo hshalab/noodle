@@ -133,8 +133,7 @@ import SwiftUI
             let configuration = NSWorkspace.OpenConfiguration()
             configuration.activates = false; configuration.hides = true
             configuration.allowsRunningApplicationSubstitution = false
-            configuration.arguments = ["--noodle-background"]
-            _ = try await NSWorkspace.shared.openApplication(at: url, configuration: configuration)
+            _ = try await NSWorkspace.shared.open([ComputerLaunch.backgroundURL()], withApplicationAt: url, configuration: configuration)
         }
         launch = task
         defer { launch = nil }

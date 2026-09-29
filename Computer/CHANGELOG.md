@@ -23,6 +23,7 @@
 ### Fixed
 
 - Stop now stops a Linux computer whose system ignores the request to shut down, such as an installer, by forcing it to stop after 30 seconds.
+- Computer no longer shows its window when Noodle starts it in the background; it opens in the Dock only.
 
 ## [0.17.0] - 2026-09-28
 

@@ -35,8 +35,7 @@ actor ComputerCompanion {
                     let configuration = NSWorkspace.OpenConfiguration()
                     configuration.activates = false; configuration.hides = true
                     configuration.allowsRunningApplicationSubstitution = false
-                    configuration.arguments = ["--noodle-background"]
-                    _ = try await NSWorkspace.shared.openApplication(at: url, configuration: configuration)
+                    _ = try await NSWorkspace.shared.open([ComputerLaunch.backgroundURL()], withApplicationAt: url, configuration: configuration)
                 }
                 launching = task
                 defer { launching = nil }
