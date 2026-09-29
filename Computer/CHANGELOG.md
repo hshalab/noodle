@@ -9,6 +9,7 @@
 ### Changed
 
 - Getting a computer's latest image is now called **Upgrade** instead of **Update**, so it is not confused with saving settings.
+- Edit Computer matches New Computer: grouped cards, switches for Networking and desktop resizing, and the same hints.
 
 ### Fixed
 

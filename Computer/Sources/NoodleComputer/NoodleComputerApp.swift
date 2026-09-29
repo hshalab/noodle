@@ -845,40 +845,63 @@ struct EditComputerView: View {
             || description.trimmingCharacters(in: .whitespacesAndNewlines).count > Computer.maximumDescriptionLength)
       }.buttonStyle(.plain).padding(20)
       Divider()
-      VStack(alignment: .leading, spacing: 18) {
-        HStack(spacing: 14) {
-          ComputerIconButton(appearance: $appearance, symbol: session.computer.displaySymbol)
-          TextField("Computer name", text: $name).textFieldStyle(.roundedBorder).lineLimit(1)
-        }
-        TextField("Description", text: $description, axis: .vertical).textFieldStyle(.roundedBorder).lineLimit(2...3)
-          .help("Tells assigned bots what this computer is for")
+      VStack(alignment: .leading, spacing: 16) {
         VStack(alignment: .leading, spacing: 12) {
-          LabeledContent("Computer", value: session.computer.displayType)
+          HStack {
+            ComputerIconButton(appearance: $appearance, symbol: session.computer.displaySymbol)
+            TextField("Name", text: $name).autocorrectionDisabled()
+              .textFieldStyle(.roundedBorder).lineLimit(1)
+          }
+          TextField("Description", text: $description, axis: .vertical).textFieldStyle(.roundedBorder).lineLimit(2...3)
+            .help("Tells assigned bots what this computer is for")
+        }
+        .padding(12)
+        .background(Color.secondary.opacity(0.075), in: RoundedRectangle(cornerRadius: 12))
+        VStack(alignment: .leading, spacing: 12) {
+          LabeledContent("Type", value: session.computer.displayType)
           Divider()
           if session.computer.kind == .localMac {
             LabeledContent("Resources", value: "Shared with this Mac")
+            Divider()
             LabeledContent("Files", value: "Retained in its own account")
-          } else if session.canDelete {
-            ComputerResourceRow("CPUs", value: $cpus,
-              range: 1...max(2, session.computer.cpuCount, min(32, ProcessInfo.processInfo.processorCount)))
-            ComputerResourceRow("Memory", value: $memory, unit: "GB",
-              range: (session.computer.template?.minimumMemoryGiB ?? 1)...max(64, session.computer.memoryGiB))
-            LabeledContent("Disk capacity", value: "\(session.computer.diskGiB) GB")
-            Toggle("Networking", isOn: $network)
           } else {
+            let editable = session.canDelete
             Group {
-              LabeledContent("CPUs", value: String(session.computer.cpuCount))
-              LabeledContent("Memory", value: "\(session.computer.memoryGiB) GB")
+              if editable {
+                ComputerResourceRow("CPUs", value: $cpus,
+                  range: 1...max(2, session.computer.cpuCount, min(32, ProcessInfo.processInfo.processorCount)))
+                Divider()
+                ComputerResourceRow("Memory", value: $memory, unit: "GB",
+                  range: (session.computer.template?.minimumMemoryGiB ?? 1)...max(64, session.computer.memoryGiB))
+              } else {
+                LabeledContent("CPUs", value: String(session.computer.cpuCount))
+                Divider()
+                LabeledContent("Memory", value: "\(session.computer.memoryGiB) GB")
+              }
+              Divider()
               LabeledContent("Disk capacity", value: "\(session.computer.diskGiB) GB")
-              LabeledContent("Networking", value: session.computer.networkEnabled ? "On" : "Off")
-            }.help("Stop the computer to change its resources")
+              Text("Disk space grows as the computer uses it, up to this capacity.")
+                .font(.caption).foregroundStyle(.secondary)
+              Divider()
+              Toggle("Networking", isOn: $network).toggleStyle(.switch).controlSize(.small)
+                .fixedSize().disabled(!editable)
+              Text("Allows this computer to connect to the internet and your local network.")
+                .font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+              if !editable {
+                Text("Stop the computer to change its resources.")
+                  .font(.caption).foregroundStyle(.secondary)
+              }
+            }
           }
           if session.computer.hasDesktop {
             Divider()
-            Toggle("Resize desktop with window", isOn: $resizesDesktop)
+            Toggle("Resize desktop with window", isOn: $resizesDesktop).toggleStyle(.switch)
+              .controlSize(.small).fixedSize()
           }
-        }.padding(12).background(
-          Color.secondary.opacity(0.075), in: RoundedRectangle(cornerRadius: 12))
+        }
+        .padding(12)
+        .background(Color.secondary.opacity(0.075), in: RoundedRectangle(cornerRadius: 12))
         if let local = session.localMac { LocalMacPermissionsSettings(runtime: local) }
         if let result = session.updateResult {
           Text(result).font(.caption).foregroundStyle(.secondary)
@@ -908,7 +931,7 @@ struct EditComputerView: View {
         }
       }.padding(20)
     }
-    .frame(width: 520).noodleSheetSizing()
+    .frame(width: 580).noodleSheetSizing()
     .computerImageUpdateConfirmation(store: store, session: session, isPresented: $updating)
     .onAppear {
       name = session.computer.name; description = session.computer.description ?? ""
