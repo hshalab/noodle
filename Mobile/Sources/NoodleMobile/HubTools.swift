@@ -618,8 +618,10 @@ struct LiveSurfaceScreen: View {
 /// A game controller in hand, playing the keys a game declared: the d-pad and left stick steer
 /// its first pad, the right stick its second, and buttons go by position from the one under the thumb.
 @MainActor @Observable final class HardwareGamepad {
-    /// What the controller in hand has, or nil with none.
+    /// What the controller in hand has, or nil with none. A connected controller counts once it
+    /// is used: the simulator always lists a virtual one, and a paired one may be in a drawer.
     private(set) var controller: GamepadController?
+    @ObservationIgnored private var connectedController: GamepadController?
     @ObservationIgnored private var gamepad: Gamepad?
     @ObservationIgnored private var onKey: (GamepadKeyChange) -> Void = { _ in }
     @ObservationIgnored private var connected: GCController?
@@ -628,8 +630,7 @@ struct LiveSurfaceScreen: View {
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
 
     func attach(_ gamepad: Gamepad, onKey: @escaping (GamepadKeyChange) -> Void) {
-        self.gamepad = gamepad
-        self.onKey = onKey
+        prepare(gamepad, onKey: onKey)
         if observers.isEmpty {
             let center = NotificationCenter.default
             for name in [NSNotification.Name.GCControllerDidConnect, .GCControllerDidDisconnect] {
@@ -647,13 +648,24 @@ struct LiveSurfaceScreen: View {
         use(nil)
     }
 
+    func prepare(_ gamepad: Gamepad, onKey: @escaping (GamepadKeyChange) -> Void) {
+        self.gamepad = gamepad
+        self.onKey = onKey
+    }
+
+    /// What the connected controller has, taking over once it is used; nil gives the screen back.
+    func offer(_ next: GamepadController?) {
+        set([:])
+        connectedController = next
+        controller = nil
+    }
+
     private func connect() { use(GCController.current ?? GCController.controllers().first) }
 
     private func use(_ next: GCController?) {
         if let connected, connected !== next { release(connected) }
         connected = next
-        set([:])
-        guard let next, let gamepad else { controller = nil; return }
+        guard let next, let gamepad else { offer(nil); return }
         let pads = gamepad.pads
         func steer(_ source: String, pad index: Int) -> GCControllerDirectionPadValueChangedHandler? {
             guard index < pads.count else { return nil }
@@ -671,14 +683,14 @@ struct LiveSurfaceScreen: View {
             buttons = [full.buttonA, full.buttonB, full.buttonX, full.buttonY, full.leftShoulder, full.rightShoulder,
                        full.leftTrigger, full.rightTrigger]
             full.buttonMenu.valueChangedHandler = press("menu", gamepad.menu)
-            controller = GamepadController(pads: 2, buttons: buttons.indices.map(String.init), menu: true)
+            offer(GamepadController(pads: 2, buttons: buttons.indices.map(String.init), menu: true))
         } else if let remote = next.microGamepad {
             remote.dpad.valueChangedHandler = steer("dpad", pad: 0)
             buttons = [remote.buttonA, remote.buttonX]
             remote.buttonMenu.valueChangedHandler = press("menu", gamepad.menu)
-            controller = GamepadController(pads: 1, buttons: buttons.indices.map(String.init), menu: true)
+            offer(GamepadController(pads: 1, buttons: buttons.indices.map(String.init), menu: true))
         } else {
-            controller = nil
+            offer(nil)
             return
         }
         for (index, button) in buttons.enumerated() {
@@ -699,7 +711,8 @@ struct LiveSurfaceScreen: View {
         }
     }
 
-    private func set(_ source: String, _ keys: Set<String>) {
+    func set(_ source: String, _ keys: Set<String>) {
+        if !keys.isEmpty, controller == nil { controller = connectedController }
         var next = held
         next[source] = keys
         set(next)

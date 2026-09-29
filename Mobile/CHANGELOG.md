@@ -6,7 +6,7 @@
 
 - Ask a bot to make a simple game with arrow keys and a jump button, then open the game from its message: a d-pad and buttons show over it instead of the keyboard, and holding one keeps moving. Needs Noodle Applet, the Mac or Hub on the next update.
 - The controller button at the top hides and shows the controls; the keyboard button beside it still types into the game.
-- Connect a game controller: it plays the game, and only the buttons it has no room for stay on the screen.
+- Connect a game controller: it plays the game, and once you press something on it, only the buttons it has no room for stay on the screen.
 
 ### Added
 
