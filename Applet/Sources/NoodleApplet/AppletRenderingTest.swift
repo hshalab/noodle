@@ -200,6 +200,24 @@ import WebKit
     reopenedView.close()
     _ = try await call(["close"] + watchedTarget)
     print("PASS live view: a noodlet whose window was closed animates for its viewer")
+    // A recording is watched too: a hidden page gets about one frame a second, and so did its video.
+    let recorded = try await call(["open", "--mode", "background"] + watchedTarget)
+    guard let recordedWeb = runtime.sessions[recorded.sessionID!]?.web else { throw AppletError("Recorded session missing") }
+    let recordedTarget = watchedTarget + ["--session", recorded.sessionID!.uuidString]
+    _ = try await call(["record", "start", "--duration", "5"] + recordedTarget)
+    try await Task.sleep(for: .milliseconds(300))
+    let recordedTicks = Int(try await recordedWeb.evaluate("return ticks")) ?? 0
+    try await Task.sleep(for: .milliseconds(500))
+    let recordedMoved = (Int(try await recordedWeb.evaluate("return ticks")) ?? 0) - recordedTicks
+    let recordedVisibility = try await recordedWeb.evaluate("return document.visibilityState")
+    print("INFO recorded background: \(recordedMoved) frames in 500 ms, visibility \(recordedVisibility)")
+    try require(recordedMoved >= 5 && recordedVisibility == "\"visible\"", "A background noodlet does not animate while recorded")
+    try require(recordedWeb.window.alphaValue == 0, "A recorded background noodlet became visible on this Mac")
+    _ = try await call(["record", "stop", "--output", root.appendingPathComponent("recorded.mp4").path] + recordedTarget)
+    try await Task.sleep(for: .milliseconds(500))
+    try require(!recordedWeb.window.isVisible && recordedWeb.window.alphaValue == 1, "The noodlet stayed on screen after its recording ended")
+    _ = try await call(["close"] + watchedTarget)
+    print("PASS recording: a noodlet opened only in the background animates while recorded")
     // A Swift noodlet draws itself; its picture must keep changing while only another device watches.
     let native = library.documents.appendingPathComponent("NativeWatched.\(AppletBuildIdentity.current.fileExtension)")
     _ = try NoodletPackage.install([

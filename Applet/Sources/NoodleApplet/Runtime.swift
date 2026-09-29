@@ -18,7 +18,8 @@ import AppletCore
     return dataRoot.lastPathComponent == "Testing"
   }
   let size: CGSize
-  var web: WebRunner?, native: NativeRunner?, recording: AppletRecording?
+  var web: WebRunner?, native: NativeRunner?
+  var recording: AppletRecording? { didSet { web?.recorded = recording != nil } }
   /// The live view, and where its viewers click and type in an HTML noodlet. While
   /// one is watched, bots cannot drive this session.
   var streamer: SurfaceStreamer?, injector: (view: NSView, injector: SurfaceEventInjector)?
@@ -431,12 +432,12 @@ import AppletCore
         let recording = try AppletRecording(
           url: directory.appendingPathComponent("\(UUID().uuidString).mp4"),
           size: session.size)
+        session.recording = recording
         recording.start(
           snapshot: { [weak session] in
             guard let session else { throw AppletError("Session ended.") }
             return try await session.snapshot()
           }, duration: request.duration ?? 30)
-        session.recording = recording
         await session.listen(recording)
         session.log.append("recording", "Started capture (MP4, 30 fps, with the noodlet's sound).")
         var response = status(session)

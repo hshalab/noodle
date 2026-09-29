@@ -7,6 +7,10 @@
 - Send sharper live video when a noodlet cannot be captured at full speed, using the whole rate the viewer's connection takes. It used to go at about a third of it.
 - Stop live video from stuttering every two seconds on a slow connection: a key frame goes only to a viewer that needs one. Update Noodle and Noodle for iPhone as well, so their live views ask for one when they cannot go on.
 
+### Fixed
+
+- Recordings of HTML noodlets running in the background no longer come out choppy. A page nobody could see got about one frame a second, so the video showed the same picture for a second at a time; it now draws at full speed while recorded.
+
 ## [0.16.0] - 2026-09-29
 
 ### Added

@@ -153,17 +153,21 @@ final class WebRunner: NSObject, WKNavigationDelegate, WKUIDelegate,
   func hide() {
     setMuted(true)
     window.orderOut(nil)
-    if watched { presentUnseen() }
+    if watched || recorded { presentUnseen() }
   }
-  /// While a person watches from another device the page must draw as if seen, which WebKit
-  /// only does for a window on screen, so a window the Mac does not show goes there transparent
-  /// and out of the way. Its sound stays as it was.
+  /// While a person watches from another device, or a recording runs, the page must draw as if
+  /// seen, which WebKit only does for a window on screen, so a window the Mac does not show goes
+  /// there transparent and out of the way. Its sound stays as it was.
   var watched = false {
-    didSet {
-      guard watched != oldValue else { return }
-      if watched, !window.isVisible { presentUnseen() }
-      if !watched, window.alphaValue == 0 { window.orderOut(nil); restoreSeen() }
-    }
+    didSet { seenElsewhere(watched || recorded, was: oldValue || recorded) }
+  }
+  var recorded = false {
+    didSet { seenElsewhere(watched || recorded, was: watched || oldValue) }
+  }
+  private func seenElsewhere(_ seen: Bool, was: Bool) {
+    guard seen != was else { return }
+    if seen, !window.isVisible { presentUnseen() }
+    if !seen, window.alphaValue == 0 { window.orderOut(nil); restoreSeen() }
   }
   private func presentUnseen() {
     window.alphaValue = 0
