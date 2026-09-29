@@ -25,6 +25,25 @@ func htmlNoodlet(_ title: String) throws -> [String: Data] {
 }
 
 final class LibraryTests: XCTestCase {
+    /// The watch walks bots' workspaces every two seconds. On the main thread that took a tenth of a
+    /// second each time, and recordings, which capture there, froze for three frames every two seconds.
+    @MainActor func testTheWatchLooksForNoodletsOffTheMainThread() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let suite = "AppletLibraryTests." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { try? FileManager.default.removeItem(at: root); defaults.removePersistentDomain(forName: suite) }
+        let library = botLibrary(root: root, defaults: defaults)
+        _ = try botNoodlet(try htmlNoodlet("Late"), named: "Late", owner: "bot", root: root)
+        let bots = root.appendingPathComponent("Bots")
+        let found = await Task.detached {
+            XCTAssertFalse(Thread.isMainThread)
+            return AppletLibrary.discover(in: [], botFolders: [bots], thumbnails: root)
+        }.value
+        XCTAssertEqual(found.values.map(\.title), ["Late"])
+        await library.refresh()
+        XCTAssertTrue(library.entries.contains { $0.title == "Late" })
+    }
+
     @MainActor func testNoodletsBotsKeepInTheirFoldersAreFoundWhereTheyAre() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let suite = "AppletLibraryTests." + UUID().uuidString

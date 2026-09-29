@@ -82,6 +82,7 @@ struct HubPerson: Hashable, Identifiable, Decodable {
   }
   private var registrations: [Registration] = []
   private var timer: Timer?
+  private var refreshing = false
   private var links: NoodletRegistry?
 
   init(
@@ -161,7 +162,7 @@ struct HubPerson: Hashable, Identifiable, Decodable {
     scan()
     if watchChanges {
       timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
-        Task { @MainActor in self?.scan() }
+        Task { @MainActor in await self?.refresh() }
       }
     }
   }
@@ -184,14 +185,6 @@ struct HubPerson: Hashable, Identifiable, Decodable {
   private static let lists: [(ReferenceWritableKeyPath<AppletLibrary, [String]>, String)] = [
     (\.recent, "recent"), (\.pinned, "pinned"), (\.hidden, "hidden"), (\.hub, "hub"),
   ]
-  /// Every bot's workspace in the bot folders.
-  private var workspaces: [URL] {
-    botFolders.flatMap { folder in
-      ((try? FileManager.default.contentsOfDirectory(at: folder.url, includingPropertiesForKeys: nil)) ?? [])
-        .map { $0.appendingPathComponent("workspace", isDirectory: true) }
-        .filter { FileManager.default.fileExists(atPath: $0.path) }
-    }
-  }
   // TODO(Applet 0.13.0): remove with its call in init, LibraryTests.testCopiesFromBeforeGoAndWhatTheyKeptFollowsTheOriginal
   // and LibraryTests.testACopyWhoseOriginalCannotBeReadIsKeptForLater. Milestone: Applet 0.12.0.
   /// Applet used to keep a copy of each noodlet a bot sent, under Imports. The copies go. What
@@ -277,6 +270,21 @@ struct HubPerson: Hashable, Identifiable, Decodable {
     }
   }
   func scan() {
+    let places = forget()
+    apply(Self.discover(in: places, botFolders: botFolders.map(\.url), thumbnails: root.appendingPathComponent("Thumbnails", isDirectory: true)))
+  }
+  /// What the watch timer runs. Walking bots' workspaces takes a tenth of a second or more, and
+  /// recordings and live views capture on the main thread, so the walk happens off it.
+  func refresh() async {
+    guard !refreshing else { return }
+    refreshing = true
+    defer { refreshing = false }
+    let places = forget(), folders = botFolders.map(\.url)
+    let thumbnails = root.appendingPathComponent("Thumbnails", isDirectory: true)
+    apply(await Task.detached { Self.discover(in: places, botFolders: folders, thumbnails: thumbnails) }.value)
+  }
+  /// Drops what was deleted and returns where to look for noodlets.
+  private func forget() -> [URL] {
     let deleted = Set(entries.filter { Self.missing($0.package.url) }.map(\.id))
     registrations.removeAll { registration in
       guard Self.missing(registration.url) else { return false }
@@ -294,9 +302,17 @@ struct HubPerson: Hashable, Identifiable, Decodable {
       defaults.set(hidden, forKey: "hidden")
       defaults.set(hub, forKey: "hub")
     }
+    return [documents] + registrations.map(\.url)
+  }
+  /// Every noodlet in `places` and in the workspaces of the bots in `botFolders`.
+  nonisolated static func discover(in places: [URL], botFolders: [URL], thumbnails: URL) -> [String: LibraryEntry] {
+    let workspaces = botFolders.flatMap { folder in
+      ((try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? [])
+        .map { $0.appendingPathComponent("workspace", isDirectory: true) }
+        .filter { FileManager.default.fileExists(atPath: $0.path) }
+    }
     var found: [String: LibraryEntry] = [:]
-    let thumbnails = root.appendingPathComponent("Thumbnails", isDirectory: true)
-    for directory in [documents] + registrations.map(\.url) + workspaces {
+    for directory in places + workspaces {
       if AppletBuildIdentity.document(directory) == .current {
         if let package = try? NoodletPackage(url: directory) {
           let entry = LibraryEntry(package: package, thumbnails: thumbnails)
@@ -328,6 +344,9 @@ struct HubPerson: Hashable, Identifiable, Decodable {
         }
       }
     }
+    return found
+  }
+  private func apply(_ found: [String: LibraryEntry]) {
     let next = found.values.sorted {
       let order = $0.title.localizedStandardCompare($1.title)
       return order == .orderedSame ? $0.id < $1.id : order == .orderedAscending

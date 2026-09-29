@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Recordings no longer freeze for about a tenth of a second every two seconds. Applet looked through every bot's folder for new noodlets on the thread that captures the video; it now looks elsewhere.
+
 ## [0.17.0] - 2026-09-29
 
 ### Changed
