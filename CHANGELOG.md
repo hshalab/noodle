@@ -6,6 +6,8 @@ All notable changes to Noodle are documented here, following
 
 ## [Unreleased]
 
+## [0.34.0] - 2026-09-29
+
 ### Added
 
 - Settings > Companion Apps lists Noodle Mobile, with a link to join its TestFlight beta.

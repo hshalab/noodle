@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-09-29
+
 ### Added
 
 - Games can list the keys they use in their manifest. People watching on iPhone or iPad then get a controller instead of the keyboard, and holding a button holds the key.

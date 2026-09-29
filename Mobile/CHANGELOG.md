@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-29
+
 ### What to Test
 
 - Ask a bot to make a simple game with arrow keys and a jump button, then open the game from its message: a d-pad and buttons show over it instead of the keyboard, and holding one keeps moving. Needs Noodle Applet, the Mac or Hub on the next update.
