@@ -102,7 +102,6 @@ final class ProtocolTests: XCTestCase {
         let id = UUID()
         XCTAssertNoThrow(try ComputerRequest(.preview, terminalID: id).validate())
         XCTAssertNoThrow(try ComputerRequest(.preview, computerID: id).validate())
-        XCTAssertNoThrow(try ComputerRequest(.display, computerID: id).validate())
         XCTAssertThrowsError(try ComputerRequest(.preview).validate())
         XCTAssertThrowsError(try ComputerRequest(.terminalResolve).validate())
         XCTAssertNoThrow(try ComputerRequest(.terminalResolve, terminalID: id).validate())
@@ -131,15 +130,6 @@ final class ProtocolTests: XCTestCase {
     }
     func testComputerUpdatesHaveIndependentChannel() {
         XCTAssertEqual(ComputerDistribution.feed.path, "/pdparchitect/noodle/releases/download/computer-latest/appcast.xml")
-    }
-    func testGuestDisplayOriginCannotEscape() throws {
-        let display = ComputerWebConnection(url: URL(string: "http://192.168.64.2:8080/")!, customWeb: true)
-        XCTAssertTrue(display.permitsNavigation(to: URL(string: "http://192.168.64.2:8080/login")!))
-        for target in ["http://127.0.0.1:8080/", "http://192.168.64.2:9090/", "file:///etc/passwd", "https://example.com/", "http://user:secret@192.168.64.2:8080/"] {
-            XCTAssertFalse(display.permitsNavigation(to: URL(string: target)!))
-        }
-        let defaultPort = ComputerWebConnection(url: URL(string: "https://192.168.64.2/")!)
-        XCTAssertTrue(defaultPort.permitsNavigation(to: URL(string: "https://192.168.64.2:443/login")!))
     }
     func testReplayReadersAreIndependentAndBounded() {
         var replay = TerminalReplay(limit: 8)

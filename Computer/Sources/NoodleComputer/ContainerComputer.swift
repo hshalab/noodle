@@ -28,13 +28,12 @@ actor ContainerComputer {
     private var pod: LinuxPod?
     private var commandProcess: LinuxProcess?
     private var desktopProcess: LinuxProcess?
-    private var webProcess: LinuxProcess?
     private var terminalProcess: LinuxProcess?
     private var terminalIO: GuestTerminalIO?
     private var terminalID: UUID?
     private var terminalMonitor: Task<Void, Never>?
     private var guestConfiguration = LinuxProcessConfiguration()
-    private(set) var desktop: DesktopConnection?
+    private(set) var display: NativeDisplay?
 
     static func prepare(computer: Computer, directory: URL, cache: URL,
                         status: @escaping @Sendable (String, TransferProgress?) async -> Void) async throws {
@@ -48,6 +47,7 @@ actor ContainerComputer {
     func start(computer: Computer, directory: URL, cache: URL, kernel: URL,
                preparedState: ContainerDiskState? = nil) async throws -> String {
         guard pod == nil else { throw ComputerError("This computer is already running.") }
+        try Self.requireSupportedImage(computer)
         let state = try preparedState ?? ContainerDiskState.load(in: directory)
         let layers = state.directory(in: directory)
         let savedImage = try JSONDecoder().decode(ContainerizationOCI.Image.self,
@@ -57,7 +57,16 @@ actor ContainerComputer {
             initialFilesystem: .block(format: "ext4", source: cache.appendingPathComponent("initfs-0.43.0.ext4").path,
                                       destination: "/", options: ["ro"]))
         let interface = try CIDRv4("192.0.2.2/24")
+        var display: NativeDisplay?
+        if computer.hasDesktop {
+            try Self.requireNativeDesktop(labels: savedImage.config?.labels)
+            display = NativeDisplay { [weak self] in
+                guard let self else { throw ComputerError("The computer is not running.") }
+                return try await self.dialDesktopSurface()
+            }
+        }
         let runtime = try LinuxPod("computer-" + computer.id.uuidString.lowercased(), vmm: vmm) { config in
+            if let display { config.extensions.append(display) }
             config.cpus = computer.cpuCount
             config.memoryInBytes = UInt64(computer.memoryGiB) * 1_073_741_824
             config.hostname = "noodle-computer"
@@ -140,37 +149,10 @@ actor ContainerComputer {
                 try await process.delete()
                 guard status.exitCode == 0 else { throw ComputerError("Could not configure workspace DNS.") }
             }
-            if computer.hasDesktop {
-                let address = output.text().split(separator: "\n").first { $0.hasPrefix("NOODLE_IPV4=") }?
-                    .dropFirst("NOODLE_IPV4=".count)
-                guard let address, (try? CIDRv4("\(address)/24")) != nil else {
-                    throw ComputerError("The desktop did not receive a valid network address.")
-                }
-                desktop = try await launchDesktop(in: runtime, address: String(address))
+            if let display {
+                try await launchDesktop(in: runtime)
+                self.display = display
                 return "Linux desktop is ready."
-            }
-            if computer.isCustomContainer, let port = computer.webPort {
-                guard savedImage.config != nil else {
-                    throw ComputerError("The image has no startup configuration.")
-                }
-                let configured = guestConfiguration
-                guard !configured.arguments.isEmpty else {
-                    throw ComputerError("The image has no startup command for its web interface.")
-                }
-                let process = try await runtime.execInContainer("workspace", processID: "custom-web") { config in
-                    config = configured
-                    config.stdout = output
-                    config.stderr = output
-                }
-                webProcess = process
-                try await process.start()
-                let address = output.text().split(separator: "\n").first { $0.hasPrefix("NOODLE_IPV4=") }?
-                    .dropFirst("NOODLE_IPV4=".count)
-                guard let address, (try? CIDRv4("\(address)/24")) != nil else {
-                    throw ComputerError("The computer did not receive a valid network address.")
-                }
-                desktop = DesktopConnection(url: URL(string: "http://\(address):\(port)/")!, customWeb: true)
-                return "Custom container started. Its web interface may take a moment to become ready."
             }
             return "Alpine Linux is ready. Commands run inside this computer, not on your Mac.\nWorking directory: /workspace\n" + output.text()
         } catch {
@@ -179,92 +161,42 @@ actor ContainerComputer {
         }
     }
 
-    static func desktopEnvironment(imageEnvironment: [String], password: String) -> [String] {
-        // Preserve image/derivative defaults. Only transport and authentication
-        // settings are fixed by the native client's desktop contract.
-        let reserved = ["PATH", "HOME", "DISPLAY", "DESKTOP_PORT", "NOODLE_DESKTOP_PASSWORD",
-                        "DESKTOP_PASSWORD", "DESKTOP_PASSWORD_FILE"]
-        return imageEnvironment.filter {
-            !reserved.contains(String($0.prefix { $0 != "=" }))
-        } + ["PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-             "HOME=/home/agent", "DISPLAY=:1", "DESKTOP_PORT=6901",
-             "NOODLE_DESKTOP_PASSWORD=" + password]
+    /// Containers run only the bundled images; one made from another image cannot start.
+    static func requireSupportedImage(_ computer: Computer) throws {
+        guard computer.template != nil else {
+            throw ComputerError("This computer uses a container image that \(ComputerAppIdentity.name) no longer supports. Move it to the Trash and create a new computer.")
+        }
     }
 
-    private func launchDesktop(in runtime: LinuxPod, address: String) async throws -> DesktopConnection {
-        let password = UUID().uuidString.replacingOccurrences(of: "-", with: "")
-        let environment = Self.desktopEnvironment(imageEnvironment: guestConfiguration.environmentVariables,
-                                                  password: password)
-        let setupOutput = ComputerOutput()
-        let setup = try await runtime.execInContainer("workspace", processID: "desktop-security") { config in
-            config.arguments = ["/bin/bash", "-c", #"""
-                set -eu
-                printf '127.0.0.1 localhost noodle-computer\n::1 localhost\n' > /etc/hosts
-                if [ -x /usr/local/bin/desktop-prepare ]; then
-                    exec /usr/local/bin/desktop-prepare
-                fi
-                # Existing saved images still use the pre-contract startup.
-                mkdir -p /home/agent/.vnc /run/launcher-desktop
-                chown agent:agent /run/launcher-desktop
-                openssl req -x509 -nodes -days 1 -newkey rsa:2048 -keyout /home/agent/.vnc/self.pem -out /home/agent/.vnc/self.pem -subj /CN=noodle-computer >/dev/null 2>&1
-                chown -R agent:agent /home/agent/.vnc
-                chmod 600 /home/agent/.vnc/self.pem
-                printf '%s\n%s\n' "$NOODLE_DESKTOP_PASSWORD" "$NOODLE_DESKTOP_PASSWORD" | su -s /bin/bash -c 'HOME=/home/agent kasmvncpasswd -u agent -wo' agent >/dev/null 2>&1
-                # No unauthenticated screenshot/control service on the VM network.
-                chmod -x /usr/local/bin/desktop-bridge
-                sed -e '/-disableBasicAuth/d' -e 's/require_ssl: false/require_ssl: true\n    pem_certificate: \/home\/agent\/.vnc\/self.pem\n    pem_key: \/home\/agent\/.vnc\/self.pem/' -e 's|curl -fsS http://127.0.0.1:6901/|curl -kfsS -u "agent:$NOODLE_DESKTOP_PASSWORD" https://127.0.0.1:6901/|g' /init > /run/noodle-desktop-init
-                openssl x509 -in /home/agent/.vnc/self.pem -outform DER | base64 -w0
-                """#]
-            config.environmentVariables = environment
-            config.stdout = setupOutput
-            config.stderr = setupOutput
+    /// Only images built for the native display can start their desktop; older ones need an image update.
+    static func requireNativeDesktop(labels: [String: String]?) throws {
+        guard labels?["im.noodle.desktop.contract"] == "2" else {
+            throw ComputerError("This desktop’s image is out of date. Update its image to start it. Your files are kept.")
         }
-        try await setup.start()
-        let status = try await setup.wait(timeoutInSeconds: 30)
-        try await setup.delete()
-        guard status.exitCode == 0,
-              let certificate = Data(base64Encoded: setupOutput.text().trimmingCharacters(in: .whitespacesAndNewlines)) else {
-            throw ComputerError("Could not secure the Linux desktop.\n" + setupOutput.text())
-        }
+    }
+
+    private func launchDesktop(in runtime: LinuxPod) async throws {
         let output = ComputerOutput()
+        let image = guestConfiguration
+        // The image's supervisor runs as root and starts the session as its desktop user.
         let process = try await runtime.execInContainer("workspace", processID: "desktop") { config in
-            config.arguments = ["/bin/bash", "-c", """
-                if [ -x /usr/local/bin/desktop-prepare ]; then
-                    exec /init
-                else
-                    exec /bin/bash /run/noodle-desktop-init
-                fi
-                """]
-            config.environmentVariables = environment
+            config.arguments = ["/init"]
+            config.environmentVariables = image.environmentVariables
             config.stdout = output
             config.stderr = output
         }
         desktopProcess = process
         try await process.start()
-        let connection = DesktopConnection(url: URL(string: "https://\(address):6901/?autoconnect=1&resize=remote")!,
-                                           certificate: certificate, password: password)
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = 2
-        configuration.timeoutIntervalForResource = 3
-        let session = URLSession(configuration: configuration, delegate: DesktopSessionDelegate(connection), delegateQueue: nil)
-        defer { session.invalidateAndCancel() }
-        var lastFailure = "No response"
         for _ in 0..<60 {
-            try Task.checkCancellation()
-            do {
-                let (_, response) = try await session.data(from: connection.url)
-                if (response as? HTTPURLResponse)?.statusCode == 200 { return connection }
-                lastFailure = "HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0)"
-            } catch { lastFailure = error.localizedDescription }
+            if output.text().contains("[desktop] ready") { return }
             try await Task.sleep(for: .milliseconds(500))
         }
-        // Preserve the readiness retries while macOS's initial permission prompt
-        // is open. Only diagnose a block after that grace period, and never infer
-        // denial from URLSession's generic "Internet offline" error alone.
-        let denied = await LocalNetworkAccessProbe.isDenied(for: connection.url)
-        try Task.checkCancellation()
-        if denied { throw ComputerStartupRecovery.localNetwork }
-        throw ComputerError("The Linux desktop did not become ready: \(lastFailure)\n" + output.text())
+        throw ComputerError("The Linux desktop did not start.\n" + output.text())
+    }
+
+    func dialDesktopSurface() async throws -> FileHandle {
+        guard let pod else { throw ComputerError("The computer is not running.") }
+        return try await pod.withVirtualMachineInstance { try await $0.dial(DesktopSurface.port) }
     }
 
     func openTerminal(io: GuestTerminalIO, onExit: @escaping @Sendable () async -> Void = {}) async throws {
@@ -412,12 +344,6 @@ actor ContainerComputer {
             }
             try? await process.delete()
         }
-        if let process = webProcess {
-            try? await process.kill(.term)
-            if (try? await process.wait(timeoutInSeconds: 3)) == nil { try? await process.kill(.kill) }
-            try? await process.delete()
-        }
-        webProcess = nil
         desktopProcess = nil
         try? await pod.killContainer("workspace", signal: .term)
         if (try? await pod.waitContainer("workspace", timeoutInSeconds: 5)) == nil {
@@ -432,6 +358,7 @@ actor ContainerComputer {
         self.pod = nil
         commandProcess = nil
         desktopProcess = nil
-        desktop = nil
+        await display?.surface.close()
+        display = nil
     }
 }

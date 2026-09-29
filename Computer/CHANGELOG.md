@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Desktop computers are shown natively instead of through a web page: sharper, with the keyboard and pointer going straight to the computer. A desktop keeps its own resolution unless **Resize desktop with window** is on in its editor. Agents and people watching from Noodle Hub see and use the desktop even when its window is closed. **⌘C** and **⌘V** copy and paste between the Mac and the desktop; the desktop sees your Mac clipboard only when you paste.
+- Desktop computers need the latest Desktop image. Choose **Update** to start one made earlier; its files are kept.
+- Computer no longer asks for Local Network access.
+
+### Removed
+
+- **New from Container Image**, and computers made from other container images or showing a web page. Such a computer no longer starts; move it to the Trash.
+
 ## [0.17.0] - 2026-09-28
 
 ### Changed

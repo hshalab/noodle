@@ -1,13 +1,12 @@
-The bundled Linux kernel is from Kata Containers 3.32.0:
-https://github.com/kata-containers/kata-containers/releases/tag/3.32.0
-
-Kernel version: 6.18.35-197-debug
-Source archive SHA-256:
-8736c054d9223974735394f822000823baef509e1c33405ec798240fa9b6e4b5
+The bundled Linux kernel is Linux 6.18.35, built from the unmodified source at
+https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.18.35.tar.xz with the
+build configuration of Kata Containers 3.32.0
+(https://github.com/kata-containers/kata-containers/releases/tag/3.32.0) plus
+virtual GPU, USB keyboard and pointer support. The configuration additions and
+build script are published with Noodle's source.
 
 Linux is licensed under GPL-2.0-only. Corresponding Linux source is available
-from https://cdn.kernel.org/ and the Kata Containers build configuration and
-patches are available from https://github.com/kata-containers/kata-containers.
+from https://cdn.kernel.org/.
 
 This application also incorporates Apple Containerization, licensed under the
 Apache License 2.0. Its license is included alongside this notice.

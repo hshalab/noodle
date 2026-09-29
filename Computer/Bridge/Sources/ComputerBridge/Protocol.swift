@@ -38,7 +38,7 @@ public struct RemoteComputer: Codable, Hashable, Identifiable, Sendable {
 }
 
 public enum ComputerOperation: String, Codable, Sendable {
-    case list, start, terminalOpen, terminalRead, terminalWrite, terminalResize, terminalClose, terminalResolve, revoke, preview, display
+    case list, start, terminalOpen, terminalRead, terminalWrite, terminalResize, terminalClose, terminalResolve, revoke, preview
     case fileUpload, fileDownload
     /// Managing computers: what can be made, making one, changing one and deleting one.
     case templates, create, update, delete
@@ -159,8 +159,6 @@ public struct ComputerResponse: Codable, Sendable {
     public var exited: Bool?
     public var error: String?
     public var previewImage: Data?
-    /// UI-only ephemeral credentials, never stored in a card or returned to agents.
-    public var display: ComputerWebConnection?
     public var path: String?
     public var byteCount: Int64?
     public var templates: [ComputerTemplateSummary]?

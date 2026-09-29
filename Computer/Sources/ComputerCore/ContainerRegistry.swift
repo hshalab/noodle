@@ -24,7 +24,7 @@ public struct ContainerRegistry: Decodable, Sendable {
     public var defaultTemplate: ComputerTemplate { templates.first { $0.id == defaultTemplateID }! }
 
     public func template(for computer: Computer) -> ComputerTemplate? {
-        guard computer.kind == .container, !computer.isCustomContainer else { return nil }
+        guard computer.kind == .container else { return nil }
         return templates.first { $0.imageReference == computer.imageReference }
     }
 

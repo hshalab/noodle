@@ -64,7 +64,6 @@ struct NoodleComputerApp: App {
     CommandGroup(replacing: .newItem) {
       Button("New Container") { NotificationCenter.default.post(name: .newComputer, object: nil) }
         .keyboardShortcut("n")
-      Button("New from Container Image") { NotificationCenter.default.post(name: .newCustomComputer, object: nil) }
       Button("New Local Mac") { NotificationCenter.default.post(name: .newLocalMac, object: nil) }
     }
   }
@@ -72,7 +71,6 @@ struct NoodleComputerApp: App {
 
 extension Notification.Name {
   static let newComputer = Self("NoodleComputer.New")
-  static let newCustomComputer = Self("NoodleComputer.NewCustom")
   static let newLocalMac = Self("NoodleComputer.NewLocalMac")
 }
 
@@ -85,11 +83,9 @@ enum ComputerLaunchCheck {
   static let files = "b476bd153e380b4ef626b592541a784d4a934f00b3da9abd390022616fb25413"  // --files-test
   static let providerIntegration = "27477bd84260b828a28d305cd92dbea1df662af022a8d9add98293a283e06e74"  // --provider-integration-test
   static let providerSnapshot = "749fbf076ee2440829bcfa605e5b6740c53e8e7ff999769c1f838b89a446af69"  // --provider-snapshot-test
-  static let providerWeb = "70eac07c23a968505aa890ef1e999b627996fb64cdf94365d67f933c5010df9e"  // --provider-web-test
   static let libraryLayout = "0b5e4c1010bd557a80ea521c33f0befb7c4ad203aef42c3897d23cf0a2752950"  // --library-layout-test
   static let emptyLibrary = "e7f8ebc7c2f3a51e13267fc9acb404fd6c13d067256a888246a6fdc0dd318c08"  // --empty-library-test
   static let appearancePreview = "234940ef2db5871ab2be6d23dcc4ba7d7ea65cda9729e93c29172f74b01afcd5"  // --appearance-preview
-  static let customContainer = "cf28db7e8067efcc2df95e488cbc87ef78cf3ff6b98e93e7e66df1a5dcb8737c"  // --custom-container-test
   static let localMacCreationPreview = "55cd0e40b54036764c3278c167f0de3b46a84abbf604e2669cdb1f9d40549875"  // --localmac-creation-preview
   static let creationForm = "003908a56a80c8ecc27c41d1cbdfdddc0711263d1a64ea862af09978140a5db6"  // --creation-form-test
   static let desktopSmoke = "cd0fe779f3182dbfeaab29ec25187cc9e460f3feaaee07d10e3c5d92a38d9365"  // --desktop-smoke-test
@@ -103,14 +99,14 @@ enum ComputerLaunchCheck {
   static let offline = "aff7d00b56394f5a96dca22be6856e0950b37524abb5b2ef434d27981a0586f1"  // --offline
   /// A failure of any of these ends the process with an error instead of showing it in the window.
   static let exitOnFailure = [
-    customContainer, updaterUI, emptyLibrary, libraryLayout, providerIntegration, creationForm,
+    updaterUI, emptyLibrary, libraryLayout, providerIntegration, creationForm,
     localMacCreationPreview, desktopSmoke, selfTest, overlay, latestImages, configuration, downloadProgress
   ]
   static var keepsTestWindow: Bool { requested(keepTestWindow) }
   /// Every check that runs in place of the app; the rest only modify one of these.
   private static let verificationRuns = [
-    updaterUI, files, providerIntegration, providerSnapshot, providerWeb, libraryLayout, emptyLibrary,
-    appearancePreview, customContainer, localMacCreationPreview, creationForm, desktopSmoke, downloadProgress,
+    updaterUI, files, providerIntegration, providerSnapshot, libraryLayout, emptyLibrary,
+    appearancePreview, localMacCreationPreview, creationForm, desktopSmoke, downloadProgress,
     linuxBoot, configuration, overlayUI, latestImages, overlay, selfTest
   ]
   #else
@@ -318,11 +314,6 @@ struct ComputerRootView: View {
           NSApplication.shared.terminate(nil)
           return
         }
-        if ComputerLaunchCheck.requested(ComputerLaunchCheck.customContainer) {
-          try await ComputerSmokeTest.checkCustomContainer()
-          NSApplication.shared.terminate(nil)
-          return
-        }
         if ComputerLaunchCheck.requested(ComputerLaunchCheck.localMacCreationPreview) {
           try await LocalMacCreationPreview.run()
           NSApplication.shared.terminate(nil)
@@ -394,7 +385,6 @@ struct ComputerRootView: View {
 struct ComputerLibraryView: View {
   @ObservedObject var store: ComputerStore
   @State private var showingNew = false
-  @State private var showingCustom = false
   @State private var showingLocalMac = false
   @State private var searchText = ""
   @State private var columnVisibility = NavigationSplitViewVisibility.all
@@ -422,7 +412,6 @@ struct ComputerLibraryView: View {
     Menu {
       Button("New Container", systemImage: "desktopcomputer") { showingNew = true }
         .keyboardShortcut("n", modifiers: .command)
-      Button("New from Container Image", systemImage: "shippingbox") { showingCustom = true }
       Button("New Local Mac", systemImage: "person.crop.rectangle") { showingLocalMac = true }
     } label: {
       Label("Create", systemImage: "plus")
@@ -503,10 +492,8 @@ struct ComputerLibraryView: View {
     .onAppear { columnVisibility = sidebarVisible ? .all : .detailOnly }
     .onChange(of: columnVisibility) { _, value in sidebarVisible = value != .detailOnly }
     .sheet(isPresented: $showingNew) { NewComputerView(store: store) }
-    .sheet(isPresented: $showingCustom) { NewComputerView(store: store, custom: true) }
     .sheet(isPresented: $showingLocalMac) { NewLocalMacView(store: store) }
     .onReceive(NotificationCenter.default.publisher(for: .newComputer)) { _ in showingNew = true }
-    .onReceive(NotificationCenter.default.publisher(for: .newCustomComputer)) { _ in showingCustom = true }
     .onReceive(NotificationCenter.default.publisher(for: .newLocalMac)) { _ in showingLocalMac = true }
     .onChange(of: store.selection) { _, id in
       UserDefaults.standard.set(id?.uuidString, forKey: "SelectedComputer")
@@ -646,15 +633,15 @@ struct ComputerDetailView: View {
         .id(ObjectIdentifier(local))
       } else if let virtual = session.virtual {
         VirtualMachineDisplay(machine: virtual.machine).ignoresSafeArea(edges: .top)
-      } else if let browser = session.browser {
+      } else if let machine = session.display?.machine {
         // Keep the guest's panel below the native toolbar, just like Shell.
         // Only the background may extend into the titlebar area.
         ZStack {
-          // Retain the desktop connection while Terminal or Files is shown.
-          ComputerDesktopView(browser: browser)
-            .opacity(session.displayMode == .desktop ? 1 : 0)
-            .allowsHitTesting(session.displayMode == .desktop)
-            .accessibilityHidden(session.displayMode != .desktop)
+          // The VM runs without its view, and a hidden view would still set the pointer
+          // for the Terminal or Files shown above it, so show it only for Desktop.
+          if session.displayMode == .desktop {
+            VirtualMachineDisplay(machine: machine, resizes: session.computer.resizesDesktop, native: session.display)
+          }
           if session.showingFiles, session.phase == .running, let runtime = session.container {
             ComputerFilesView(model: session.filesModel(for: runtime), appearance: session.computer.appearance ?? .init()).id(session.id)
           } else if session.showingTerminal, let terminal = session.terminal {
@@ -665,19 +652,6 @@ struct ComputerDetailView: View {
         ComputerFilesView(model: session.filesModel(for: runtime), appearance: session.computer.appearance ?? .init()).id(session.id)
       } else if let terminal = session.terminal {
         ComputerTerminalView(terminal: terminal, appearance: session.computer.appearance ?? .init())
-      } else if let recovery = session.startupRecovery {
-        ContentUnavailableView {
-          Label(recovery.title, systemImage: "network")
-        } description: {
-          Text(recovery.explanation)
-        } actions: {
-          Button("Open Settings") {
-            if !recovery.openSettings() {
-              store.error = "Open System Settings → Privacy & Security → Local Network and enable \(ComputerAppIdentity.name)."
-            }
-          }.buttonStyle(.borderedProminent)
-          Button("Try Again") { Task { await store.start(session) } }
-        }
       } else {
         ContentUnavailableView {
           Label(
@@ -800,6 +774,7 @@ struct EditComputerView: View {
   @State private var forceStopping = false
   @State private var updating = false
   @State private var appearance = ComputerAppearance()
+  @State private var resizesDesktop = false
   private var stopLabel: String { session.computer.usesVirtualMachine ? "Force Stop" : "Stop" }
 
   var body: some View {
@@ -810,7 +785,8 @@ struct EditComputerView: View {
         Text("Edit Computer").font(.headline).foregroundStyle(.primary)
         Spacer()
         Button("Save") {
-          store.rename(session, name: name, description: description, appearance: appearance)
+          store.rename(session, name: name, description: description, appearance: appearance,
+                       resizesDesktop: session.computer.hasDesktop ? resizesDesktop : nil)
           dismiss()
         }
         .keyboardShortcut(.defaultAction)
@@ -838,6 +814,10 @@ struct EditComputerView: View {
             LabeledContent("CPUs", value: String(session.computer.cpuCount))
             LabeledContent("Memory", value: "\(session.computer.memoryGiB) GB")
             LabeledContent("Disk capacity", value: "\(session.computer.diskGiB) GB")
+          }
+          if session.computer.hasDesktop {
+            Divider()
+            Toggle("Resize desktop with window", isOn: $resizesDesktop)
           }
         }.padding(12).background(
           Color.secondary.opacity(0.075), in: RoundedRectangle(cornerRadius: 12))
@@ -873,6 +853,7 @@ struct EditComputerView: View {
     .onAppear {
       name = session.computer.name; description = session.computer.description ?? ""
       appearance = session.computer.appearance ?? .init()
+      resizesDesktop = session.computer.resizesDesktop
     }
     .alert(session.computer.kind == .localMac ? "Delete \(session.computer.name) and its account?" : "Move \(session.computer.name) to Trash?", isPresented: $deleting) {
       Button("Cancel", role: .cancel) {}
@@ -906,21 +887,76 @@ extension View {
 
 struct VirtualMachineDisplay: NSViewRepresentable {
   let machine: VZVirtualMachine
+  var resizes = true
+  /// A Linux desktop: its size follows the setting at once, and ⌘C and ⌘V use the Mac clipboard.
+  var native: NativeDisplay?
   func makeNSView(context: Context) -> VZVirtualMachineView {
-    let view = VZVirtualMachineView()
+    let view = DesktopMachineView()
     view.virtualMachine = machine
     view.capturesSystemKeys = true
-    view.automaticallyReconfiguresDisplay = true
+    view.native = native
+    updateNSView(view, context: context)
     return view
   }
   func updateNSView(_ view: VZVirtualMachineView, context: Context) {
     if view.virtualMachine !== machine { view.virtualMachine = machine }
+    view.automaticallyReconfiguresDisplay = resizes
+    (view as? DesktopMachineView)?.native = native
+    let scale = view.window?.backingScaleFactor ?? 2
+    native?.apply(resizes: resizes, viewPixels: CGSize(width: view.bounds.width * scale, height: view.bounds.height * scale))
+  }
+}
+
+/// The desktop's own view, which turns ⌘C and ⌘V, and Copy and Paste in the Edit menu,
+/// into copy and paste between the Mac and the guest. The guest sees the Mac clipboard
+/// only when someone pastes it.
+final class DesktopMachineView: VZVirtualMachineView {
+  var native: NativeDisplay?
+  var pasteboard = NSPasteboard.general
+
+  // The Edit menu, and its ⌘C and ⌘V, reach the focused view as these actions.
+  @objc func copy(_ sender: Any?) { transfer(copying: true) }
+  @objc func paste(_ sender: Any?) { transfer(copying: false) }
+
+  // Without a menu item the keys arrive here, where the guest would otherwise get them.
+  override func performKeyEquivalent(with event: NSEvent) -> Bool {
+    guard let copying = clipboardKey(event) else { return super.performKeyEquivalent(with: event) }
+    transfer(copying: copying)
+    return true
+  }
+
+  override func keyDown(with event: NSEvent) {
+    guard let copying = clipboardKey(event) else { return super.keyDown(with: event) }
+    transfer(copying: copying)
+  }
+
+  private func clipboardKey(_ event: NSEvent) -> Bool? {
+    guard native != nil, event.type == .keyDown,
+          event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command else { return nil }
+    switch event.charactersIgnoringModifiers?.lowercased() {
+    case "c": return true
+    case "v": return false
+    default: return nil
+    }
+  }
+
+  private func transfer(copying: Bool) {
+    guard let native else { return }
+    let pasteboard = pasteboard
+    Task { @MainActor in
+      if !copying {
+        guard let text = pasteboard.string(forType: .string) else { return }
+        try? await native.surface.paste(text)
+      } else if let text = try? await native.surface.copy(), !text.isEmpty {
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+      }
+    }
   }
 }
 
 struct NewComputerView: View {
   @ObservedObject var store: ComputerStore
-  let custom: Bool
   @Environment(\.dismiss) private var dismiss
   @AppStorage("StartNewComputersAutomatically") private var startNewComputersAutomatically = true
   @State private var template: ComputerTemplate
@@ -931,40 +967,28 @@ struct NewComputerView: View {
   @State private var advanced = false
   @State private var network = true
   @State private var failure: String?
-  @State private var imageReference = ""
-  @State private var webPort = ""
   @State private var appearance = ComputerAppearance()
-  init(store: ComputerStore, custom: Bool = false) {
+  init(store: ComputerStore) {
     self.store = store
-    self.custom = custom
-    let initialTemplate = custom ? ComputerTemplate.shell : ContainerRegistry.bundled.defaultTemplate
+    let initialTemplate = ContainerRegistry.bundled.defaultTemplate
     _template = State(initialValue: initialTemplate)
-    _name = State(initialValue: custom ? "My Container" : initialTemplate.defaultName)
+    _name = State(initialValue: initialTemplate.defaultName)
     _cpus = State(initialValue: initialTemplate.defaultCPUs)
     _memory = State(initialValue: initialTemplate.defaultMemoryGiB)
-    _disk = State(initialValue: custom ? 8 : initialTemplate.defaultDiskGiB)
+    _disk = State(initialValue: initialTemplate.defaultDiskGiB)
   }
-  private var portText: String { webPort.trimmingCharacters(in: .whitespacesAndNewlines) }
-  private var requiresNetworking: Bool { custom ? !portText.isEmpty : template.requiresNetworking }
+  private var requiresNetworking: Bool { template.requiresNetworking }
   private var draft: Computer {
-    var computer = (custom ? ComputerTemplate.shell : template).makeComputer(name: name)
+    var computer = template.makeComputer(name: name)
     computer.cpuCount = cpus
     computer.memoryGiB = memory
     computer.diskGiB = disk
     computer.networkEnabled = requiresNetworking || network
     computer.appearance = appearance
-    if custom {
-      computer.customImage = true
-      computer.imageReference = imageReference.trimmingCharacters(in: .whitespacesAndNewlines)
-      computer.webPort = Int(portText)
-    }
     return computer
   }
   private var creating: Bool { store.creationStatus != nil }
-  private var canCreate: Bool {
-    !creating && (!custom || portText.isEmpty || Int(portText) != nil)
-      && (try? draft.validate()) != nil
-  }
+  private var canCreate: Bool { !creating && (try? draft.validate()) != nil }
   var body: some View {
     Group {
       if creating {
@@ -975,7 +999,7 @@ struct NewComputerView: View {
             Button("Cancel") { dismiss() }.disabled(creating).keyboardShortcut(.cancelAction)
               .buttonStyle(.plain).foregroundStyle(.blue)
             Spacer()
-            Text(custom ? "New from Container Image" : "New Container").font(.headline)
+            Text("New Container").font(.headline)
             Spacer()
             Button("Create") {
               Task {
@@ -997,25 +1021,10 @@ struct NewComputerView: View {
           }.padding(20)
           Divider()
           VStack(alignment: .leading, spacing: 16) {
-            if !custom {
-              ComputerChoicePicker(selection: $template)
-            }
+            ComputerChoicePicker(selection: $template)
             VStack(alignment: .leading, spacing: 12) {
-              if custom {
-                LabeledContent("Image") {
-                  TextField("docker.io/library/nginx:alpine", text: $imageReference)
-                    .textFieldStyle(.roundedBorder).autocorrectionDisabled()
-                }
-                LabeledContent("Web port") {
-                  TextField("Optional", text: $webPort).textFieldStyle(.roundedBorder)
-                    .frame(width: 100)
-                }
-                Text("Include the registry (such as docker.io) and a tag (such as :latest). Use a public ARM64 Linux image with /bin/sh. Leave the web port blank for a terminal, or enter the container’s HTTP port to show its web interface.")
-                  .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                Divider()
-              }
               HStack {
-                ComputerIconButton(appearance: $appearance, symbol: custom ? "shippingbox" : template.symbol)
+                ComputerIconButton(appearance: $appearance, symbol: template.symbol)
                 TextField("Name", text: $name).autocorrectionDisabled()
                   .textFieldStyle(.roundedBorder).lineLimit(1)
               }
@@ -1029,10 +1038,10 @@ struct NewComputerView: View {
                     range: 1...max(2, min(32, ProcessInfo.processInfo.processorCount)))
                   Divider()
                   ComputerResourceRow("Memory", value: $memory, unit: "GB",
-                    range: (custom ? 1 : template.minimumMemoryGiB)...64)
+                    range: template.minimumMemoryGiB...64)
                   Divider()
                   ComputerResourceRow("Disk capacity", value: $disk, unit: "GB",
-                    range: (custom ? 4 : template.minimumDiskGiB)...512, step: 4)
+                    range: template.minimumDiskGiB...512, step: 4)
                   Text("Disk space grows as the computer uses it, up to this capacity.").font(
                     .caption
                   )
@@ -1069,7 +1078,6 @@ struct NewComputerView: View {
     }
     .noodleSheetSizing(animated: true)
     .interactiveDismissDisabled(creating)
-    .onChange(of: imageReference) { _, _ in failure = nil }
     .onChange(of: requiresNetworking) { _, required in if required { network = true } }
     .onChange(of: template) { oldValue, value in
       failure = nil

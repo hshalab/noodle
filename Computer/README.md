@@ -41,7 +41,7 @@ agent's own session. Closing the window leaves the computer running.
 
 Shell and Desktop images use the non-root `agent` account, with passwordless
 `sudo` for administrative work (for example, `sudo apk add jq` in Shell).
-Custom and older images may still use root; choose **Update** to get the current
+Older images may still use root; choose **Update** to get the current
 account setup. Files created earlier by root keep their owner; use `sudo` to
 manage them.
 
@@ -88,27 +88,19 @@ The optional description (up to 500 characters) says what the computer is for,
 such as which project it builds. Assigned bots see it with the name and use it to
 choose the right computer. It is not shown on preview cards in conversations.
 
+A Desktop computer keeps its own screen resolution and scales to fit its window.
+Turn on **Resize desktop with window** in the editor to make the desktop follow the
+window's size instead.
+
 Choose **Update** from the computer's context menu or editor to fetch its latest
 image. The computer stops during the update and restarts afterward. Your files
 and installed software are preserved; modified system files can override updated
 defaults. A failed update leaves the computer as it was. Some older computers
-cannot be updated this way.
+cannot be updated this way. A Desktop computer on an older image must be updated
+before it starts.
 
 App updates are separate, under **Settings → Update**. Save guest work first;
 computers are stopped and are not automatically restarted after the app relaunches.
-
-## Custom images
-
-Choose **New from Container Image** and enter the name of a public container
-image built for ARM64. The image must include a shell at `/bin/sh`. Without a web
-port, it opens as a shell. With a web port, Computer starts the image's app and
-shows its web page; the app must accept connections from outside the computer,
-not only from itself. Images that need a registry sign-in, and multi-container
-setups, are not supported.
-
-You can also publish your own image based on the Desktop image, for example with
-extra tools, a different homepage or starter files in `/workspace`, and open it
-the same way.
 
 ## Automate the desktop browser
 

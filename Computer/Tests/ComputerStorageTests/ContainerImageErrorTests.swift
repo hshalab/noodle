@@ -38,15 +38,14 @@ final class ContainerImageErrorTests: XCTestCase {
         }
     }
 
-    @MainActor func testKaliCreationFailsBeforePreparingOrDownloading() async throws {
+    @MainActor func testOtherImageCreationFailsBeforePreparingOrDownloading() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let store = try ComputerStore(root: root)
-        let computer = Computer(name: "Kali", kind: .container,
-                                imageReference: "kalilinux/kali-rolling", customImage: true)
+        let computer = Computer(name: "Kali", kind: .container, imageReference: "docker.io/kalilinux/kali-rolling:latest")
         let created = await store.create(computer, source: nil)
         XCTAssertFalse(created)
-        XCTAssertTrue(store.error?.contains("docker.io/kalilinux/kali-rolling:latest") == true, store.error ?? "No error")
+        XCTAssertTrue(store.error?.contains("no longer supports") == true, store.error ?? "No error")
         XCTAssertFalse(store.creationWasCancelled)
         XCTAssertNil(store.creationStatus)
         XCTAssertTrue(store.sessions.isEmpty)

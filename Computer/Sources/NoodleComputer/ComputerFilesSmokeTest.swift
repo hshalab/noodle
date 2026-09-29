@@ -10,8 +10,9 @@ import Foundation
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("NoodleFiles-\(UUID().uuidString)")
         let store = try ComputerStore(root: root)
         print("FILES: preparing disposable guest at \(root.path)")
-        let computer = Computer(name: "Files preview", kind: .container, cpuCount: 2, memoryGiB: 1,
-                                diskGiB: 4, networkEnabled: false, imageReference: "docker.io/library/alpine:3.23.5", customImage: true)
+        var computer = ComputerTemplate.shell.makeComputer(name: "Files preview")
+        computer.cpuCount = 2
+        computer.networkEnabled = false
         do {
             guard await store.create(computer, source: nil), let session = store.selected else { throw ComputerError(store.error ?? "Could not create files fixture") }
             if session.phase != .running { await store.start(session) }

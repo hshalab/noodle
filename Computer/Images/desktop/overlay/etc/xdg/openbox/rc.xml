@@ -109,12 +109,7 @@
     <keybind key="A-F11">
       <action name="ToggleFullscreen" />
     </keybind>
-    <!-- Open the selected agent harness. The desktop mascot in the KasmVNC
-         client synthesises this same chord, so both paths run one command.
-         Control and Shift are deliberate and must not be swapped for Alt or
-         Super: noVNC rewrites both of those for Mac clients, so the chord
-         would arrive on a different modifier and this grab would never match.
-         See the comment in kasm/mascot.js. -->
+    <!-- Open the selected agent harness. -->
     <keybind key="C-S-g">
       <action name="Execute">
         <command>desktop-harness</command>

@@ -511,7 +511,6 @@ enum DevelopmentHook {
     static let computerPicker = "9eb302341e8dcfc228f18b55db833f42b50920ce005f9aed554f4b7a1ff521af"  // --computer-picker-test
     static let computerUpdateNotice = "279a6cb632bdc55fe04c2cde06fd18eaa9e3f6c2fdc262a4f749ffe4b39b7f16"  // --computer-update-notice-test
     static let computerDownload = "241600d7fee4a10ff34b7caabd58bd674fe8d13183a01a0e50469b9081eb5585"  // --computer-download-test
-    static let computerWeb = "a15d161557b60e252aff873db33a8a522c76e0fee123068f282b14e5791384d8"  // --computer-web-test
     static let scenario = "fc882b0401601368259a54b753ab1714b761d5cf88bf2069356700f6a2fd580e"  // --scenario
     static let scenarioShots = "f3e02727157d7ee04aee89ffe9c56c9f6790cd3294e3a21443d0962f2ed639ff"  // --scenario-shots
     static let scenarioPicker = "41998b9aaaa37cb4b3f6a1fc5666714235669efe3190d47bf71511e4f57cc517"  // --scenario-picker

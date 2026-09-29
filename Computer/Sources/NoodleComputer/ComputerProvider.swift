@@ -5,7 +5,6 @@ import Containerization
 import Darwin
 import Foundation
 import LocalMacCore
-import WebKit
 
 @MainActor final class ComputerProvider {
     private weak var store: ComputerStore?
@@ -13,7 +12,6 @@ import WebKit
     private var terminals: [UUID: ProviderTerminal] = [:]
     private var localTerminals: [UUID: (computer: UUID, owner: String, runtime: LocalMacComputer)] = [:]
     /// Where a person watching remotely types and clicks, one per desktop view.
-    private var injectors: [UUID: (view: NSView, injector: SurfaceEventInjector)] = [:]
     /// Live views of displays and terminals. While one is watched, bots are kept off its computer.
     private var surfaces: [String: (computer: UUID, streamer: SurfaceStreamer)] = [:]
     private let transferRoot: URL
@@ -145,9 +143,6 @@ import WebKit
             return .init()
         }
         guard session.phase == .running, let runtime = session.container else {
-            if request.operation == .display {
-                throw ComputerBridgeError("Computer is stopped. Start it in \(ComputerAppIdentity.name).")
-            }
             throw ComputerBridgeError("Computer is stopped. Start it in \(ComputerAppIdentity.name) or with computer start --computer \(session.id.uuidString).")
         }
         if request.operation == .surfaceStream {
@@ -182,13 +177,6 @@ import WebKit
         if request.operation == .terminalOpen {
             return .init(terminalID: try await openTerminal(on: session, runtime: runtime, owner: owner), offset: 0, exited: false)
         }
-        // A web display belongs to the assigned computer, not to an arbitrary PTY.
-        if request.operation == .display {
-            guard let desktop = session.desktop else { throw ComputerBridgeError("This computer has no web display.") }
-            var response = ComputerResponse()
-            response.display = .init(url: desktop.url, certificate: desktop.certificate, password: desktop.password, customWeb: desktop.customWeb)
-            return response
-        }
         if request.operation == .preview {
             // Even a legacy web request with a terminal must not accept another owner's ID.
             if let id = request.terminalID {
@@ -196,7 +184,7 @@ import WebKit
                     throw ComputerBridgeError("Terminal session is unavailable or belongs to another agent.")
                 }
             }
-            let view = request.view ?? (request.terminalID != nil ? "terminal" : (session.desktop != nil ? "web" : "terminal"))
+            let view = request.view ?? (request.terminalID != nil ? "terminal" : (session.display != nil ? "web" : "terminal"))
             var response = ComputerResponse()
             response.computerID = session.id; response.view = view
             if view == "terminal" {
@@ -208,13 +196,10 @@ import WebKit
                 response.terminalID = id; response.exited = terminal.exited
                 response.computerID = session.id; response.view = view
             } else {
-                guard session.desktop != nil else { throw ComputerBridgeError("This computer has no web display.") }
-                if let browser = session.browser {
-                    response.previewImage = await ComputerPreviewSnapshot.capture(browser.view, desktop: !browser.connection.customWeb) {
-                        session.phase == .running && session.browser === browser && browser.failure == nil &&
-                        store.sessions.contains(where: { $0 === session })
-                    }
-                }
+                guard let display = session.display else { throw ComputerBridgeError("This computer has no display.") }
+                response.previewImage = await ComputerPreviewSnapshot.capture(valid: {
+                    session.phase == .running && session.display === display && store.sessions.contains(where: { $0 === session })
+                }) { try await display.surface.frame().image }
             }
             return response
         }
@@ -256,23 +241,12 @@ import WebKit
 
     private func surface(_ request: ComputerRequest, session: ComputerSession, runtime: ContainerComputer, owner: String,
                          socket: SurfaceSocket) async throws {
-        if let browser = session.desktop != nil ? session.browser : nil {
-            let view = browser.view
-            streamer("display:\(session.id)", computer: session.id, capture: { [weak view] in
-                guard let view else { return nil }
-                let configuration = WKSnapshotConfiguration()
-                configuration.afterScreenUpdates = false
-                let image: NSImage? = await withCheckedContinuation { continuation in
-                    view.takeSnapshot(with: configuration) { image, _ in continuation.resume(returning: image) }
-                }
-                guard let picture = image?.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
-                    throw ComputerBridgeError("The computer's display cannot be shown.")
-                }
-                return (picture, view.bounds.size)
-            }, apply: { [weak self, weak view] input in
-                guard let self, let view else { return }
-                if self.injectors[session.id]?.view !== view { self.injectors[session.id] = (view, SurfaceEventInjector(view: view)) }
-                try self.injectors[session.id]?.injector.deliver(input)
+        if let display = session.display {
+            // The guest serves its own screen: the Mac's view of it cannot be captured.
+            streamer("display:\(session.id)", computer: session.id, capture: {
+                try await display.surface.frame()
+            }, apply: { input in
+                try await display.surface.send(input)
             }).attach(socket)
             return
         }
@@ -313,7 +287,7 @@ import WebKit
         return RemoteComputer(id: session.id, name: session.computer.name, description: session.computer.description, kind: session.computer.displayType,
             state: session.phase.label, symbol: appearance?.iconSymbol ?? session.computer.displaySymbol,
             colour: appearance?.iconColour ?? 0, icon: (icon?.count ?? 0) <= 65_536 ? icon : nil,
-            hasWebDisplay: session.desktop != nil || session.computer.kind == .localMac,
+            hasWebDisplay: session.display != nil || session.computer.kind == .localMac,
             owner: session.computer.hubOwner.map { ComputerOwner(id: $0.id, name: $0.name) })
     }
     private func handleLocal(_ request: ComputerRequest, session: ComputerSession, store: ComputerStore, owner: String) async throws -> ComputerResponse {
@@ -357,7 +331,6 @@ import WebKit
             localTerminals[id] = (session.id, owner, runtime)
             return .init(terminalID: id, offset: 0, exited: false)
         }
-        if request.operation == .display { throw ComputerBridgeError("Open this computer’s reference file in \(ComputerAppIdentity.name) to use its native desktop.") }
         if request.operation == .preview {
             if let id = request.terminalID { _ = try terminal(id) }
             let view = request.view ?? (request.terminalID == nil ? "web" : "terminal")

@@ -4,10 +4,35 @@ set -eu
 sh /usr/local/lib/noodle-image-check desktop
 export DISPLAY=:99
 . /usr/local/lib/desktop-environment
-# Test-only X server: loopback RFB, no web server or host-published ports.
-Xvnc "$DISPLAY" -geometry 1024x768 -depth 24 -localhost -nolisten tcp \
-  -publicIP 127.0.0.1 -noWebsocket -rfbport 5999 -SecurityTypes None \
-  >/tmp/noodle-display-test.log 2>&1 &
+# Test-only X server: the image's Xorg on its dummy driver, as there is no GPU here.
+cat > /tmp/noodle-dummy.conf <<'CONF'
+Section "ServerFlags"
+    Option "AutoAddDevices" "false"
+EndSection
+Section "Device"
+    Identifier "dummy"
+    Driver "dummy"
+    VideoRam 256000
+EndSection
+Section "Monitor"
+    Identifier "monitor"
+    HorizSync 5.0-1000.0
+    VertRefresh 5.0-200.0
+    Modeline "1024x768" 65.00 1024 1048 1184 1344 768 771 777 806 -hsync -vsync
+EndSection
+Section "Screen"
+    Identifier "screen"
+    Device "dummy"
+    Monitor "monitor"
+    DefaultDepth 24
+    SubSection "Display"
+        Depth 24
+        Modes "1024x768"
+    EndSubSection
+EndSection
+CONF
+/usr/lib/xorg/Xorg "$DISPLAY" -config /tmp/noodle-dummy.conf -nolisten tcp -noreset \
+  -logfile /tmp/noodle-display-test.log >/dev/null 2>&1 &
 display_pid=$!
 trap 'kill "$display_pid" 2>/dev/null || true' EXIT
 attempt=0

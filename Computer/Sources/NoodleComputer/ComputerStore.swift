@@ -42,9 +42,8 @@ enum ComputerDisplayMode: String {
     nonisolated let id: UUID
     @Published var computer: Computer
     @Published var phase = ComputerPhase.stopped {
-        didSet { if case .failed = phase {} else { startupRecovery = nil; localMacSetupStatus = nil } }
+        didSet { if case .failed = phase {} else { localMacSetupStatus = nil } }
     }
-    @Published var startupRecovery: ComputerStartupRecovery?
     @Published var localMacSetupStatus: LocalMacRegistrationStatus?
     var localMacSetupRequired: Bool { localMacSetupStatus != nil }
     @Published var console = ""
@@ -52,10 +51,7 @@ enum ComputerDisplayMode: String {
     @Published var updateResult: String?
     @Published var updateStatus: String?
     @Published var updateProgress: Double?
-    @Published var desktop: DesktopConnection? {
-        didSet { browser = desktop.map { ComputerDesktopBrowser(connection: $0) } }
-    }
-    @Published var browser: ComputerDesktopBrowser?
+    @Published var display: NativeDisplay?
     @Published var terminal: GuestTerminal?
     @Published var showingTerminal = false
     @Published var showingFiles = false
@@ -115,7 +111,6 @@ enum ComputerDisplayMode: String {
             return
         }
         phase = .failed(error.localizedDescription)
-        startupRecovery = error as? ComputerStartupRecovery
         localMacSetupStatus = (error as? LocalMacSetupRequired)?.registration
         append("\n\(error.localizedDescription)\n")
     }
@@ -259,7 +254,7 @@ enum ComputerDisplayMode: String {
             try Task.checkCancellation()
             try computer.validate()
             if computer.kind == .container {
-                try ContainerComputer.validateImageReference(computer.imageReference)
+                try ContainerComputer.requireSupportedImage(computer)
             }
             guard computer.kind == .localMac || (computer.cpuCount <= VZVirtualMachineConfiguration.maximumAllowedCPUCount &&
                 UInt64(computer.memoryGiB) * 1_073_741_824 <= VZVirtualMachineConfiguration.maximumAllowedMemorySize
@@ -481,8 +476,8 @@ enum ComputerDisplayMode: String {
                 let text = try await runtime.start(
                     computer: computer, directory: directory, cache: cache, kernel: kernel)
                 session.append(text)
-                session.desktop = await runtime.desktop
-                if !computer.hasWebDisplay {
+                session.display = await runtime.display
+                if !computer.hasDesktop {
                     let terminal = GuestTerminal()
                     session.terminal = terminal
                     try await connectTerminal(terminal, session: session, runtime: runtime)
@@ -517,7 +512,7 @@ enum ComputerDisplayMode: String {
                 try? await session.container?.stop()
                 session.container = nil
                 session.terminal = nil
-                session.desktop = nil
+                session.display = nil
             }
             if session.virtual?.machine.state == .stopped { session.virtual = nil }
             session.recordStartupFailure(error)
@@ -546,7 +541,7 @@ enum ComputerDisplayMode: String {
             try await session.container?.stop()
             session.virtual = nil
             session.container = nil
-            session.desktop = nil
+            session.display = nil
             session.terminal = nil
             session.showingTerminal = false
             session.showingFiles = false
@@ -598,7 +593,7 @@ enum ComputerDisplayMode: String {
             session.showingFiles = false
             session.showingTerminal = false
         case .terminal:
-            if session.computer.hasWebDisplay {
+            if session.computer.hasDesktop {
                 await toggleTerminal(session)
                 if session.showingTerminal { session.showingFiles = false }
             } else { session.showingFiles = false }
@@ -608,10 +603,10 @@ enum ComputerDisplayMode: String {
         }
     }
 
-    /// A separate guest PTY, independent of WebKit, VNC and desktop processes.
+    /// A separate guest PTY, independent of the desktop processes.
     /// Keep it alive when returning to the desktop so commands/history survive.
     func toggleTerminal(_ session: ComputerSession) async {
-        guard session.computer.hasWebDisplay, session.phase == .running,
+        guard session.computer.hasDesktop, session.phase == .running,
               !session.openingTerminal, let runtime = session.container else { return }
         if session.showingTerminal {
             session.showingTerminal = false
@@ -704,11 +699,13 @@ enum ComputerDisplayMode: String {
         return (people, sessions.filter { $0.computer.hubOwner == nil })
     }
 
-    func rename(_ session: ComputerSession, name: String, description: String? = nil, appearance: ComputerAppearance? = nil) {
+    func rename(_ session: ComputerSession, name: String, description: String? = nil, appearance: ComputerAppearance? = nil,
+                resizesDesktop: Bool? = nil) {
         var computer = session.computer
         computer.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         if let description { computer.description = description }
         if let appearance { computer.appearance = appearance }
+        if let resizesDesktop { computer.resizesDesktopWithWindow = resizesDesktop }
         do {
             session.computer = try library.save(computer)
         } catch { self.error = error.localizedDescription }

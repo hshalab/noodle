@@ -82,10 +82,10 @@ select_wallpaper() {
 
 wallpaper="$(select_wallpaper)"
 
-# Wallpaper watcher - KasmVNC resizes the display when the browser connects,
-# which invalidates any root pixmap set earlier. This loop detects resolution
-# changes and re-applies the wallpaper so it is always scaled to fill the
-# screen instead of being tiled.
+# Wallpaper watcher - the display resizes with the window when the computer's
+# "Resize desktop with window" setting is on, which invalidates any root pixmap
+# set earlier. This loop detects resolution changes and re-applies the
+# wallpaper so it is always scaled to fill the screen instead of being tiled.
 if [ -f "$wallpaper" ]; then
   rm -f "$HOME/.fehbg"
   (

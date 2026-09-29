@@ -40,9 +40,9 @@ final class ContainerRegistryTests: XCTestCase {
         XCTAssertEqual(computer.memoryGiB, 8)
         XCTAssertEqual(computer.diskGiB, 64)
         XCTAssertEqual(registry.template(for: computer), template)
-        var custom = computer
-        custom.customImage = true
-        XCTAssertNil(registry.template(for: custom))
+        var other = computer
+        other.imageReference = "docker.io/library/nginx:alpine"
+        XCTAssertNil(registry.template(for: other))
     }
 
     func testInvalidCatalogueIsRejected() throws {
