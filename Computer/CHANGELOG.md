@@ -8,6 +8,7 @@
 - Desktop computers are shown natively instead of through a web page: sharper, with the keyboard and pointer going straight to the computer. A desktop keeps its own resolution unless **Resize desktop with window** is on in its editor. Agents and people watching from Noodle Hub see and use the desktop even when its window is closed. **⌘C** and **⌘V** copy and paste between the Mac and the desktop; the desktop sees your Mac clipboard only when you paste.
 - Desktop computers need the latest Desktop image. Choose **Update** to start one made earlier; its files are kept.
 - Computer no longer asks for Local Network access.
+- A Local Mac’s desktop blurs while you resize its window and sharpens once you let go, like a Linux desktop does.
 
 ### Removed
 
