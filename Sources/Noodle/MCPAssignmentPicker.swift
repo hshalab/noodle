@@ -128,9 +128,9 @@ struct MCPConnectionChooser: View {
                                 HStack(spacing: 10) {
                                     EventKitToolIcon(symbol: kind == .calendar ? "calendar" : "checklist", size: 28)
                                     VStack(alignment: .leading) {
-                                        Text(kind.toolName).foregroundStyle(.primary)
+                                        Text(kind.toolName).foregroundStyle(Color.primary)
                                         Text("\(kind.noun.capitalized)s on this Mac, chosen per bot")
-                                            .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                            .font(.caption).foregroundStyle(Color.secondary).lineLimit(1)
                                     }
                                     Spacer()
                                     Image(systemName: "plus.circle.fill").foregroundStyle(.blue)
@@ -146,10 +146,10 @@ struct MCPConnectionChooser: View {
                                 MCPConnectionIcon(connection: connection, size: 28)
                                 VStack(alignment: .leading) {
                                     HStack {
-                                        Text(connection.name).foregroundStyle(.primary)
+                                        Text(connection.name).foregroundStyle(Color.primary)
                                         MCPConnectionMaturityBadge(connection: connection)
                                     }
-                                    Text(connection.description).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                    Text(connection.description).font(.caption).foregroundStyle(Color.secondary).lineLimit(1)
                                 }
                                 Spacer()
                                 Image(systemName: "plus.circle.fill").foregroundStyle(.blue)
@@ -261,8 +261,8 @@ struct HubConnectionPicker: View {
                             HStack(spacing: 10) {
                                 MCPConnectionIcon(connection: connection.record, size: 28)
                                 VStack(alignment: .leading) {
-                                    Text(connection.record.name).foregroundStyle(.primary)
-                                    Text(connection.record.description).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                    Text(connection.record.name).foregroundStyle(Color.primary)
+                                    Text(connection.record.description).font(.caption).foregroundStyle(Color.secondary).lineLimit(1)
                                 }
                                 Spacer()
                                 Image(systemName: "plus.circle.fill").foregroundStyle(.blue)

@@ -120,7 +120,7 @@ struct GroupMemberChooser: View {
                         } label: {
                             HStack(spacing: 12) {
                                 BotAvatar(agent: agent, size: 32)
-                                Text(agent.displayName).foregroundStyle(.primary)
+                                Text(agent.displayName).foregroundStyle(Color.primary)
                                 Spacer()
                                 Image(systemName: "plus.circle.fill").foregroundStyle(.blue)
                             }

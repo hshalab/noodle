@@ -158,8 +158,8 @@ struct CompanionAssignmentChooser<Prompt: View, LibraryButton: View>: View {
                             HStack(spacing: 12) {
                                 CompanionAssignmentAvatar(item: item, size: 32)
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(item.name).foregroundStyle(.primary)
-                                    Text(item.state).font(.caption).foregroundStyle(.secondary)
+                                    Text(item.name).foregroundStyle(Color.primary)
+                                    Text(item.state).font(.caption).foregroundStyle(Color.secondary)
                                 }
                                 Spacer()
                                 Image(systemName: "plus.circle.fill").foregroundStyle(.blue)
