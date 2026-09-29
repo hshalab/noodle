@@ -1421,21 +1421,22 @@ private struct Bubble: View {
         }
     }
 
+    /// The text first, then its link and files, as on the Mac. Reactions are on the message, so
+    /// they mark its text, and the files only when there is no text to mark.
     @ViewBuilder private func content(foreground: Color, background: Color) -> some View {
-        let trailing = message.author == .you
-        VStack(alignment: trailing ? .trailing : .leading, spacing: 4) {
-            bubbleContent(foreground: foreground, background: background)
-        }
-        .padding(.top, message.reactions.isEmpty ? 0 : 16)
-        .overlay(alignment: trailing ? .topLeading : .topTrailing) {
-            reactions.offset(x: trailing ? -10 : 10)
+        if showsText {
+            MessageText(text: message.body, folded: folded, foreground: foreground, background: background) { expanded = true }
+                .scaleEffect(pressing ? 0.96 : 1)
+                .animation(.spring(duration: 0.25), value: pressing)
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { textFrame = $0 }
+                .onLongPressGesture(minimumDuration: 0.35) { lift() } onPressingChanged: { pressing = $0 }
+                .accessibilityAction(named: "React") { lift() }
+                .accessibilityAction(named: "Copy") { UIPasteboard.general.string = message.body }
+                .modifier(Reactions(badges: reactions, shown: !message.reactions.isEmpty, trailing: message.author == .you))
         }
         if let url = LinkPreview.firstURL(in: message.body) {
             LinkPreviewCard(url: url)
         }
-    }
-
-    @ViewBuilder private func bubbleContent(foreground: Color, background: Color) -> some View {
         if !message.attachments.isEmpty {
             let mode = AttachmentLayout(rawValue: attachmentLayout) ?? .standard
             let together = mode != .vertical && message.attachments.count > 1
@@ -1445,15 +1446,22 @@ private struct Bubble: View {
                         .shadow(color: mode == .stack && together ? .black.opacity(0.3) : .clear, radius: 3, y: 2)
                 }
             }
+            .modifier(Reactions(badges: reactions, shown: !showsText && !message.reactions.isEmpty, trailing: message.author == .you))
         }
-        if showsText {
-            MessageText(text: message.body, folded: folded, foreground: foreground, background: background) { expanded = true }
-                .scaleEffect(pressing ? 0.96 : 1)
-                .animation(.spring(duration: 0.25), value: pressing)
-                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { textFrame = $0 }
-                .onLongPressGesture(minimumDuration: 0.35) { lift() } onPressingChanged: { pressing = $0 }
-                .accessibilityAction(named: "React") { lift() }
-                .accessibilityAction(named: "Copy") { UIPasteboard.general.string = message.body }
+    }
+
+    /// Hangs the badges over the top corner away from the conversation's edge, with room above for them.
+    private struct Reactions<Badges: View>: ViewModifier {
+        let badges: Badges
+        let shown: Bool
+        let trailing: Bool
+
+        func body(content: Content) -> some View {
+            content
+                .padding(.top, shown ? 16 : 0)
+                .overlay(alignment: trailing ? .topLeading : .topTrailing) {
+                    if shown { badges.offset(x: trailing ? -10 : 10) }
+                }
         }
     }
 

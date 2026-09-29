@@ -18,6 +18,7 @@ All notable changes to Noodle are documented here, following
 
 ### Fixed
 
+- Reactions to a message with files show on its text, where you reacted, instead of on the files.
 - Reaching a Noodle Hub no longer sometimes waits 10 seconds and fails with "The Hub did not answer in time" when a Hub has recently started or stopped on the same Mac.
 
 ## [0.33.0] - 2026-09-29

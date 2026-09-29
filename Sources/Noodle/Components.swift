@@ -265,9 +265,7 @@ struct MessageBubble: View {
                     .overlay {
                         reactionContextMenu(attachment: nil)
                     }
-                    .overlay(alignment: .topTrailing) {
-                        if attachments.isEmpty { cornerReactions }
-                    }
+                    .overlay(alignment: .topTrailing) { cornerReactions }
                 }
 
                 if let linkPreviewURL, !attachments.contains(where: {
@@ -282,11 +280,11 @@ struct MessageBubble: View {
                                     alignment: isUser ? .trailing : .leading) { attachment in
                         attachmentPreview(attachment)
                     }
-                    .overlay(alignment: .topTrailing) { cornerReactions }
-                    // Badges mark the attachments here, below the bubble, so they need the
-                    // clearance the stack's own spacing does not already give them.
-                    .padding(.top, showsTextBubble(attachments: attachments)
-                        ? Self.reactionOverhang - Self.contentSpacing : 0)
+                    // Reactions are on the message, so they mark its text, and the files only when
+                    // there is no text to mark.
+                    .overlay(alignment: .topTrailing) {
+                        if !showsTextBubble(attachments: attachments) { cornerReactions }
+                    }
                 }
 
                 if isUser {
