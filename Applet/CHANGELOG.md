@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-09-29
+
 ### Added
 
 - A Running section in the sidebar lists every noodlet that is up, including ones running out of sight for your bots. Control-click one and choose Stop to end it.
