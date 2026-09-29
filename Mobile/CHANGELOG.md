@@ -20,7 +20,7 @@
 
 ### Fixed
 
-- Reactions sit over the message's corner, as in Messages, instead of on their own line under it, and mark the text rather than a file sent with it.
+- Reactions sit over the message's corner, as in Messages, instead of on their own line under it, and mark the text rather than a file sent with it. Reacting no longer moves the conversation.
 - A message's text shows before its files, as on the Mac.
 - Reaching a Noodle Hub no longer sometimes waits 10 seconds and fails with "The Hub did not answer in time" when a Hub has recently started or stopped on the same Mac.
 

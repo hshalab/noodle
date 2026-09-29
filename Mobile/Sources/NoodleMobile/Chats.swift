@@ -996,7 +996,7 @@ struct ChatView: View {
         let latestOwn = messages.last { $0.author == .you }?.id
         let authors = thread.group == nil ? [:] : HubChats.authorLabels(in: messages) { chats.agent($0)?.draft.name }
         return ScrollView {
-            LazyVStack(spacing: 6) {
+            LazyVStack(spacing: Bubble.rowSpacing) {
                 // Reaching the top loads the page before.
                 if chats.hasEarlier(thread) {
                     ProgressView().frame(maxWidth: .infinity).padding(.vertical, 8)
@@ -1367,6 +1367,11 @@ private struct Bubble: View {
     @Environment(\.focusMessage) private var focusMessage
     @AppStorage(AttachmentLayout.key) private var attachmentLayout = AttachmentLayout.standard.rawValue
 
+    /// The gap between messages in the conversation.
+    static let rowSpacing: CGFloat = 6
+    /// How far a reaction badge hangs above the top of what it marks.
+    private static let reactionOverhang: CGFloat = 16
+
     var body: some View {
         switch message.author {
         case .system:
@@ -1382,6 +1387,9 @@ private struct Bubble: View {
                     }
                 }
             }
+            // As on the Mac, every message keeps the badge's clearance, reactions or not, so
+            // reacting never moves the conversation. The row gap covers the rest of it.
+            .padding(.top, Self.reactionOverhang - Self.rowSpacing)
         case .bot:
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
@@ -1392,6 +1400,7 @@ private struct Bubble: View {
                 }
                 Spacer(minLength: 48)
             }
+            .padding(.top, Self.reactionOverhang - Self.rowSpacing)
         }
     }
 
@@ -1450,18 +1459,17 @@ private struct Bubble: View {
         }
     }
 
-    /// Hangs the badges over the top corner away from the conversation's edge, with room above for them.
+    /// Hangs the badges over the top corner away from the conversation's edge, into the room every
+    /// message keeps above it.
     private struct Reactions<Badges: View>: ViewModifier {
         let badges: Badges
         let shown: Bool
         let trailing: Bool
 
         func body(content: Content) -> some View {
-            content
-                .padding(.top, shown ? 16 : 0)
-                .overlay(alignment: trailing ? .topLeading : .topTrailing) {
-                    if shown { badges.offset(x: trailing ? -10 : 10) }
-                }
+            content.overlay(alignment: trailing ? .topLeading : .topTrailing) {
+                if shown { badges.offset(x: trailing ? -10 : 10, y: -Bubble.reactionOverhang) }
+            }
         }
     }
 
