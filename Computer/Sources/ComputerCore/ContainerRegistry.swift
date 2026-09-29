@@ -65,8 +65,8 @@ public struct ContainerRegistry: Decodable, Sendable {
                   (template.minimumDiskGiB...512).contains(template.defaultDiskGiB) else {
                 throw ComputerError("Invalid fields or resource limits in container template \(template.id).")
             }
-            if template.type == .desktop && (!template.requiresNetworking || template.minimumMemoryGiB < 2 || template.minimumDiskGiB < 8) {
-                throw ComputerError("Desktop templates require networking, 2 GB memory and an 8 GB disk.")
+            if template.type == .desktop && (template.minimumMemoryGiB < 2 || template.minimumDiskGiB < 8) {
+                throw ComputerError("Desktop templates require 2 GB memory and an 8 GB disk.")
             }
         }
     }

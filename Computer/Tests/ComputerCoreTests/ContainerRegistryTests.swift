@@ -45,6 +45,12 @@ final class ContainerRegistryTests: XCTestCase {
         XCTAssertNil(registry.template(for: other))
     }
 
+    func testDesktopRunsWithoutNetworking() throws {
+        var computer = ContainerRegistry.bundled.defaultTemplate.makeComputer()
+        computer.networkEnabled = false
+        XCTAssertNoThrow(try computer.validate())
+    }
+
     func testInvalidCatalogueIsRejected() throws {
         let original = try catalogue()
         for (key, value) in [("schemaVersion", 2 as Any), ("defaultTemplateID", "missing" as Any),
@@ -61,7 +67,7 @@ final class ContainerRegistryTests: XCTestCase {
                              ("imageReference", templates[1]["imageReference"]!),
                              ("defaultCPUs", 0 as Any), ("minimumMemoryGiB", 65 as Any),
                              ("defaultMemoryGiB", 1 as Any), ("minimumDiskGiB", 513 as Any),
-                             ("defaultDiskGiB", 4 as Any), ("requiresNetworking", false as Any)] {
+                             ("defaultDiskGiB", 4 as Any)] {
             var invalid = original
             var entries = templates
             entries[0][key] = value

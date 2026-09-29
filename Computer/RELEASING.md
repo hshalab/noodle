@@ -86,8 +86,8 @@ Local checks do not replace CI notarization and distribution checks.
 
 ## Local Mac validation
 
-The creation menu has separate entries for New Container, New from Container
-Image, and New Local Mac. Local Mac uses the same appearance and automatic-start
+The creation menu has separate entries for New Linux Container and New Local
+Mac. Local Mac uses the same appearance and automatic-start
 preferences, without image, CPU, memory-allocation or virtual-disk controls.
 
 Local Mac's account-free boundary, file and update-recovery tests are part of the

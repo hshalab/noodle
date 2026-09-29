@@ -62,7 +62,7 @@ struct NoodleComputerApp: App {
     let action = openWindow
     let _ = delegate.openLibrary = { action(id: "library") }
     CommandGroup(replacing: .newItem) {
-      Button("New Container") { NotificationCenter.default.post(name: .newComputer, object: nil) }
+      Button("New Linux Container") { NotificationCenter.default.post(name: .newComputer, object: nil) }
         .keyboardShortcut("n")
       Button("New Local Mac") { NotificationCenter.default.post(name: .newLocalMac, object: nil) }
     }
@@ -410,7 +410,7 @@ struct ComputerLibraryView: View {
 
   private var createMenu: some View {
     Menu {
-      Button("New Container", systemImage: "desktopcomputer") { showingNew = true }
+      Button("New Linux Container", systemImage: "desktopcomputer") { showingNew = true }
         .keyboardShortcut("n", modifiers: .command)
       Button("New Local Mac", systemImage: "person.crop.rectangle") { showingLocalMac = true }
     } label: {
@@ -977,13 +977,12 @@ struct NewComputerView: View {
     _memory = State(initialValue: initialTemplate.defaultMemoryGiB)
     _disk = State(initialValue: initialTemplate.defaultDiskGiB)
   }
-  private var requiresNetworking: Bool { template.requiresNetworking }
   private var draft: Computer {
     var computer = template.makeComputer(name: name)
     computer.cpuCount = cpus
     computer.memoryGiB = memory
     computer.diskGiB = disk
-    computer.networkEnabled = requiresNetworking || network
+    computer.networkEnabled = network
     computer.appearance = appearance
     return computer
   }
@@ -999,7 +998,7 @@ struct NewComputerView: View {
             Button("Cancel") { dismiss() }.disabled(creating).keyboardShortcut(.cancelAction)
               .buttonStyle(.plain).foregroundStyle(.blue)
             Spacer()
-            Text("New Container").font(.headline)
+            Text("New Linux Container").font(.headline)
             Spacer()
             Button("Create") {
               Task {
@@ -1047,15 +1046,8 @@ struct NewComputerView: View {
                   )
                   .foregroundStyle(.secondary)
                   Divider()
-                  HStack {
-                    Toggle("Networking", isOn: $network).toggleStyle(.switch).controlSize(.small)
-                      .fixedSize().disabled(requiresNetworking)
-                    Spacer()
-                    if requiresNetworking {
-                      Text("Required for this computer.").font(.caption).foregroundStyle(.secondary)
-                        .lineLimit(1)
-                    }
-                  }
+                  Toggle("Networking", isOn: $network).toggleStyle(.switch).controlSize(.small)
+                    .fixedSize()
                   Text(
                     "Allows this computer to connect to the internet and your local network."
                   )
@@ -1078,14 +1070,12 @@ struct NewComputerView: View {
     }
     .noodleSheetSizing(animated: true)
     .interactiveDismissDisabled(creating)
-    .onChange(of: requiresNetworking) { _, required in if required { network = true } }
     .onChange(of: template) { oldValue, value in
       failure = nil
       if name == oldValue.defaultName { name = value.defaultName }
       cpus = value.defaultCPUs
       disk = value.defaultDiskGiB
       memory = value.defaultMemoryGiB
-      if value.requiresNetworking { network = true }
     }
   }
 }

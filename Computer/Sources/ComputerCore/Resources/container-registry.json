@@ -14,8 +14,7 @@
       "defaultMemoryGiB": 4,
       "defaultDiskGiB": 32,
       "minimumMemoryGiB": 2,
-      "minimumDiskGiB": 8,
-      "requiresNetworking": true
+      "minimumDiskGiB": 8
     },
     {
       "id": "shell",
@@ -29,8 +28,7 @@
       "defaultMemoryGiB": 1,
       "defaultDiskGiB": 4,
       "minimumMemoryGiB": 1,
-      "minimumDiskGiB": 4,
-      "requiresNetworking": false
+      "minimumDiskGiB": 4
     }
   ]
 }

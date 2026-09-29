@@ -111,7 +111,7 @@ agents while you sign in, and choose **Update** on older computers to get this.
 
 ## Local Mac (experimental)
 
-**Local Mac**, in the same menus as **New Container**, gives agents a desktop on
+**Local Mac**, in the same menus as **New Linux Container**, gives agents a desktop on
 this Mac instead of a Linux computer. It runs as a separate standard macOS account
 signed in in the background, with its own desktop, terminal and files. It shares
 your Mac's processor, memory and network, and it is not isolated like a virtual

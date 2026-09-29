@@ -114,9 +114,8 @@ public struct Computer: Codable, Identifiable, Equatable, Sendable {
         if kind == .container, imageReference.trimmingCharacters(in: .whitespaces).isEmpty {
             throw ComputerError("A container image is required.")
         }
-        if let template, (template.requiresNetworking && !networkEnabled)
-            || memoryGiB < template.minimumMemoryGiB || diskGiB < template.minimumDiskGiB {
-            throw ComputerError("\(template.name) needs at least \(template.minimumMemoryGiB) GB memory and a \(template.minimumDiskGiB) GB disk\(template.requiresNetworking ? ", with networking enabled" : "").")
+        if let template, memoryGiB < template.minimumMemoryGiB || diskGiB < template.minimumDiskGiB {
+            throw ComputerError("\(template.name) needs at least \(template.minimumMemoryGiB) GB memory and a \(template.minimumDiskGiB) GB disk.")
         }
     }
 }

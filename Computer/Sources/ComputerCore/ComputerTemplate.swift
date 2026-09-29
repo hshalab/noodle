@@ -18,7 +18,6 @@ public struct ComputerTemplate: Codable, Identifiable, Hashable, Sendable {
     public let defaultDiskGiB: Int
     public let minimumMemoryGiB: Int
     public let minimumDiskGiB: Int
-    public let requiresNetworking: Bool
 
     // Compatibility accessors also read the catalogue; they do not enumerate presets.
     public var title: String { name }
