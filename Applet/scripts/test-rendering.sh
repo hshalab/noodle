@@ -8,6 +8,11 @@ set -euo pipefail
 app="${1:?Usage: Applet/scripts/test-rendering.sh APP}"
 log="$(mktemp -t applet-rendering)"
 trap 'rm -f "$log"' EXIT
+# Applet allows one copy, and open would wait on a running one rather than start the check.
+if pgrep -f "${app:A}/Contents/MacOS/" >/dev/null; then
+  print -u2 "Quit ${app:A} first: it is already running."
+  exit 1
+fi
 open -g -n -W --stdout "$log" --stderr "$log" -a "${app:A}" --args --noodle-background --rendering-test
 cat "$log"
 [[ "$(tail -n 1 "$log")" == "APPLET RENDERING TEST PASSED" ]]

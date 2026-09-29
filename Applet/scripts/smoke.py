@@ -187,5 +187,14 @@ finally:
             call('terminate', '--session', sid)
         except Exception:
             pass
+    # Applet allows one copy, so leave none running for the check that follows.
+    running = str(app / 'Contents/MacOS') + '/'
+    subprocess.run(['pkill', '-f', running])
+    for _ in range(50):
+        if subprocess.run(['pgrep', '-f', running], capture_output=True).returncode:
+            break
+        time.sleep(.2)
+    else:
+        raise AssertionError(('still running after the checks', app))
 
 print('Signed Applet smoke checks passed. Captures:', output)
