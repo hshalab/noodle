@@ -21,8 +21,7 @@ import XCTest
         let selection = MemberSelection(); selection.ids = [work.id]
         let items = [work, personal].map { CompanionAssignmentItem(id: $0.id, name: $0.name, state: "Ready", symbol: $0.symbol, colour: $0.colour) }
         let chooser = host(CompanionAssignmentChooser(title: "Browsers", items: items, selectedIDs: selection.idsBinding,
-            search: selection.searchBinding, createPrompt: Text("No browsers"), openLibraryButton: Button("Open Noodle Browser") {},
-            onDone: { selection.done += 1 }))
+            search: selection.searchBinding, createPrompt: Text("No browsers"), openLibraryButton: Button("Open Noodle Browser") {}))
         let search = try await textField("Search browsers", in: chooser)
         edit(search, text: "nobody")
         _ = try await control("No matching browsers", in: chooser)
@@ -30,7 +29,7 @@ import XCTest
         let add = try await control("Add Personal to bot", in: chooser)
         press(add); press(add)
         try await wait { selection.ids == [work.id, personal.id] }
-        press(try await control("Done", in: chooser)); XCTAssertEqual(selection.done, 1)
+        XCTAssertFalse(hasControl("Done", in: chooser), "Clicking outside the popover closes it")
         let missing = UUID(); selection.ids.insert(missing)
         let picker = host(BrowserAssignmentPicker(controller: controller, selectedIDs: selection.idsBinding))
         _ = try await control("Add Browsers", in: picker)

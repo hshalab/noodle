@@ -6,6 +6,10 @@ All notable changes to Noodle are documented here, following
 
 ## [Unreleased]
 
+### Changed
+
+- The lists for adding computers and browsers to a bot no longer have a Done button; click outside to close them.
+
 ## [0.35.0] - 2026-09-29
 
 ### Changed

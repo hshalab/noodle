@@ -57,7 +57,7 @@ struct CompanionAssignmentPicker<Prompt: View, LibraryButton: View, Notice: View
                         newTitle: onNew == nil ? nil : "New \(noun.capitalized)…",
                         onNew: { wantsNew = true; showingAdd = false },
                         deleteTitle: onDelete == nil ? nil : "Delete \(noun.capitalized)",
-                        onDelete: { deleting = $0; showingAdd = false }, onDone: { showingAdd = false })
+                        onDelete: { deleting = $0; showingAdd = false })
                         .onDisappear {
                             // Wait for the popover to close before presenting a sheet on the bot editor.
                             if wantsNew { wantsNew = false; onNew?() }
@@ -141,7 +141,6 @@ struct CompanionAssignmentChooser<Prompt: View, LibraryButton: View>: View {
     var onNew: () -> Void = {}
     var deleteTitle: String?
     var onDelete: (CompanionAssignmentItem) -> Void = { _ in }
-    let onDone: () -> Void
     private var available: [CompanionAssignmentItem] {
         items.filter {
             !selectedIDs.contains($0.id) && (search.isEmpty || $0.name.localizedCaseInsensitiveContains(search)
@@ -181,7 +180,6 @@ struct CompanionAssignmentChooser<Prompt: View, LibraryButton: View>: View {
                 if let newTitle { Button(newTitle, action: onNew) }
                 if !items.isEmpty { openLibraryButton }
                 Spacer()
-                Button("Done", action: onDone)
             }
         }.padding(16).frame(width: 300, height: 280)
     }
