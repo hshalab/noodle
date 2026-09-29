@@ -53,6 +53,19 @@ import LocalMacCore
         XCTAssertEqual(queue.next()?.kind, .keyUp)
         XCTAssertNil(queue.next())
     }
+    func testDesktopBlursOnlyWhileLiveResizing() {
+        let desktop = LocalMacImageView(frame: CGRect(x: 0, y: 0, width: 200, height: 100))
+        XCTAssertTrue(desktop.contentFilters.isEmpty)
+        desktop.viewWillStartLiveResize()
+        XCTAssertFalse(desktop.contentFilters.isEmpty)
+        desktop.viewDidEndLiveResize()
+        XCTAssertTrue(desktop.contentFilters.isEmpty)
+        let preview = LocalMacImageView(frame: CGRect(x: 0, y: 0, width: 200, height: 100))
+        preview.previewID = UUID()
+        preview.viewWillStartLiveResize()
+        XCTAssertTrue(preview.contentFilters.isEmpty)
+        preview.viewDidEndLiveResize()
+    }
     func testOverflowAndFocusLossReleaseHeldInput() {
         var queue = LocalMacInputQueue()
         for _ in 0..<512 { XCTAssertTrue(queue.append(LocalMacInput(.keyDown))) }

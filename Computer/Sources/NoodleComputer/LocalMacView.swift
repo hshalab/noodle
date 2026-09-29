@@ -251,6 +251,22 @@ final class LocalMacImageView: NSView {
         NSColor.black.setFill(); bounds.fill()
         displayedImage?.draw(in: imageRect, from: .zero, operation: .copy, fraction: 1, respectFlipped: true, hints: nil)
     }
+    // Match VZVirtualMachineView: the desktop blurs while its window is being
+    // resized and sharpens again once the new size settles.
+    override func viewWillStartLiveResize() {
+        super.viewWillStartLiveResize()
+        guard previewID == nil, let blur = CIFilter(name: "CIGaussianBlur") else { return }
+        blur.setValue(12, forKey: kCIInputRadiusKey)
+        wantsLayer = true; layerUsesCoreImageFilters = true
+        contentFilters = [blur]
+    }
+    override func viewDidEndLiveResize() {
+        super.viewDidEndLiveResize()
+        guard !contentFilters.isEmpty else { return }
+        let fade = CATransition(); fade.type = .fade; fade.duration = 0.25
+        layer?.add(fade, forKey: "sharpen")
+        contentFilters = []
+    }
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         for area in trackingAreas { removeTrackingArea(area) }

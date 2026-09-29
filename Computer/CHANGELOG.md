@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- A Local Mac’s desktop blurs while you resize its window and sharpens once you let go, like a Linux desktop does.
+
 ## [0.17.0] - 2026-09-28
 
 ### Changed
