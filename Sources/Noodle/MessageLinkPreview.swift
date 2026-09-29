@@ -168,6 +168,11 @@ enum WebLinkPreview {
     static func isEnabled(in defaults: UserDefaults = .standard) -> Bool {
         defaults.object(forKey: defaultsKey) as? Bool ?? true
     }
+    /// Command-click skips Quick Look and opens the link in the browser.
+    static func opensInPreview(in defaults: UserDefaults = .standard,
+                               modifiers: NSEvent.ModifierFlags = NSEvent.modifierFlags) -> Bool {
+        isEnabled(in: defaults) && !modifiers.contains(.command)
+    }
     /// The link to show in Quick Look, or nil when it goes straight to the system.
     static func previewed(_ url: URL, enabled: Bool) -> URL? {
         guard enabled, ["http", "https"].contains(url.scheme?.lowercased() ?? ""),

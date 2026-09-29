@@ -199,7 +199,7 @@ struct ChatView: View {
             transaction.animation = nil
         }
         .environment(\.openURL, OpenURLAction { url in
-            guard let link = WebLinkPreview.previewed(url, enabled: WebLinkPreview.isEnabled()) else { return .systemAction }
+            guard let link = WebLinkPreview.previewed(url, enabled: WebLinkPreview.opensInPreview()) else { return .systemAction }
             screenCapturePreview.close()
             attachmentPreview.showLink(link, conversationID: id) { note, content, source, raw in
                 try store.saveConversationAnnotation(note, content: content, source: source, sourceData: raw)
@@ -306,7 +306,7 @@ struct ChatView: View {
             return
         }
         if let link = attachment.url, MessageLink.publicWebURL(from: link, preservingFragment: true) != nil,
-           !WebLinkPreview.isEnabled() {
+           !WebLinkPreview.opensInPreview() {
             attachmentPreview.close()
             NSWorkspace.shared.open(link)
             return

@@ -200,6 +200,15 @@ import XCTest
         }
     }
 
+    func testCommandClickOpensWebLinksInTheBrowserEvenWhenPreviewIsOn() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "WebLinkPreviewCommandClick-\(UUID())"))
+        XCTAssertTrue(WebLinkPreview.opensInPreview(in: defaults, modifiers: []))
+        XCTAssertFalse(WebLinkPreview.opensInPreview(in: defaults, modifiers: [.command]))
+        XCTAssertFalse(WebLinkPreview.opensInPreview(in: defaults, modifiers: [.command, .shift]))
+        defaults.set(false, forKey: WebLinkPreview.defaultsKey)
+        XCTAssertFalse(WebLinkPreview.opensInPreview(in: defaults, modifiers: []))
+    }
+
     func testWebLinkPreviewsItsBookmarkWithALinkSourceToAnnotate() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
