@@ -6,6 +6,10 @@
 
 - A status a bot sets through Messenger reaches Noodle on the Mac and on iPhone and iPad.
 
+### Fixed
+
+- In Settings > Bots, a bot's status lines up with Show Folder, Activity and New Session.
+
 ## [0.7.0] - 2026-09-29
 
 ### Added

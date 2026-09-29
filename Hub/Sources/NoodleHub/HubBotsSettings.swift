@@ -43,8 +43,8 @@ struct HubBotsSettingsView: View {
                     .font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 8)
-            // The status is caption-sized, so it sits on the links' baseline rather than centred on them.
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
+            // The caption-sized status is centred on the links; on their baseline it reads as sitting low.
+            HStack(alignment: .center, spacing: 10) {
                 SettingsStatusLabel(title: snapshot.phase.title, systemImage: "circle.fill", color: snapshot.phase.color)
                     .help(snapshot.detail)
                 Button("Show Folder") {
