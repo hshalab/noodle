@@ -1628,7 +1628,13 @@ final class NoodleStore {
     }
 
     private func postNotifications(for messages: [ChatMessage]) {
-        guard connectsServices, NoodleNotifications.shouldPresentActivity else { return }
+        guard connectsServices else { return }
+        let presentsNotifications = NoodleNotifications.shouldPresentActivity
+        if MessageReceivedSound.playsInApp(newMessages: messages.count,
+                                           presentsNotifications: presentsNotifications) {
+            MessageReceivedSound.play()
+        }
+        guard presentsNotifications else { return }
 
         for message in messages {
             guard case .agent(let agentID) = message.author,

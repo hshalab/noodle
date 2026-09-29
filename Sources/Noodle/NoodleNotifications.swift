@@ -52,7 +52,7 @@ enum NoodleNotifications {
             content.subtitle = conversation.displayName
         }
         content.body = message.body
-        content.sound = .default
+        content.sound = MessageReceivedSound.notificationSound()
         content.userInfo = [conversationIDKey: conversation.id.uuidString, messageIDKey: message.id.uuidString]
         if let avatar = avatarAttachment(for: agent, messageID: message.id) {
             content.attachments = [avatar]

@@ -142,6 +142,7 @@ struct ChatSettingsView: View {
     @AppStorage(VoiceInputDevice.defaultsKey) private var microphoneUID = ""
     @AppStorage(ChatAttachmentLayout.defaultsKey) private var attachmentLayout = ChatAttachmentLayout.defaultValue.rawValue
     @AppStorage(FloatingConversations.keepsOneDefaultsKey) private var keepsOneFloat = false
+    @AppStorage(MessageReceivedSound.defaultsKey) private var receivedSound = MessageReceivedSound.defaultName
     @State private var microphones: [VoiceInputDevice] = []
     @State private var defaultMicrophoneID: UInt32 = 0
     private let microphoneDevices: () -> [VoiceInputDevice]
@@ -165,6 +166,16 @@ struct ChatSettingsView: View {
                 .help((ChatAttachmentLayout(rawValue: attachmentLayout) ?? .defaultValue).explanation)
             }
             ConversationRuntimeSettingsSections()
+            Section {
+                Picker("Message received sound", selection: $receivedSound) {
+                    Text("None").tag(MessageReceivedSound.none)
+                    Divider()
+                    ForEach(MessageReceivedSound.names, id: \.self) { name in
+                        Text(name).tag(name)
+                    }
+                }
+                .onChange(of: receivedSound) { MessageReceivedSound.play() }
+            }
             Section {
                 Picker("Microphone", selection: $microphoneUID) {
                     Text(microphones.first(where: { $0.audioID == defaultMicrophoneID })

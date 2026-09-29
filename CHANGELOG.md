@@ -15,6 +15,7 @@ All notable changes to Noodle are documented here, following
 - Groups can be kept on a Noodle Hub you joined. New Group asks where to keep the group once you have joined a Hub, and offers only bots from that place, so a group never mixes this Mac's bots with a Hub's.
 - Web links previewed in Quick Look can be annotated like attachments, with ⌘⇧A for selected text or ⌘⇧R for a region. Saving adds the annotation to your draft, with the link it refers to.
 - ⌘-click a web link or its preview card to open it straight in your browser while Preview web links is on.
+- Bot replies play a sound while Noodle is in front too, as in Messages. Choose the sound, or None, with Message received sound in Settings > Chat; notifications use the same sound.
 
 ### Changed
 
