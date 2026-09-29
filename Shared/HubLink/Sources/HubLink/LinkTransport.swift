@@ -421,13 +421,29 @@ public enum LinkClient {
         return (try await LinkQUIC.receive(connection, limit: LinkQUIC.answerLimit), endpoint)
     }
 
+    /// Left to itself, Network.framework can reuse a local port from an earlier connection with
+    /// the same address, even one another listener on this Mac holds by now. The handshake then
+    /// waits on "address in use" until it times out, and trying again keeps the same port.
+    private static func anyLocalPort(_ parameters: NWParameters, for host: NWEndpoint.Host) -> NWParameters {
+        let any: NWEndpoint.Host
+        switch host {
+        case .ipv4: any = .ipv4(.any)
+        case .ipv6: any = .ipv6(.any)
+        default: return parameters
+        }
+        let pinned = parameters.copy()
+        pinned.requiredLocalEndpoint = .hostPort(host: any, port: .any)
+        return pinned
+    }
+
     /// The first endpoint whose handshake completes wins; the rest are cancelled.
     private static func firstReady(_ endpoints: [LinkEndpoint], identity: LinkIdentity, hubKey: LinkPublicKey,
                                    timeout: Duration) async throws -> (NWConnection, LinkEndpoint) {
         let parameters = try LinkQUIC.parameters(identity: identity) { $0 == hubKey }
         let connections = endpoints.compactMap { endpoint -> (NWConnection, LinkEndpoint)? in
             guard let port = NWEndpoint.Port(rawValue: endpoint.port) else { return nil }
-            return (NWConnection(host: NWEndpoint.Host(endpoint.host), port: port, using: parameters), endpoint)
+            let host = NWEndpoint.Host(endpoint.host)
+            return (NWConnection(host: host, port: port, using: anyLocalPort(parameters, for: host)), endpoint)
         }
         return try await withCheckedThrowingContinuation { continuation in
             let once = Once()

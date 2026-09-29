@@ -1,5 +1,6 @@
 import Foundation
 @testable import HubLink
+import Network
 import XCTest
 
 final class LinkTransportTests: XCTestCase {
@@ -111,6 +112,54 @@ final class LinkTransportTests: XCTestCase {
                                                           endpoints: [LinkEndpoint(host: "::1", port: port)])
         try await listening.value
         XCTAssertEqual(response, Data("status".utf8))
+    }
+
+    /// Network.framework can pick a local port for a new Hub from a connection an earlier Hub on
+    /// this Mac accepted, while that Hub still holds it, as when Hubs start and stop on one Mac.
+    func testTheDeviceReachesAHubWhoseLocalPortIsTaken() async throws {
+        let earlier = LinkIdentity(), hub = LinkIdentity(), device = LinkIdentity()
+        let first = try await server(earlier)
+        let firstEndpoint = LinkEndpoint(host: "::1", port: try XCTUnwrap(first.port))
+        let used = try await localPort(to: firstEndpoint, identity: device, hubKey: earlier.publicKey)
+        // The device's port frees a moment after its connection closes.
+        var server: LinkServer?
+        for _ in 0..<40 where server == nil {
+            let candidate = try LinkServer(identity: hub, port: used, admits: { _ in true }) { key, request in .response(key.x963 + request) }
+            do {
+                try await candidate.start()
+                server = candidate
+            } catch {
+                candidate.stop()
+                try await Task.sleep(for: .milliseconds(50))
+            }
+        }
+        let started = try XCTUnwrap(server)
+        addTeardownBlock { started.stop() }
+
+        let (response, _) = try await LinkClient.exchange(Data("status".utf8), identity: device, hubKey: hub.publicKey,
+                                                          endpoints: [LinkEndpoint(host: "::1", port: used)], timeout: .seconds(3))
+        XCTAssertEqual(response, device.publicKey.x963 + Data("status".utf8))
+    }
+
+    private func localPort(to endpoint: LinkEndpoint, identity: LinkIdentity, hubKey: LinkPublicKey) async throws -> UInt16 {
+        let connection = NWConnection(host: NWEndpoint.Host(endpoint.host), port: try XCTUnwrap(NWEndpoint.Port(rawValue: endpoint.port)),
+                                      using: try LinkQUIC.parameters(identity: identity) { $0 == hubKey })
+        defer { connection.cancel() }
+        return try await withCheckedThrowingContinuation { continuation in
+            let once = Once()
+            connection.stateUpdateHandler = { state in
+                switch state {
+                case .ready:
+                    guard case .hostPort(_, let port) = connection.currentPath?.localEndpoint else {
+                        return once.run { continuation.resume(throwing: LinkError("No local port.")) }
+                    }
+                    once.run { continuation.resume(returning: port.rawValue) }
+                case .failed(let error), .waiting(let error): once.run { continuation.resume(throwing: error) }
+                default: break
+                }
+            }
+            connection.start(queue: LinkQUIC.queue)
+        }
     }
 }
 

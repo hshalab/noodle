@@ -10,6 +10,10 @@ All notable changes to Noodle are documented here, following
 
 - Automatic message delivery reaches a busy bot straight away when you say stop, wait, hold on or similar, even on Macs without Apple Intelligence. It also sends answers to the bot's questions and objections to what it is doing, and when you send several messages at once, one urgent message is enough.
 
+### Fixed
+
+- Reaching a Noodle Hub no longer sometimes waits 10 seconds and fails with "The Hub did not answer in time" when a Hub has recently started or stopped on the same Mac.
+
 ## [0.33.0] - 2026-09-29
 
 ### Added
