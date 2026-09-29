@@ -42,20 +42,39 @@ public struct SurfaceView: View {
 }
 
 /// Decodes packets into the layer, starting at a key frame and whenever the stream's format changes.
-@MainActor private final class SurfaceDisplay {
+/// Video has key frames only when someone asks, so a display that cannot go on asks for one itself.
+@MainActor final class SurfaceDisplay {
     let layer = AVSampleBufferDisplayLayer()
+    /// Asks the companion for a key frame.
+    var needsKeyFrame: (() -> Void)?
     private var format: CMVideoFormatDescription?
+    /// Frames until the next key frame build on a picture the layer does not have.
+    private var waiting = true
+    private var asked = false
 
     init() { layer.videoGravity = .resizeAspect }
 
     func show(_ packet: SurfacePacket) {
-        if packet.keyFrame, let next = SurfaceSamples.format(packet) {
-            if let format, !CMFormatDescriptionEqual(format, otherFormatDescription: next) { layer.sampleBufferRenderer.flush() }
-            format = next
+        let renderer = layer.sampleBufferRenderer
+        // As after the app was in the background on iPhone.
+        if renderer.status == .failed || renderer.requiresFlushToResumeDecoding {
+            renderer.flush()
+            wait()
         }
-        guard let format, let sample = SurfaceSamples.sample(packet, format: format) else { return }
-        if layer.sampleBufferRenderer.status == .failed { layer.sampleBufferRenderer.flush() }
-        layer.sampleBufferRenderer.enqueue(sample)
+        if packet.keyFrame, let next = SurfaceSamples.format(packet) {
+            if let format, !CMFormatDescriptionEqual(format, otherFormatDescription: next) { renderer.flush() }
+            format = next
+            (waiting, asked) = (false, false)
+        }
+        guard !waiting, let format, let sample = SurfaceSamples.sample(packet, format: format) else { return wait() }
+        renderer.enqueue(sample)
+    }
+
+    private func wait() {
+        waiting = true
+        guard !asked else { return }
+        asked = true
+        needsKeyFrame?()
     }
 }
 
@@ -92,7 +111,12 @@ final class SurfaceNSView: NSView {
         wantsLayer = true
         layer?.backgroundColor = NSColor.black.cgColor
         layer?.addSublayer(display.layer)
-        feed.show = { [display] in display.show($0) }
+        feed.show = { [weak self, display] packet in
+            display.show(packet)
+            // The Hub measures how late video arrives by it.
+            self?.control(.shown(sequence: packet.sequence))
+        }
+        display.needsKeyFrame = { [weak self] in self?.control(.keyFrame) }
     }
     required init?(coder: NSCoder) { nil }
 
@@ -176,7 +200,12 @@ final class SurfaceUIView: UIView, UIKeyInput {
         super.init(frame: .zero)
         backgroundColor = .black
         layer.addSublayer(display.layer)
-        feed.show = { [display] in display.show($0) }
+        feed.show = { [weak self, display] packet in
+            display.show(packet)
+            // The Hub measures how late video arrives by it.
+            self?.control(.shown(sequence: packet.sequence))
+        }
+        display.needsKeyFrame = { [weak self] in self?.control(.keyFrame) }
         feed.keyboard = { [weak self] in self?.toggleKeyboard() }
         addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tap)))
         addGestureRecognizer(UIPanGestureRecognizer(target: self, action: #selector(pan)))

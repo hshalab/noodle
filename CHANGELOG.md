@@ -6,6 +6,11 @@ All notable changes to Noodle are documented here, following
 
 ## [Unreleased]
 
+### Changed
+
+- Live views of a Noodle Hub's browser, computer or noodlet ask for a fresh picture whenever they cannot show the next one. Newer Noodle Browser, Computer and Applet send one only when asked, which keeps video from stuttering every two seconds on a slow connection.
+- Live views stay live on a slow connection. They tell the Hub which pictures have arrived, so it sends less as soon as pictures start arriving late, instead of letting them pile up in the network and show a second or more behind. When this Mac is your Hub, it does the same for your other devices.
+
 ## [0.34.0] - 2026-09-29
 
 ### Added

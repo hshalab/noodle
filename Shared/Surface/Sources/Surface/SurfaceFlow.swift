@@ -100,27 +100,80 @@ private extension Double {
     func clamped(to range: ClosedRange<Double>) -> Double { Swift.min(Swift.max(self, range.lowerBound), range.upperBound) }
 }
 
+/// How far behind a viewer is, from the frames it says it has shown. Video sent longer ago than
+/// the shortest round trip, and not shown yet, is waiting somewhere on the way: in the network
+/// as much as on this Mac, where the network stack takes megabytes without saying. A viewer
+/// that never says leaves it at nothing.
+public final class SurfaceDelivery: @unchecked Sendable {
+    private let lock = NSLock()
+    private let origin = ContinuousClock.now
+    private var unshown: [(sequence: UInt64, bytes: Int, sent: Double)] = []
+    /// The shortest round trip lately, and when it was seen.
+    private var fastest: (seconds: Double, at: Double)?
+    /// How long the shortest round trip stands, so a path that gets slower is learnt again.
+    private static let memory = 10.0
+    /// Frames kept for a viewer that never says what it has shown.
+    private static let limit = 1024
+
+    public init() {}
+
+    /// The viewer has shown the frame `sequence` and every one sent before it.
+    public func shown(_ sequence: UInt64) { shown(sequence, at: now) }
+
+    var now: Double { (ContinuousClock.now - origin) / .seconds(1) }
+
+    func sent(_ sequence: UInt64, bytes: Int, at time: Double) {
+        lock.withLock {
+            unshown.append((sequence, bytes, time))
+            if unshown.count > Self.limit { unshown.removeFirst(unshown.count - Self.limit) }
+        }
+    }
+
+    func shown(_ sequence: UInt64, at time: Double) {
+        lock.withLock {
+            guard let index = unshown.lastIndex(where: { $0.sequence <= sequence }) else { return }
+            if unshown[index].sequence == sequence {
+                let trip = time - unshown[index].sent
+                if fastest.map({ trip <= $0.seconds || time - $0.at > Self.memory }) ?? true { fastest = (trip, time) }
+            }
+            unshown.removeFirst(index + 1)
+        }
+    }
+
+    /// Bytes sent longer ago than the shortest round trip that the viewer has not shown.
+    func late(at time: Double) -> Int {
+        lock.withLock {
+            guard let fastest else { return 0 }
+            return unshown.reduce(0) { $0 + ($1.sent < time - fastest.seconds ? $1.bytes : 0) }
+        }
+    }
+}
+
 public extension SurfaceSocket {
     /// Passes this companion's video on to one viewer, through `send`, only as fast as the
-    /// viewer's link takes it; `backlog` is the bytes sent that have not left yet. It asks the
+    /// viewer's link takes it; `backlog` is the bytes sent that have not left yet, and `delivery`
+    /// what the viewer says it has shown, which also counts what the network holds. It asks the
     /// companion for less video as the line grows and for a key frame after skipping frames, and
     /// returns when the companion ends the view.
-    func relay(to send: @escaping @Sendable (Data) -> Void, backlog: @escaping @Sendable () -> Int) async {
+    func relay(to send: @escaping @Sendable (Data) -> Void, backlog: @escaping @Sendable () -> Int,
+               delivery: SurfaceDelivery = SurfaceDelivery()) async {
         // The encoder never goes above what its picture size calls for, so this only caps.
         var flow = SurfaceFlow(bitRate: 20_000_000, range: 300_000...20_000_000)
         var asked = flow.bitRate
-        let start = ContinuousClock.now
         for await frame in frames {
-            let keyFrame = SurfacePacket.decode(frame)?.first?.keyFrame ?? false
-            let now = (ContinuousClock.now - start) / .seconds(1)
-            let decision = flow.admit(bytes: frame.count, keyFrame: keyFrame, backlog: backlog(), now: now)
+            let packets = SurfacePacket.decode(frame)
+            let now = delivery.now
+            let decision = flow.admit(bytes: frame.count, keyFrame: packets?.first?.keyFrame ?? false,
+                                      backlog: max(backlog(), delivery.late(at: now)), now: now)
             // The new rate goes first, so a key frame asked for comes at it.
             if abs(flow.bitRate - asked) > asked / 10 {
                 asked = flow.bitRate
                 self.send(SurfaceControl.rate(bitsPerSecond: asked).encoded)
             }
             switch decision {
-            case .send: send(frame)
+            case .send:
+                if let sequence = packets?.last?.sequence { delivery.sent(sequence, bytes: frame.count, at: now) }
+                send(frame)
             case .skip: break
             case .skipUntilKeyFrame: self.send(SurfaceControl.keyFrame.encoded)
             }

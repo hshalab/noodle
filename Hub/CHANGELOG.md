@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Live views stay live on a slow connection: the Hub sends less as soon as a device says pictures are arriving late, instead of letting them pile up in the network and show a second or more behind. Devices need the latest Noodle or Noodle for iPhone for this.
+
 ## [0.9.0] - 2026-09-29
 
 ### Added

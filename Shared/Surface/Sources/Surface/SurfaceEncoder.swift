@@ -5,7 +5,7 @@ import Foundation
 import VideoToolbox
 
 /// Encodes pictures of a surface as H.264 with the Mac's video encoder, tuned for a live view:
-/// no frame reordering, a key frame every two seconds, and one frame out for each frame in until
+/// no frame reordering, key frames only when asked for, and one frame out for each frame in until
 /// the picture stops changing. Scaling and colour conversion happen on the GPU, so a frame costs the CPU little more than a copy.
 public final class SurfaceEncoder {
     private var session: VTCompressionSession?
@@ -13,6 +13,9 @@ public final class SurfaceEncoder {
     private var pool: CVPixelBufferPool?
     private var pixels: (width: Int, height: Int) = (0, 0)
     private var frame: Int64 = 0
+    /// When the session's first frame was taken, and the last frame's timestamp from then.
+    private var origin: Double?
+    private var stamped = CMTime.negativeInfinity
     /// The last picture at its own size, and for how many frames it has stayed the same.
     private var last: CVPixelBuffer?
     private var unchanged = 0
@@ -45,9 +48,12 @@ public final class SurfaceEncoder {
     /// size in points. `keyFrame` asks for one now, as when a new viewer arrives. `fitting` is the
     /// most pixels a viewer shows, rounded up in steps of 128 so resizing a window does not
     /// restart the encoder at every pixel; a new size starts at a key frame. Nothing comes back
-    /// once the picture has settled, unless `keyFrame` asks for one.
+    /// once the picture has settled, unless `keyFrame` asks for one. `time` is when the picture
+    /// was taken, in seconds on any steady clock: rate control gives each frame the bits for the
+    /// time since the last, so a surface captured slowly or after a pause gets sharper frames.
+    /// Without it, frames count as coming at the encoder's frame rate.
     public func encode(_ image: CGImage, size: CGSize, keyFrame: Bool = false,
-                       fitting: CGSize? = nil) throws -> (sample: Data, parameterSets: [Data], keyFrame: Bool)? {
+                       fitting: CGSize? = nil, at time: Double? = nil) throws -> (sample: Data, parameterSets: [Data], keyFrame: Bool)? {
         var scale = min(1, Double(maxPixelSize) / Double(max(image.width, image.height)))
         if let fitting, fitting.width > 0, fitting.height > 0 {
             let box = (width: (fitting.width / 128).rounded(.up) * 128, height: (fitting.height / 128).rounded(.up) * 128)
@@ -63,16 +69,20 @@ public final class SurfaceEncoder {
         guard let buffer = scaled(source) else { return nil }
         var result: (Data, [Data], Bool)?
         let properties = (keyFrame || frame == 0 ? [kVTEncodeFrameOptionKey_ForceKeyFrame: true] : [:]) as CFDictionary
-        let time = CMTime(value: frame, timescale: fps)
+        let taken = time ?? Double(frame) / Double(fps)
+        origin = origin ?? taken
+        var stamp = CMTime(seconds: taken - origin!, preferredTimescale: 90_000)
+        if stamp <= stamped { stamp = stamped + CMTime(value: 1, timescale: 90_000) }
+        stamped = stamp
         frame += 1
-        let status = VTCompressionSessionEncodeFrame(session, imageBuffer: buffer, presentationTimeStamp: time,
-                                                     duration: CMTime(value: 1, timescale: fps), frameProperties: properties,
+        let status = VTCompressionSessionEncodeFrame(session, imageBuffer: buffer, presentationTimeStamp: stamp,
+                                                     duration: .invalid, frameProperties: properties,
                                                      infoFlagsOut: nil) { status, _, sample in
             guard status == noErr, let sample else { return }
             result = Self.unpack(sample)
         }
         guard status == noErr else { throw SurfaceEncoderError(status: status) }
-        VTCompressionSessionCompleteFrames(session, untilPresentationTimeStamp: time)
+        VTCompressionSessionCompleteFrames(session, untilPresentationTimeStamp: stamp)
         return result.map { (sample: $0.0, parameterSets: $0.1, keyFrame: $0.2) }
     }
 
@@ -109,13 +119,17 @@ public final class SurfaceEncoder {
         VTSessionSetProperty(created, key: kVTCompressionPropertyKey_RealTime, value: kCFBooleanTrue)
         VTSessionSetProperty(created, key: kVTCompressionPropertyKey_AllowFrameReordering, value: kCFBooleanFalse)
         VTSessionSetProperty(created, key: kVTCompressionPropertyKey_ProfileLevel, value: kVTProfileLevel_H264_High_AutoLevel)
-        VTSessionSetProperty(created, key: kVTCompressionPropertyKey_MaxKeyFrameInterval, value: (fps * 2) as CFNumber)
+        // The link loses nothing, and a key frame costs as much as a hundred others, so one comes
+        // only for a viewer that needs it.
+        VTSessionSetProperty(created, key: kVTCompressionPropertyKey_MaxKeyFrameInterval, value: 0 as CFNumber)
         VTSessionSetProperty(created, key: kVTCompressionPropertyKey_ExpectedFrameRate, value: fps as CFNumber)
         Self.setBitRate(created, pixels: (width, height), cap: bitRate)
         VTCompressionSessionPrepareToEncodeFrames(created)
         session = created
         pixels = (width, height)
         frame = 0
+        origin = nil
+        stamped = .negativeInfinity
     }
 
     private static func setBitRate(_ session: VTCompressionSession, pixels: (width: Int, height: Int), cap: Double?) {

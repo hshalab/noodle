@@ -6,6 +6,11 @@
 
 - Type a message of several lines, or press return a few times: the field grows over the conversation, and the conversation and its scroll bar stay where they are.
 
+### Changed
+
+- Live views ask for a fresh picture whenever they cannot show the next one, as after Noodle was in the background. Newer Noodle Browser, Computer and Applet send one only when asked, which keeps video from stuttering every two seconds on a slow connection.
+- Live views stay live on a slow connection. They tell the Hub which pictures have arrived, so it sends less as soon as pictures start arriving late, instead of letting them pile up in the network and show a second or more behind. Update the Hub as well.
+
 ### Fixed
 
 - Adding lines to a message no longer moves the conversation or its scroll bar.

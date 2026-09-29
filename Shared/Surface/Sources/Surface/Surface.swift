@@ -23,6 +23,7 @@ public enum SurfaceControl: Codable, Equatable, Sendable {
     case view(width: Double, height: Double)
     case keyFrame
     case rate(bitsPerSecond: Double)
+    case shown(sequence: UInt64)
 
     public init?(_ data: Data) {
         guard let control = try? JSONDecoder().decode(Self.self, from: data) else { return nil }

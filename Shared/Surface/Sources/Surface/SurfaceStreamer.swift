@@ -33,6 +33,8 @@ import Foundation
     /// The picture had stayed the same long enough that the encoder sent nothing for it.
     private var settled = false
     private var lastCapture: ContinuousClock.Instant?
+    /// What capture times count from.
+    private let began = ContinuousClock.now
     /// Full pace until then, as after a viewer arrives or acts: what they did takes a few frames to show.
     private var busyUntil = ContinuousClock.now
     /// How often a settled picture is looked at, and how long full pace lasts after a viewer acts.
@@ -101,6 +103,9 @@ import Foundation
         case .rate(let bitsPerSecond):
             viewers[id]?.rate = bitsPerSecond
             encoder.setBitRate(rate)
+        case .shown:
+            // How far the viewer has got is the Hub's to measure.
+            break
         }
     }
 
@@ -138,11 +143,12 @@ import Foundation
         guard !encoding else { return }
         lastCapture = now
         guard let picture = try? await capture() else { return }
+        let taken = (ContinuousClock.now - began) / .seconds(1)
         let keyFrame = wantsKeyFrame
         wantsKeyFrame = false
         encoding = true
         Task {
-            let (encoded, settled) = await encoder.encode(picture.image, size: picture.size, keyFrame: keyFrame, fitting: fit)
+            let (encoded, settled) = await encoder.encode(picture.image, size: picture.size, keyFrame: keyFrame, fitting: fit, at: taken)
             encoding = false
             self.settled = settled
             if let encoded { send(encoded, size: picture.size) } else if keyFrame { wantsKeyFrame = true }
@@ -178,10 +184,10 @@ private final class EncoderQueue: @unchecked Sendable {
     /// The frame, if any, and whether the picture has settled. A frame can also be missing because
     /// the encoder dropped it to keep to the rate, which says nothing about the picture.
     func encode(_ image: CGImage, size: CGSize, keyFrame: Bool,
-                fitting: CGSize?) async -> (frame: (sample: Data, parameterSets: [Data], keyFrame: Bool)?, settled: Bool) {
+                fitting: CGSize?, at time: Double) async -> (frame: (sample: Data, parameterSets: [Data], keyFrame: Bool)?, settled: Bool) {
         await withCheckedContinuation { done in
             queue.async { [self] in
-                let frame = try? encoder.encode(image, size: size, keyFrame: keyFrame, fitting: fitting)
+                let frame = try? encoder.encode(image, size: size, keyFrame: keyFrame, fitting: fitting, at: time)
                 done.resume(returning: (frame ?? nil, encoder.isSettled))
             }
         }

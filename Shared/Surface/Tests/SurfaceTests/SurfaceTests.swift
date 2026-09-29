@@ -3,7 +3,7 @@ import CoreMedia
 import CoreVideo
 import Darwin
 import Foundation
-import Surface
+@testable import Surface
 import VideoToolbox
 import XCTest
 
@@ -326,6 +326,99 @@ final class SurfaceTests: XCTestCase {
         hub.send(SurfaceControl.rate(bitsPerSecond: 100_000).encoded)
         let slowed = try await bytesPerSecond()
         XCTAssertLessThan(slowed, full / 2, "video stayed at \(Int(slowed)) bytes a second, from \(Int(full)), after the viewer asked for less")
+    }
+
+    /// A surface captured less often than the encoder's frame rate still gets the rate it was
+    /// given: rate control goes by when each picture was taken, not by how many pictures came.
+    func testFramesCapturedLessOftenStillGetTheWholeRate() throws {
+        try skipWithoutHardwareEncoder()
+        let pictures = (0..<8).map { noise(width: 800, height: 500, seed: CGFloat($0) / 8) }
+        let encoder = SurfaceEncoder(maxPixelSize: 800, fps: 60)
+        encoder.bitRate = 1_000_000
+        var bytes = 0
+        // Four seconds at 20 frames a second, after two for rate control to find its level.
+        for index in 0..<120 {
+            let encoded = try encoder.encode(pictures[index % pictures.count], size: CGSize(width: 800, height: 500), at: Double(index) / 20)
+            if index >= 40 { bytes += encoded?.sample.count ?? 0 }
+        }
+        let bitsPerSecond = Double(bytes) * 8 / 4
+        XCTAssertGreaterThan(bitsPerSecond, 600_000, "video came at \(Int(bitsPerSecond)) bits a second of the 1,000,000 it may use")
+    }
+
+    /// Video that keeps moving gets key frames only when asked for. The link loses nothing, and a
+    /// key frame costs as much as a hundred others, so one on a timer would only stall a slow link.
+    func testKeyFramesComeOnlyWhenAskedFor() throws {
+        // Plain enough that rate control drops none of them.
+        let pictures = (0..<8).map { image(width: 320, height: 200, gray: CGFloat($0) / 8) }
+        let encoder = SurfaceEncoder(maxPixelSize: 320, fps: 30)
+        var keyFrames: [Int] = []
+        for index in 0..<180 {
+            let asked = index == 150
+            if try encoder.encode(pictures[index % pictures.count], size: CGSize(width: 320, height: 200), keyFrame: asked,
+                                  at: Double(index) / 30)?.keyFrame == true { keyFrames.append(index) }
+        }
+        XCTAssertEqual(keyFrames, [0, 150], "six seconds of video had key frames at \(keyFrames)")
+    }
+
+    /// A viewer that cannot show what comes next asks once for a key frame, and waits for it
+    /// rather than showing frames that build on a picture it does not have.
+    @MainActor func testAViewerWithNothingToBuildOnAsksForAKeyFrame() throws {
+        let encoder = SurfaceEncoder(maxPixelSize: 320, fps: 30)
+        let encoded = try (0..<3).map { index in
+            try XCTUnwrap(try encoder.encode(noise(width: 320, height: 200, seed: CGFloat(index) / 3), size: CGSize(width: 320, height: 200),
+                                             keyFrame: index == 2, at: Double(index) / 30))
+        }
+        let packets = encoded.enumerated().map { index, frame in
+            SurfacePacket(sequence: UInt64(index + 1), keyFrame: frame.keyFrame, width: 320, height: 200,
+                          parameterSets: frame.parameterSets, sample: frame.sample)
+        }
+        let display = SurfaceDisplay()
+        var asked = 0
+        display.needsKeyFrame = { asked += 1 }
+        // Joined after the first key frame: the next frame needs a picture the viewer never had.
+        display.show(packets[1])
+        display.show(packets[1])
+        XCTAssertEqual(asked, 1, "a viewer with nothing to build on asked \(asked) times for a key frame")
+        display.show(packets[2])
+        display.show(packets[1])
+        XCTAssertEqual(asked, 1, "a viewer showing video asked again for a key frame")
+    }
+
+    /// A viewer says which frame it has shown, so the Hub can tell how late video reaches it.
+    @MainActor func testAViewerSaysWhatItHasShown() throws {
+        let encoded = try XCTUnwrap(try SurfaceEncoder(maxPixelSize: 320, fps: 30).encode(image(width: 320, height: 200, gray: 0.5),
+                                                                                        size: CGSize(width: 320, height: 200)))
+        let feed = SurfaceFeed()
+        let view = SurfaceNSView(feed: feed)
+        var controls: [SurfaceControl] = []
+        view.control = { controls.append($0) }
+        feed.receive([SurfacePacket(sequence: 7, keyFrame: true, width: 320, height: 200, parameterSets: encoded.parameterSets, sample: encoded.sample)])
+        XCTAssertEqual(controls, [.shown(sequence: 7)])
+    }
+
+    /// Video counts as late once it has been on its way longer than the shortest round trip and
+    /// the viewer has not shown it. A viewer too old to say what it has shown leaves nothing late.
+    func testDeliveryCountsWhatTheViewerHasNotShown() {
+        let silent = SurfaceDelivery()
+        for sequence in 1...5000 { silent.sent(UInt64(sequence), bytes: 1000, at: Double(sequence) / 30) }
+        XCTAssertEqual(silent.late(at: 200), 0, "a viewer that never says what it has shown made video late")
+
+        let delivery = SurfaceDelivery()
+        delivery.sent(1, bytes: 500, at: 0)
+        delivery.shown(1, at: 0.05)
+        delivery.sent(2, bytes: 1000, at: 1)
+        delivery.sent(3, bytes: 2000, at: 1.1)
+        XCTAssertEqual(delivery.late(at: 1.04), 0, "a frame still within a round trip counted as late")
+        XCTAssertEqual(delivery.late(at: 1.2), 3000)
+        delivery.shown(2, at: 1.25)
+        XCTAssertEqual(delivery.late(at: 1.25), 2000, "a frame shown still counted as late")
+
+        // A path that gets slower for good is learnt again, instead of leaving every frame late.
+        delivery.shown(3, at: 1.3)
+        delivery.sent(4, bytes: 1000, at: 20)
+        delivery.shown(4, at: 20.5)
+        delivery.sent(5, bytes: 1000, at: 21)
+        XCTAssertEqual(delivery.late(at: 21.3), 0)
     }
 
     /// The Hub passes video to a viewer only as fast as the viewer's link takes it: when the link

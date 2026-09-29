@@ -255,7 +255,7 @@ import os
                         do {
                             let (socket, controls) = try await open()
                             if let controls { stream.send(LinkProtocol.encode(LinkEvent.surfaceControls(controls: controls))) }
-                            Self.relay(socket, to: stream)
+                            LinkSurface.relay(socket, to: stream)
                         }
                         catch {
                             stream.send(LinkProtocol.encode(LinkEvent.surfaceFailed(reason: error.localizedDescription)))
@@ -321,25 +321,6 @@ import os
         streams[id] = stream
         stream.onClose { [weak self] in
             Task { @MainActor in self?.streams[id] = nil }
-        }
-    }
-
-    /// Relays a live view between the companion showing it and the device watching it, both
-    /// ways and as it happens: video down as the companion encodes it, the person's controls up
-    /// in the order they sent them. Video comes only as fast as the device's link takes it, so a
-    /// slow link gets less of it rather than getting it late. While the view is open, bots wait.
-    private static func relay(_ companion: SurfaceSocket, to stream: LinkStream) {
-        stream.onFrame { data in
-            // How fast the device's link goes is the Hub's to measure, not the device's to say.
-            switch SurfaceControl(data) {
-            case .rate?, nil: break
-            case _?: companion.send(data)
-            }
-        }
-        stream.onClose { companion.close() }
-        Task {
-            await companion.relay(to: stream.send, backlog: { stream.pendingBytes })
-            stream.close()
         }
     }
 
