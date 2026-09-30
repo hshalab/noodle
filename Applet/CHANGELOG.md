@@ -6,17 +6,12 @@
 
 ### Changed
 
-- Noodlets are no longer limited to 20 MB or 512 files, and hidden files and folders such as `.git` are no longer counted as part of them. Opening a noodlet no longer reads all its files, and a Swift noodlet's run no longer copies them.
+- Noodlets are no longer limited to 20 MB or 512 files, and hidden files and folders such as `.git` are no longer counted as part of them. Opening a noodlet no longer reads all its files.
 
 ### Removed
 
 - `noodlet convert`. To move a noodlet between Applet and Applet Dev, copy its folder under the other extension.
-
-### Fixed
-
-- Swift noodlets that draw in 3D with SceneKit show their scene and keep playing when watched or played from your iPhone, also while the Mac is locked. Viewers saw only the noodlet's buttons and text over a grey window.
-- Swift noodlet games that watch for key presses on their own, instead of in one of their views, react to the keys you play from your iPhone.
-- Swift noodlets that draw with SpriteKit keep playing while the Mac's display is asleep or locked, instead of freezing.
+- Noodlets written in Swift, with `noodlet typecheck` and the Orbital playground example. One you already have no longer opens and says so; rewrite it in HTML. Applet no longer needs Xcode or the Command Line Tools, and frees the space it used to build and run them.
 
 ## [0.18.0] - 2026-09-30
 

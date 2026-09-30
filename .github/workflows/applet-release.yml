@@ -75,7 +75,7 @@ jobs:
         timeout-minutes: 2
         run: '".build/Noodle Applet.app/Contents/MacOS/NoodleApplet" --noodle-background --updater-ui-test'
 
-      - name: Verify signed HTML and Swift runtime behavior
+      - name: Verify signed noodlet runtime behavior
         timeout-minutes: 8
         run: python3 Applet/scripts/smoke.py ".build/Noodle Applet.app"
 

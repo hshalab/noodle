@@ -47,7 +47,7 @@ final class PackageTests: XCTestCase {
         XCTAssertNotEqual(package.revision, "unreadable")
     }
     /// A bot may keep its noodlet under git; hidden folders are not part of it.
-    func testRevisionAndCloneLeaveOutHiddenFilesAndLinks() throws {
+    func testRevisionLeavesOutHiddenFilesAndLinks() throws {
         let root = try temporary()
         let destination = root.appendingPathComponent("Test.noodlet")
         let package = try NoodletPackage.install(files(), to: destination)
@@ -59,12 +59,17 @@ final class PackageTests: XCTestCase {
         try FileManager.default.createSymbolicLink(
             at: destination.appendingPathComponent("outside"), withDestinationURL: root)
         XCTAssertEqual(package.revision, revision)
-        let clone = root.appendingPathComponent("Clone.noodlet")
-        try package.clone(to: clone)
-        XCTAssertEqual(
-            try FileManager.default.contentsOfDirectory(atPath: clone.path).sorted(),
-            ["index.html", "noodlet.json"])
-        XCTAssertEqual(try NoodletPackage(url: clone).revision, revision)
+    }
+    /// A noodlet written in Swift from before says why it no longer opens.
+    func testASwiftNoodletSaysItIsNoLongerSupported() throws {
+        let root = try temporary().appendingPathComponent("Orbit.noodlet")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try Data(#"{"version":1,"title":"Orbit","runtime":"swift","entry":"Main.swift"}"#.utf8)
+            .write(to: root.appendingPathComponent("noodlet.json"))
+        try Data("// noodlet".utf8).write(to: root.appendingPathComponent("Main.swift"))
+        XCTAssertThrowsError(try NoodletPackage(url: root)) {
+            XCTAssertEqual($0.localizedDescription, "Noodlets written in Swift are no longer supported. Rewrite this one in HTML.")
+        }
     }
     func testLockCanonicalLocationAndRelease() throws {
         let root = try temporary()

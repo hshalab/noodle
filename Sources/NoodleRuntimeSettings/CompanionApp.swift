@@ -31,7 +31,7 @@ public enum CompanionApp: String, CaseIterable, Identifiable {
         switch self {
         case .browser: "Requires macOS 26 or later."
         case .computer: "Requires Apple silicon and macOS 26 or later."
-        case .applet: "Requires macOS 15 or later. Swift noodlets also require Apple's developer tools."
+        case .applet: "Requires macOS 15 or later."
         }
     }
 

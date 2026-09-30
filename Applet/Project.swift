@@ -30,16 +30,6 @@ let embedHelpers: TargetScript = .post(script: """
     fi
     """, name: "Embed Helpers", basedOnDependencyAnalysis: false)
 
-/// Noodlets compile the bundled runtime and examples themselves, so every build checks they still do.
-let checkRuntime: TargetScript = .pre(script: """
-    set -euo pipefail
-    xcrun swiftc -typecheck -parse-as-library -swift-version 5 -module-cache-path "$DERIVED_FILE_DIR/RuntimeCheckCache" \\
-        "$SRCROOT/Sources/NoodleApplet/Resources/WindowFocusGuard.swift" \\
-        "$SRCROOT/Sources/NoodleApplet/Resources/NoodletCast.swift" \\
-        "$SRCROOT/Sources/NoodleApplet/Resources/NoodletRuntime.swift" \\
-        "$SRCROOT/Sources/NoodleApplet/Resources/Examples/Orbit.noodlet/Orbit.swift"
-    """, name: "Check Noodlet Runtime", basedOnDependencyAnalysis: false)
-
 /// The app already has outbound network access, so Sparkle's separate downloader goes. Removing it
 /// changes the framework, so it is signed again, inside out.
 let trimSparkle: TargetScript = .post(script: """
@@ -114,8 +104,7 @@ let project = Project(
             bundleId: "com.pdparchitect.noodle.applet",
             deploymentTargets: .macOS("15.0"),
             infoPlist: .file(path: "Support/Info.plist"),
-            // The Resources folder holds the noodlet runtimes and examples; its Swift files are
-            // compiled by noodlets later, not by the app.
+            // The Resources folder holds the noodlet bridge scripts and examples.
             sources: .sourceFilesList(globs: [
                 .glob("Sources/NoodleApplet/**", excluding: ["Sources/NoodleApplet/Resources/**"]),
             ]),
@@ -125,7 +114,7 @@ let project = Project(
                 "Support/AppSymbol.svg",
             ],
             entitlements: .file(path: "Support/Applet.entitlements"),
-            scripts: [checkRuntime, embedHelpers, trimSparkle],
+            scripts: [embedHelpers, trimSparkle],
             dependencies: [
                 .package(product: "AppletCore"),
                 .package(product: "AppletBridge"),
@@ -133,7 +122,6 @@ let project = Project(
                 .package(product: "NoodleLaunchChecks"),
                 .package(product: "NoodleWallpaper"),
                 .package(product: "Sparkle"),
-                .target(name: "NoodletHost"),
                 .target(name: "NoodletPreview"),
                 .target(name: "noodlet"),
             ],
@@ -157,29 +145,6 @@ let project = Project(
                     .release(name: "Release"),
                 ]
             )
-        ),
-        // Runs native noodlets outside the app's sandbox, confined to their own files. It accepts Applet alone.
-        .target(
-            name: "NoodletHost",
-            destinations: .macOS,
-            product: .xpc,
-            bundleId: "com.pdparchitect.noodle.applet.noodlet-host",
-            deploymentTargets: .macOS("15.0"),
-            infoPlist: .extendingDefault(with: [
-                "CFBundleName": "Noodlet Host",
-                "CFBundleShortVersionString": "$(MARKETING_VERSION)",
-                "CFBundleVersion": "$(CURRENT_PROJECT_VERSION)",
-                "LSBackgroundOnly": true,
-                "XPCService": ["ServiceType": "Application", "JoinExistingSession": true],
-                "NoodleAppletIdentifier": "$(APPLET_APP_BUNDLE_ID)",
-                "NoodleSigningTeam": "$(DEVELOPMENT_TEAM)",
-            ]),
-            sources: ["Sources/NoodletHost/**"],
-            dependencies: [.package(product: "AppletCore")],
-            settings: .settings(base: signing.merging([
-                "PRODUCT_BUNDLE_IDENTIFIER": "$(APPLET_APP_BUNDLE_ID).noodlet-host",
-                "PRODUCT_NAME": "NoodletHost",
-            ]) { $1 })
         ),
         // Quick Look previews of noodlet documents, sandboxed and sharing Applet's group.
         .target(

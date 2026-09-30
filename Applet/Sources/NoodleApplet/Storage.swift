@@ -1,7 +1,7 @@
 import Foundation
 import WebKit
 
-/// What each noodlet has saved: its data directory and, for HTML, its WebKit store.
+/// What each noodlet has saved: its data directory and its WebKit store.
 @MainActor enum AppletStorage {
   static func sizes(root: URL) -> [String: Int] {
     let data = root.appendingPathComponent("Data")
@@ -18,9 +18,7 @@ import WebKit
     return sizes
   }
   static func remove(_ key: String, root: URL, defaults: UserDefaults) async {
-    for folder in ["Data", "Homes"] {
-      try? FileManager.default.removeItem(at: root.appendingPathComponent("\(folder)/\(key)"))
-    }
+    try? FileManager.default.removeItem(at: root.appendingPathComponent("Data/\(key)"))
     // WebKit crashes when removing a store is the first thing a process asks of it, as launch
     // does for a noodlet that is gone. A web view with no website data sets WebKit up first.
     let configuration = WKWebViewConfiguration()

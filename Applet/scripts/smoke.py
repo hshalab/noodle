@@ -38,12 +38,11 @@ def call(*args, success=True):
     return reply
 
 
-def package(directory, name, runtime, source):
+def package(directory, name, source):
     path = directory / (name + extension)
     path.mkdir()
-    entry = 'index.html' if runtime == 'html' else 'Main.swift'
-    (path / 'noodlet.json').write_text(json.dumps(dict(version=1, title='Applet smoke ' + name, runtime=runtime, entry=entry, network=False)))
-    (path / entry).write_text(source)
+    (path / 'noodlet.json').write_text(json.dumps(dict(version=1, title='Applet smoke ' + name, runtime='html', entry='index.html', network=False)))
+    (path / 'index.html').write_text(source)
     # Applet uses only noodlets it lists, so open this one in the app as a person would, then
     # close what that opened so the checks start from a headless session of their own.
     subprocess.run(['open', '-g', '-a', app, path], check=True, timeout=30)
@@ -66,7 +65,7 @@ def track(reply):
 try:
     with tempfile.TemporaryDirectory(prefix='noodlet-smoke-') as temporary:
         directory = pathlib.Path(temporary)
-        html = package(directory, 'HTML', 'html', '''<!doctype html><title>Smoke</title>
+        html = package(directory, 'HTML', '''<!doctype html><title>Smoke</title>
         <style>body{background:#123456;color:white;font:30px system-ui}button{padding:25px}</style>
         <button id="go" onclick="this.textContent='Clicked';console.log('clicked')">Start</button>
         <canvas id="canvas" width="300" height="120"></canvas>
@@ -83,7 +82,7 @@ try:
         call('eval', '--session', sid, '--text', 'setTimeout(()=>{throw Error("smoke exception")},0); return true;')
         time.sleep(.2)
         assert 'smoke exception' in call('logs', '--session', sid)['text']
-        for name in ['web.png', 'web.mp4', 'native.png']:
+        for name in ['web.png', 'web.mp4']:
             (output / name).unlink(missing_ok=True)
         call('screenshot', '--session', sid, '--output', output / 'web.png')
         assert (output / 'web.png').read_bytes().startswith(b'\x89PNG')
@@ -113,7 +112,7 @@ try:
         threading.Thread(target=server.serve_forever, daemon=True).start()
         address = 'http://127.0.0.1:' + str(server.server_port)
         try:
-            api = package(directory, 'Network', 'html', '<title>Network test</title><h1>API</h1>')
+            api = package(directory, 'Network', '<title>Network test</title><h1>API</h1>')
             manifest = json.loads((api/'noodlet.json').read_text()); manifest['network'] = True
             manifest['window'] = dict(type='floating', background='translucent', width=320, height=350, minWidth=260, minHeight=300, maxWidth=480, maxHeight=520, resizable=False, rememberFrame=True)
             (api/'noodlet.json').write_text(json.dumps(manifest))
@@ -135,43 +134,6 @@ try:
             print('PASS native CORS-free GET, binary POST, redirects, abort, network denial and manifest viewport', flush=True)
         finally: server.shutdown(); server.server_close()
 
-
-        # A failed compilation must preserve structured session identity and diagnostics.
-        broken = package(directory, 'Broken', 'swift', 'import SwiftUI\nstruct Noodlet: View { var body: some View { DefinitelyMissing() } }')
-        bad = call('build', broken, success=False)
-        failed_id = track(bad)
-        diagnostics = call('logs', '--session', failed_id)['text']
-        assert 'DefinitelyMissing' in diagnostics, diagnostics
-        print('PASS native compiler diagnostics and session recovery', flush=True)
-
-        # Probe containment using a harmless file that this test owns outside the app container.
-        secret = directory / 'outside.txt'
-        secret.write_text('must not be readable by the native runtime')
-        swift = package(directory, 'Native', 'swift', '''import SwiftUI
-        struct Noodlet: View {var body: some View {Text("Native smoke").padding(60).onAppear {
-            do { _ = try String(contentsOfFile: %s, encoding: .utf8); print("SANDBOX_ESCAPE") }
-            catch { print("SANDBOX_DENIED") }
-        }}}''' % json.dumps(str(secret)).replace('\\/', '/'))
-        built = track(call('build', swift))
-        assert call('status', '--session', built)['state'] == 'built'
-        native = track(call('open', swift, '--mode', 'headless'))
-        assert call('status', '--session', native)['state'] == 'running'
-        viewport = json.loads(call('inspect', '--session', native)['value'])['viewport']
-        assert viewport == {'width': 900, 'height': 620}, viewport
-        logs = call('logs', '--session', native)['text']
-        assert 'SANDBOX_DENIED' in logs and 'SANDBOX_ESCAPE' not in logs, logs
-        call('screenshot', '--session', native, '--output', output / 'native.png')
-        assert (output / 'native.png').read_bytes().startswith(b'\x89PNG')
-        call('terminate', '--session', native)
-        print('PASS native execution, capture and denied outside-file access', flush=True)
-        manifest = json.loads((swift / 'noodlet.json').read_text())
-        manifest['window'] = dict(type='preview', background='translucent', width=360, height=320, minWidth=360, maxWidth=360, minHeight=320, maxHeight=320, resizable=False, rememberFrame=True)
-        (swift / 'noodlet.json').write_text(json.dumps(manifest))
-        panel = track(call('open', swift, '--mode', 'headless'))
-        viewport = json.loads(call('inspect', '--session', panel)['value'])['viewport']
-        assert viewport == dict(width=360,height=320), viewport
-        call('terminate', '--session', panel)
-        print('PASS native preview panel and manifest sizing', flush=True)
 
         # Termination must break an outstanding unresponsive WebKit operation.
         hung = track(call('open', html, '--mode', 'headless'))

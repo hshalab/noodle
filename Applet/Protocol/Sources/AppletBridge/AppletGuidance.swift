@@ -4,7 +4,7 @@ import Foundation
 /// command's protocol, so Noodle and the Applet app read the same text and neither copies it.
 public enum AppletGuidance {
     /// The pointer Noodle puts in a bot's instructions while the applet skill is installed.
-    public static let bootstrap = "## Creative applets\n\nRead `.agents/skills/applet/SKILL.md` to build and run HTML and native Swift noodlets in Noodle Applet."
+    public static let bootstrap = "## Creative applets\n\nRead `.agents/skills/applet/SKILL.md` to build and run HTML noodlets in Noodle Applet."
     public static func skill(for build: AppletBuildIdentity) -> String {
         skill.replacingOccurrences(of: ".noodlet", with: "." + build.fileExtension)
             .replacingOccurrences(of: "noodlet://", with: build.urlScheme + "://")
@@ -30,7 +30,7 @@ public enum AppletGuidance {
         target the exact session returned by open. It must belong to that shared package.
         Without --session, select an active session first, otherwise the newest session.
         Session responses include mode, dataScope (user/test), testClock, viewAvailable,
-        and HTML rendering diagnostics when available. A failed session says why in failure.
+        and rendering diagnostics when available. A failed session says why in failure.
         permissions lists each permission the manifest declares as granted, denied or
         not-requested; tell the user what to allow instead of guessing from failures.
         Errors retain resolved session
@@ -50,16 +50,13 @@ public enum AppletGuidance {
         animationFrameCount and lastAnimationFrameTimestamp (null before any callback).
         These page-reported observations are not proof that Canvas/WebGL pixels were drawn.
         Compare frame counts over time; status remains usable if page JavaScript is blocked.
-        For explicit synthetic testing, open HTML with --mode headless --test-clock,
+        For explicit synthetic testing, open with --mode headless --test-clock,
         then step --frames 60 (1–600; default 1). Advances main-page RAF and performance.now
         at 60 Hz and overrides page visibility to visible. Date, timers, CSS animations,
         workers and media retain native timing. Captures do not advance this clock.
         This is not real-time gameplay or performance evidence. Close before switching
         between normal/test data or clocks; restart retains test-clock in headless mode.
-        Web input events are synthetic. Native capture supports ordinary AppKit/SwiftUI
-        views, SpriteKit scenes and SceneKit views (SCNView or SceneView); arbitrary Metal,
-        RealityKit, video, and embedded web surfaces may need a renderer-specific capture
-        implementation. No screen permission is used.
+        Web input events are synthetic. No screen permission is used.
         """
     }
     public static func operation(_ operation: AppletOperation) -> String {
@@ -67,27 +64,26 @@ public enum AppletGuidance {
         case .list: "Discover this caller's noodlets and live sessions. No individual registration is needed."
         case .info: "Resolve --id UUID_OR_URL, --path, or --session without starting the noodlet. Returns noodletID, url, path, title, runtime, and state. Validate an unregistered source first."
         case .validate: "Read --path, validate noodlet.json and package bounds, and register the package where it is."
-        case .build: "Validate HTML or typecheck combined Swift sources with the installed Apple toolchain. Read logs for diagnostics."
-        case .typecheck: "Typecheck Swift from --path FILE_OR_FOLDER as one module and return compiler diagnostics in text. Needs no noodlet.json or Noodlet view, imports nothing and starts no session."
+        case .build: "Validate the package without running it. Read logs for diagnostics."
         case .open: "Register --path and start or reconnect to its single live instance; defaults to background. Changed source requires restart."
         case .status: "Inspect the session's state and supported capabilities. Check before retrying an uncertain operation."
         case .logs: "Read durable JSON-line logs from --offset; --follow streams subsequent chunks, --text-output emits the raw log."
-        case .inspect: "Return page text and CSS targets for HTML, or the local accessibility tree for native views."
-        case .eval: "Execute an async JavaScript function body from --file, --text, or stdin in an HTML noodlet. Returns JSON in value."
-        case .click: "Click --target CSS_SELECTOR or --x/--y viewport coordinates. Native input requires coordinates."
-        case .type: "Replace an HTML input's value using --target and --text, or insert text in the focused native control."
+        case .inspect: "Return page text and CSS targets."
+        case .eval: "Execute an async JavaScript function body from --file, --text, or stdin in the noodlet. Returns JSON in value."
+        case .click: "Click --target CSS_SELECTOR or --x/--y viewport coordinates."
+        case .type: "Replace an input's value using --target and --text."
         case .key: "Send --text Enter|Escape|Tab|Space|ArrowLeft|ArrowRight|ArrowUp|ArrowDown or a character to the noodlet."
-        case .scroll: "Scroll an HTML target/window by --to-x/--to-y points. Native scroll is currently unsupported."
-        case .drag: "Drag within the noodlet from --x/--y to --to-x/--to-y. HTML events are synthetic."
+        case .scroll: "Scroll a target or the window by --to-x/--to-y points."
+        case .drag: "Drag within the noodlet from --x/--y to --to-x/--to-y. Events are synthetic."
         case .screenshot: "Capture the current view as PNG; use --output FILE to retrieve it. Works without activating the desktop."
         case .recordStart: "Start video capture with the noodlet's sound, even while it is muted out of sight; --duration defaults to 30 seconds, maximum 60. Also accepts `record start`."
         case .recordStop: "Finalize active capture and retrieve the MP4 with --output FILE. Also accepts `record stop`."
         case .show: "Only the user brings a noodlet to the foreground, by opening it."
-        case .hide: "Hide the noodlet window; HTML animation or game simulation may pause."
-        case .step: "Advance --frames COUNT animation frames in an HTML session opened with --mode headless --test-clock. Returns synthetic timing and rendering diagnostics in value."
+        case .hide: "Hide the noodlet window; animation or game simulation may pause."
+        case .step: "Advance --frames COUNT animation frames in a session opened with --mode headless --test-clock. Returns synthetic timing and rendering diagnostics in value."
         case .close: "Stop the session and release its instance lock. Durable data and logs remain."
         case .terminate: "Stop a running or blocked noodlet, including one opened in the foreground."
-        case .restart: "Stop the old session and rebuild/reload the package at the same location; returns a new sessionID."
+        case .restart: "Stop the old session and reload the package at the same location; returns a new sessionID."
         case .artifact: "Read a capture using --artifact UUID and --offset; CLI normally handles transfer via --output."
         case .present: "With --conversation UUID, capture the running noodlet for its preview and attach its noodlet:// URL to the conversation. Shares the live package by reference; inspect content before sharing. Requires a Noodle bot workspace."
         // Never a bot's command: Noodle Hub shows noodlets to people with these.
@@ -98,7 +94,7 @@ public enum AppletGuidance {
         """
         ---
         name: applet
-        description: Creative coding with Noodle Applet for small utilities, games, interactive websites, prototypes, examples, and demos in HTML/JavaScript or native Swift. Build, run, inspect, interact with, and capture noodlets.
+        description: Creative coding with Noodle Applet for small utilities, games, interactive websites, prototypes, examples, and demos in HTML/JavaScript. Build, run, inspect, interact with, and capture noodlets.
         ---
         # Noodle Applet
 
@@ -124,7 +120,7 @@ public enum AppletGuidance {
         or add them to noodlet.json. Use info --path PACKAGE or list to recover URLs.
         Noodle stores a .webloc reference with a thumbnail in the conversation. Clicking
         opens the live creation in Noodle Applet, or brings its existing window forward,
-        with full interaction and saved data for both HTML and Swift. Attaching alone
+        with full interaction and saved data. Attaching alone
         does not launch it. Use the returned noodlet URL when asked for an applet link.
         Deleting the package makes its links unavailable. Links are local to this Mac.
         A conversation member can use info/open/status/inspection/input/capture commands
@@ -135,7 +131,7 @@ public enum AppletGuidance {
         This does not grant direct workspace access or allow replacing the shared sources.
         Closing the running noodlet window stops its session; the conversation keeps its link.
 
-        HTML manifest:
+        Manifest:
         {"version":1,"title":"My creation","runtime":"html","entry":"index.html","summary":"What it does","symbol":"sparkles","network":false}
         HTML can use CSS, JS, Canvas, WebGL and bundled assets. No build system is required.
         `await noodle.storage.set(key, JSON_value)` / `await noodle.storage.get(key)` persist
@@ -153,7 +149,7 @@ public enum AppletGuidance {
         and saved host credentials are not shared. XHR retains normal WebKit behavior.
         The privileged main page stays inside its package.
 
-        Optional manifest category (HTML and Swift), for example "category":"games",
+        Optional manifest category, for example "category":"games",
         groups the noodlet in the library: games, productivity, utilities, developer,
         data, creativity, media, writing, learning or lifestyle. Leave it out when none fits.
 
@@ -164,20 +160,19 @@ public enum AppletGuidance {
         go from most to least important, labels up to 12 characters; menu is the pause key.
         Keys are left, right, up, down, space, enter, tab, escape, backspace, a lowercase
         letter or a digit, each used once. Held buttons send a key down and, on release, a key
-        up: HTML gets keydown and keyup events with key, code and keyCode (do not check
-        isTrusted), Swift gets keyDown and keyUp with their key codes.
+        up: the page gets keydown and keyup events with key, code and keyCode (do not check
+        isTrusted).
 
-        Optional manifest window object (HTML and Swift):
+        Optional manifest window object:
         {"type":"floating","background":"translucent","titlebar":false,"width":320,"height":350,"minWidth":260,"minHeight":300,"maxWidth":480,"maxHeight":520,"resizable":true,"rememberFrame":true}
         type is standard (default), floating (stays above ordinary windows), or preview
         (a non-activating floating panel with a compact close-only title bar).
         background is opaque (default), translucent (native material), or transparent.
-        For transparent/translucent HTML, set html and body background:transparent.
+        For transparent/translucent windows, set html and body background:transparent.
         titlebar false hides the title and extends content under it; the native window
         buttons remain. titlebar "none" also hides those buttons so the noodlet draws its
-        own: HTML calls `noodle.window.close()` / `minimize()` / `zoom()` /
-        `toggleFullScreen()`, Swift the same on `NoodletContext.window`. Each returns false
-        while the window is out of sight.
+        own with `noodle.window.close()` / `minimize()` / `zoom()` / `toggleFullScreen()`.
+        Each returns false while the window is out of sight.
         macOS rounds windows with a title bar only. With titlebar "none", cornerRadius
         (0–100 points) drops the title bar and shapes the window itself: 0 is square, more
         rounds the content, and full screen is always square. Not for preview windows.
@@ -190,52 +185,27 @@ public enum AppletGuidance {
         exclusions. Buttons, links, inputs and editable content remain interactive.
         Window drags require a real user pointer event; synthetic CLI input cannot
         reposition desktop windows. Hidden title bars have a native drag strip.
-        Finder Quick Look renders HTML with temporary preview data; Swift uses preview.png
-        in the package or the app's latest capture. Open the noodlet for full interaction.
-
-        Swift manifest uses runtime "swift" and entry "Main.swift". Define
-        `import SwiftUI; struct Noodlet: View { var body: some View { Text("Hello") } }`.
-        Do not define @main: the host provides the application and window. All .swift files
-        in the package share one script scope. They are typechecked, then evaluated
-        in the installed Swift interpreter. Use SwiftUI, AppKit via NSViewRepresentable,
-        SpriteKit and other installed Apple SDKs. NoodletContext.dataDirectory and
-        packageDirectory provide URLs; isBackground reports the initial launch mode.
-        `try await NoodletContext.secrets.set(name, value)` / `get(name)` / `delete(name)` /
-        `names()` is the same per-noodlet Keychain store. Play sound through
-        `NoodletContext.audioEngine` (an AVAudioEngine): it is the only Swift audio that
-        records, and the only one that runs in background or headless mode.
-        Swift requires installed Apple developer tools. Native code runs confined to
-        its package, NoodletContext.dataDirectory and a private home directory. It
-        cannot read the user's files, other noodlets, Applet's storage or the
-        Keychain, NSOpenPanel and NSSavePanel do not work, and UserDefaults does not
-        persist. Once the user opens it, `try await NoodletContext.files.open()` lets the
-        user pick a file and returns a copy inside dataDirectory, or nil;
-        `files.save("relative/path", suggestedName:)` saves a dataDirectory file
-        where the user chooses. Like HTML, native code reaches the network only with
-        network:true, and then only internet addresses, not local sockets. Only a
-        noodlet the user opened can read the clipboard.
+        Finder Quick Look renders the noodlet with temporary preview data. Open the noodlet
+        for full interaction.
 
         To use the microphone, camera, speech recognition or screen recording, declare
         "permissions":["microphone","camera","speech-recognition","screen-capture"]
         (only those needed) in noodlet.json. The user is
         asked once per noodlet before it starts, then macOS asks for Noodle Applet.
         A refusal fails open with permission-denied; tell the user what to allow.
-        HTML uses getUserMedia, getDisplayMedia and MediaRecorder; Swift uses AVFoundation,
-        Speech and ScreenCaptureKit. A new screen recording grant applies after Applet
-        restarts. getDisplayMedia needs a visible, focused window and shows macOS's picker.
-        Use typecheck to check any Swift file or folder without building a noodlet.
+        Use getUserMedia, getDisplayMedia and MediaRecorder. A new screen recording grant
+        applies after Applet restarts. getDisplayMedia needs a visible, focused window and
+        shows macOS's picker.
 
         Use headless mode for automated checks with separate test data. It still needs
         a logged-in Mac. Use background for normal data. Only the user brings a noodlet
         to the foreground, by opening it; foreground mode and show are refused.
-        Only a foreground noodlet makes sound. HTML pages are muted until they are shown,
-        and a Swift noodlet started in background or headless mode has no audio output for
-        its whole run; only NoodletContext.audioEngine runs there, silently. Recordings
-        hear a muted noodlet all the same. A granted microphone keeps its
+        Only a foreground noodlet makes sound: pages are muted until they are shown.
+        Recordings hear a muted noodlet all the same. A granted microphone keeps its
         audio in any mode. When the user opens a noodlet it always comes up in the
-        foreground: a background page is shown and unmuted, while a live Swift or headless
-        session, which cannot gain sound or user data after launch, is closed and started
-        again. Expect session-not-running after that and open the noodlet again.
+        foreground: a background page is shown and unmuted, while a headless session,
+        which cannot gain user data after launch, is closed and started again. Expect
+        session-not-running after that and open the noodlet again.
         Hidden pages may pause RAF and visibility-gated games. Check rendering diagnostics
         and actual captured pixels; running does not imply visual readiness. For explicit
         synthetic RAF tests use open --mode headless --test-clock, then step --frames 60.

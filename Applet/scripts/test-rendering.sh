@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Runs the signed app's noodlet rendering check: live views of HTML and Swift noodlets, animation
+# Runs the signed app's noodlet rendering check: live views of noodlets, animation
 # and test clocks. Usage: Applet/scripts/test-rendering.sh "path/to/Noodle Applet.app"
 # The app is launched through LaunchServices, in the background: started from a shell, macOS holds
 # the shell responsible for the Swift compiler Applet starts, which may then not read Applet's own

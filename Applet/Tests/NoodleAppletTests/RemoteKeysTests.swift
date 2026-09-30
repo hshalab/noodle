@@ -37,21 +37,6 @@ import XCTest
         return (runtime, session)
     }
 
-    /// A native noodlet gets a held key as it goes down and comes up, by the name the runtime knows.
-    func testANativeNoodletGetsHeldKeysByName() throws {
-        let session = UUID()
-        func request(_ input: SurfaceInput) -> (AppletOperation, String?, Bool?)? {
-            AppletRuntime.nativeRequest(for: input, session: session).map { ($0.operation, $0.text, $0.pressed) }
-        }
-        XCTAssertTrue(request(.hold(key: "z", pressed: true)) ?? (.status, nil, nil) == (.key, "z", true))
-        XCTAssertTrue(request(.hold(key: "left", pressed: false)) ?? (.status, nil, nil) == (.key, "left", false))
-        XCTAssertTrue(request(.key(.space)) ?? (.status, nil, nil) == (.key, "space", nil))
-        XCTAssertTrue(request(.text("hi")) ?? (.status, nil, nil) == (.type, "hi", nil))
-        XCTAssertEqual(AppletRuntime.nativeRequest(for: .pointer(.up, x: 3, y: 4), session: session)?.x, 3)
-        XCTAssertNil(AppletRuntime.nativeRequest(for: .pointer(.down, x: 3, y: 4), session: session))
-        XCTAssertEqual(AppletRuntime.nativeRequest(for: .hold(key: "z", pressed: true), session: session)?.sessionID, session)
-    }
-
     func testRemoteKeysReachThePageWithoutTheMacsKeyboard() async throws {
         // Someone at the Mac typing in another window, which the Mac's text input serves.
         let front = NSWindow(contentRect: CGRect(x: 200, y: 200, width: 300, height: 200), styleMask: [.titled], backing: .buffered, defer: false)

@@ -98,6 +98,28 @@ final class LibraryTests: XCTestCase {
         XCTAssertEqual(library.hubPeople.map(\.id), [ada], "Someone whose noodlets are all hidden is listed.")
     }
 
+    /// What Applet kept to build and run noodlets written in Swift goes; each noodlet's data stays.
+    // TODO(Applet 0.20.0): remove with AppletLibrary.removeSwiftBuilds. Milestone: Applet 0.19.0.
+    @MainActor func testWhatSwiftNoodletsLeftGoesAndTheirDataStays() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let suite = "AppletLibraryTests." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer {
+            try? FileManager.default.removeItem(at: root)
+            defaults.removePersistentDomain(forName: suite)
+        }
+        let left = ["Builds/ModuleCache/Swift.pcm", "Builds/Typecheck-1/Main.swift", "Homes/key/User/tmp/file"]
+        for path in left + ["Data/key/User/state.json"] {
+            let file = root.appendingPathComponent(path)
+            try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data("x".utf8).write(to: file)
+        }
+        _ = botLibrary(root: root, defaults: defaults)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("Builds").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("Homes").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: root.appendingPathComponent("Data/key/User/state.json").path))
+    }
+
     /// Applet used to keep a copy of each noodlet a bot sent. The copies go, and what Applet kept
     /// for one follows the bot's own noodlet; a copy whose original is gone goes with its data.
     // TODO(Applet 0.13.0): remove with AppletLibrary.removeCopies. Milestone: Applet 0.12.0.
@@ -368,10 +390,8 @@ final class LibraryTests: XCTestCase {
             defaults.set(["network"], forKey: "permissions.\(package.key)")
             _ = try secrets.perform("set", name: "token", value: "x", account: "\(package.key).user")
             _ = try secrets.perform("set", name: "token", value: "x", account: "\(package.key).test")
-            for path in ["Data/\(package.key)/User", "Homes/\(package.key)"] {
-                try FileManager.default.createDirectory(
-                    at: root.appendingPathComponent(path), withIntermediateDirectories: true)
-            }
+            try FileManager.default.createDirectory(
+                at: root.appendingPathComponent("Data/\(package.key)/User"), withIntermediateDirectories: true)
             let thumbnails = root.appendingPathComponent("Thumbnails")
             try FileManager.default.createDirectory(at: thumbnails, withIntermediateDirectories: true)
             try Data([1]).write(to: thumbnails.appendingPathComponent("\(package.key).png"))
@@ -390,10 +410,10 @@ final class LibraryTests: XCTestCase {
         XCTAssertEqual(Set(AppletPermissions.grants(defaults: defaults).keys), [kept])
         XCTAssertEqual(Set(secrets.names().keys), ["\(kept).user", "\(kept).test"])
         XCTAssertEqual(Set(AppletStorage.sizes(root: root).keys), [kept])
-        for path in ["Homes/\(gone)", "Thumbnails/\(gone).png"] {
+        for path in ["Data/\(gone)", "Thumbnails/\(gone).png"] {
             XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent(path).path), path)
         }
-        for path in ["Homes/\(kept)", "Thumbnails/\(kept).png"] {
+        for path in ["Data/\(kept)", "Thumbnails/\(kept).png"] {
             XCTAssertTrue(FileManager.default.fileExists(atPath: root.appendingPathComponent(path).path), path)
         }
     }

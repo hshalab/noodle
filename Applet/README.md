@@ -12,10 +12,6 @@ It needs macOS 15 or later. Once it is installed, your bots in Noodle can use it
 straight away; remove it and they stop. Noodle does not open Applet until a bot
 needs it or you open it yourself.
 
-Noodlets written in Swift also need Xcode or Apple's Command Line Tools installed
-on your Mac. With Command Line Tools alone, some SwiftUI features are not
-available. Web noodlets need neither.
-
 ## The library
 
 Opening Noodle Applet shows your library of noodlets. The **All**, **Recent**,
@@ -73,9 +69,6 @@ In Settings:
 - **Secrets** lists the names of keys and tokens each noodlet has saved, never
   their values, and removes them. A noodlet can only reach its own secrets.
 - **Storage** shows each noodlet's saved data and removes it.
-
-A Swift noodlet cannot reach your files, other noodlets or your Keychain. Files go
-in and out only through the open and save dialogs you see.
 
 ## Updates
 

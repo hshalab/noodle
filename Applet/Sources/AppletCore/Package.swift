@@ -63,13 +63,12 @@ public struct NoodletManifest: Codable, Sendable, Equatable {
     guard version == 1 else { throw AppletError("Unsupported noodlet version \(version).") }
     guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, title.count <= 200
     else { throw AppletError("A noodlet needs a title of 1–200 characters.") }
-    guard ["html", "swift"].contains(runtime) else {
-      throw AppletError("Runtime must be html or swift.")
+    guard runtime != "swift" else {
+      throw AppletError("Noodlets written in Swift are no longer supported. Rewrite this one in HTML.")
     }
+    guard runtime == "html" else { throw AppletError("Runtime must be html.") }
     try AppletRequest.validateRelativePath(entry)
-    guard entry.hasSuffix(runtime == "html" ? ".html" : ".swift") else {
-      throw AppletError("The entry extension must match the runtime.")
-    }
+    guard entry.hasSuffix(".html") else { throw AppletError("The entry must be an .html file.") }
   }
 }
 
@@ -141,18 +140,6 @@ public struct NoodletPackage: Sendable {
       hash.update(data: Data(name.utf8) + Data([0]) + Data(Self.hex(file.finalize()).utf8))
     }
     return Self.hex(hash.finalize())
-  }
-  /// A copy-on-write clone where a confined noodlet may read it; the package's own disk space
-  /// is shared until either side changes.
-  public func clone(to destination: URL) throws {
-    let fm = FileManager.default
-    try fm.createDirectory(at: destination, withIntermediateDirectories: true)
-    for name in try names() {
-      let target = destination.appendingPathComponent(name)
-      try fm.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
-      guard copyfile(url.appendingPathComponent(name).path, target.path, nil, copyfile_flags_t(COPYFILE_CLONE)) == 0
-      else { throw AppletError("Cannot prepare \(name) for the noodlet.") }
-    }
   }
   public static func install(_ files: [String: Data], to destination: URL, build: AppletBuildIdentity = .current, replaceExisting: Bool = true) throws -> Self {
     guard destination.pathExtension == build.fileExtension else {

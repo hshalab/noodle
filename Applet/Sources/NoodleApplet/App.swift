@@ -529,7 +529,6 @@ private struct LibraryView: View {
     let cached = library.root.appendingPathComponent("Thumbnails/\(entry.id).png")
     let thumbnail = FileManager.default.fileExists(atPath: cached.path) ? cached
       : ((try? NoodletPackage.child("preview.png", in: entry.package.url)) ?? cached)
-    let native = entry.package.manifest.runtime == "swift"
     let running = runtime.isRunning(entry.id)
     return VStack(alignment: .leading, spacing: 0) {
       Button {
@@ -537,22 +536,14 @@ private struct LibraryView: View {
       } label: {
         ZStack {
           LinearGradient(
-            colors: native
-              ? [
-                Color(red: 0.13, green: 0.16, blue: 0.3),
-                Color(red: 0.38, green: 0.26, blue: 0.55),
-              ]
-              : [
-                Color(red: 0.2, green: 0.3, blue: 0.28),
-                Color(red: 0.53, green: 0.61, blue: 0.39),
-              ], startPoint: .topLeading, endPoint: .bottomTrailing)
+            colors: [
+              Color(red: 0.2, green: 0.3, blue: 0.28),
+              Color(red: 0.53, green: 0.61, blue: 0.39),
+            ], startPoint: .topLeading, endPoint: .bottomTrailing)
           if let image = NSImage(contentsOf: thumbnail) {
             NoodletThumbnail(image: image)
           } else {
-            Image(
-              systemName: entry.package.manifest.symbol
-                ?? (native ? "sparkles" : "globe")
-            ).font(.system(size: 44, weight: .light)).foregroundStyle(
+            Image(systemName: entry.package.manifest.symbol ?? "globe").font(.system(size: 44, weight: .light)).foregroundStyle(
               .white.opacity(0.8))
           }
           VStack {
@@ -585,7 +576,7 @@ private struct LibraryView: View {
         HStack(spacing: 5) {
           Circle().fill(running ? Color.green : Color.secondary.opacity(0.4)).frame(
             width: 5, height: 5)
-          Text(running ? "Running" : native ? "Native Swift" : "HTML")
+          Text(running ? "Running" : "HTML")
           Spacer()
         }.font(.system(size: 10)).foregroundStyle(.secondary).padding(.top, 5)
       }.padding(15)
@@ -640,7 +631,6 @@ private struct LibraryView: View {
   func bringBack()
 }
 extension WebRunner: NoodletCastTarget {}
-extension NativeRunner: NoodletCastTarget {}
 
 /// Plays a noodlet full screen on a display. A TV becomes one through AirPlay, which macOS
 /// only lets people add themselves, so the menu ends with the way to do that.

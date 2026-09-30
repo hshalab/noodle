@@ -24,45 +24,6 @@ final class NoodletPreviewController: NSViewController, @preconcurrency QLPrevie
       let package = try NoodletPackage(url: url)
       root = package.url
       preferredContentSize = (package.manifest.window ?? NoodletWindowOptions()).size()
-      if package.manifest.runtime == "swift" {
-        let authored = try NoodletPackage.child("preview.png", in: package.url)
-        let cached = PreviewCache.file(for: package.url)
-        let image = ([authored] + (cached.map { [$0] } ?? [])).lazy.compactMap { file -> NSImage? in
-          guard let size = try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize,
-            size <= 32 * 1_048_576
-          else { return nil }
-          return NSImage(contentsOf: file)
-        }.first
-        if let image {
-          let imageView = NSImageView(frame: view.bounds)
-          imageView.image = image
-          imageView.imageScaling = .scaleProportionallyUpOrDown
-          imageView.autoresizingMask = [.width, .height]
-          view.addSubview(imageView)
-        } else {
-          let title = NSTextField(wrappingLabelWithString: package.manifest.title)
-          title.font = .systemFont(ofSize: 26, weight: .semibold)
-          let detail = NSTextField(
-            wrappingLabelWithString: [
-              package.manifest.summary,
-              "Open in Noodle Applet to run this creation and capture its preview.",
-            ].compactMap { $0 }.joined(separator: "\n\n"))
-          detail.textColor = .secondaryLabelColor
-          let stack = NSStackView(views: [title, detail])
-          stack.orientation = .vertical
-          stack.alignment = .leading
-          stack.spacing = 16
-          stack.translatesAutoresizingMaskIntoConstraints = false
-          view.addSubview(stack)
-          NSLayoutConstraint.activate([
-            stack.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 48),
-            stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -48),
-          ])
-        }
-        finish()
-        return
-      }
       let configuration = WKWebViewConfiguration()
       configuration.websiteDataStore = .nonPersistent()
       configuration.userContentController.addUserScript(

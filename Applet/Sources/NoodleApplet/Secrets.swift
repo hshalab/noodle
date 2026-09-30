@@ -9,9 +9,7 @@ protocol AppletSecretStorage: Sendable {
   func accounts() throws -> [String]
 }
 
-/// One login Keychain item per noodlet. A noodlet can only reach its own: HTML
-/// through the bridge, native code through the host pipe. NoodletConfinement keeps
-/// native code from reading the Keychain directly.
+/// One login Keychain item per noodlet. A noodlet reaches only its own, through the bridge.
 struct AppletKeychain: AppletSecretStorage {
   let service = AppletBuildIdentity.current.providerID + ".secrets"
   // The data protection Keychain refuses Applet (-34018) without a provisioning
@@ -63,7 +61,7 @@ struct AppletKeychain: AppletSecretStorage {
   }
 }
 
-/// The secrets API shared by HTML and Swift noodlets.
+/// The secrets API noodlets reach through the bridge.
 struct AppletSecrets: Sendable {
   static let shared = AppletSecrets(storage: AppletKeychain())
   let storage: any AppletSecretStorage

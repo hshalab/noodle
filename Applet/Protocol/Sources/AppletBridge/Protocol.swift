@@ -14,7 +14,7 @@ public struct AppletError: Error, LocalizedError, Sendable {
 }
 
 public enum AppletOperation: String, Codable, CaseIterable, Sendable {
-    case list, info, validate, build, typecheck, open, status, logs, inspect, eval, click, type, key, scroll, drag
+    case list, info, validate, build, open, status, logs, inspect, eval, click, type, key, scroll, drag
     case screenshot, step
     case recordStart = "record-start"
     case recordStop = "record-stop"
@@ -25,7 +25,7 @@ public enum AppletOperation: String, Codable, CaseIterable, Sendable {
     public var isSurface: Bool { self == .surfaceStream }
     public var timeout: Int {
         switch self {
-        case .build, .typecheck, .open, .restart: return 180
+        case .build, .open, .restart: return 180
         case .recordStop: return 60
         default: return 30
         }
@@ -84,7 +84,7 @@ public struct AppletRequest: Codable, Sendable {
             throw AppletError("Use --id without --path or package files.")
         }
         if operation.isSurface, sessionID == nil { throw AppletError("Specify --session.") }
-        if sessionID != nil, [.open, .build, .validate, .typecheck, .list].contains(operation) {
+        if sessionID != nil, [.open, .build, .validate, .list].contains(operation) {
             throw AppletError("This command does not accept --session.")
         }
         if testClock != nil, ![.open, .restart].contains(operation) {

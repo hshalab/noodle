@@ -150,6 +150,7 @@ struct HubPerson: Hashable, Identifiable, Decodable {
     }
     persistRegistrations()
     removeCopies(secrets: secrets)
+    removeSwiftBuilds()
     scan()
     if watchChanges {
       timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
@@ -176,6 +177,12 @@ struct HubPerson: Hashable, Identifiable, Decodable {
   private static let lists: [(ReferenceWritableKeyPath<AppletLibrary, [String]>, String)] = [
     (\.recent, "recent"), (\.pinned, "pinned"), (\.hidden, "hidden"), (\.hub, "hub"),
   ]
+  // TODO(Applet 0.20.0): remove with its call in init and
+  // LibraryTests.testWhatSwiftNoodletsLeftGoesAndTheirDataStays. Milestone: Applet 0.19.0.
+  /// Noodlets written in Swift were built under Builds and ran with a private home under Homes.
+  private func removeSwiftBuilds() {
+    for folder in ["Builds", "Homes"] { try? FileManager.default.removeItem(at: root.appendingPathComponent(folder)) }
+  }
   // TODO(Applet 0.13.0): remove with its call in init, LibraryTests.testCopiesFromBeforeGoAndWhatTheyKeptFollowsTheOriginal
   // and LibraryTests.testACopyWhoseOriginalCannotBeReadIsKeptForLater. Milestone: Applet 0.12.0.
   /// Applet used to keep a copy of each noodlet a bot sent, under Imports. The copies go. What

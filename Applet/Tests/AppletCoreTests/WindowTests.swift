@@ -24,7 +24,7 @@ final class WindowTests: XCTestCase {
         XCTAssertEqual(try decode(#"{"titlebar":false}"#).titlebar, .hidden)
         XCTAssertEqual(try decode(#"{"titlebar":"none"}"#).titlebar, .none)
         XCTAssertThrowsError(try decode(#"{"titlebar":"unknown"}"#))
-        // The Swift runtime reads the options back as JSON, so each value keeps its manifest form.
+        // Options written back out as JSON keep each value in its manifest form.
         for text in [#"{"titlebar":true}"#, #"{"titlebar":false}"#, #"{"titlebar":"none"}"#] {
             let json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(decode(text))) as! [String: Any]
             let original = try JSONSerialization.jsonObject(with: Data(text.utf8)) as! [String: Any]

@@ -142,7 +142,7 @@ import XCTest
         NSApp.sendEvent(try mouse(.leftMouseDown, window))
         NSApp.sendEvent(try mouse(.leftMouseUp, window))
         XCTAssertEqual(window.delivered, [])
-        // Browser and native noodlet agents dispatch directly to the window or
+        // Browser and noodlet agents dispatch directly to the window or
         // responder. They must continue to work without focusing the host app.
         window.sendEvent(try mouse(.leftMouseDown, window))
         XCTAssertEqual(window.delivered, [.leftMouseDown])

@@ -47,10 +47,4 @@ final class SilenceTests: XCTestCase {
         XCTAssertTrue(runner.muted)
         XCTAssertTrue(webKitMutedAudio(runner))
     }
-
-    func testOnlyAForegroundNativeNoodletMayReachTheAudioOutput() {
-        XCTAssertTrue(NativeRunner.audible(mode: "foreground"))
-        XCTAssertFalse(NativeRunner.audible(mode: "background"))
-        XCTAssertFalse(NativeRunner.audible(mode: "headless"))
-    }
 }

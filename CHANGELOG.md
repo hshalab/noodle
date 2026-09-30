@@ -26,6 +26,7 @@ All notable changes to Noodle are documented here, following
 ### Removed
 
 - The Link preview timeout setting. Previews wait up to 10 seconds, as they did by default.
+- Bots no longer write noodlets in Swift, and Noodle Applet no longer needs Apple's developer tools. Update Noodle Applet as well.
 
 ## [0.36.0] - 2026-09-30
 

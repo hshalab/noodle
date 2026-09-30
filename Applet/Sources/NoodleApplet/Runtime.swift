@@ -11,14 +11,11 @@ import AppletCore
   let testClock: Bool
   var isActive: Bool { ["starting", "building", "running"].contains(state) }
   /// Whether showing this session would still leave the user without the noodlet
-  /// they asked for. A page's sound follows its window, but a native noodlet's
-  /// confinement and a test session's data are both fixed when the process starts.
-  var needsRelaunchToBeSeenAndHeard: Bool {
-    if let native { return !native.audible }
-    return dataRoot.lastPathComponent == "Testing"
-  }
+  /// they asked for. A page's sound follows its window, but a test session's data
+  /// is fixed when it starts.
+  var needsRelaunchToBeSeenAndHeard: Bool { dataRoot.lastPathComponent == "Testing" }
   let size: CGSize
-  var web: WebRunner?, native: NativeRunner?
+  var web: WebRunner?
   var recording: AppletRecording? { didSet { web?.recorded = recording != nil } }
   /// The live view, and where its viewers click and type in an HTML noodlet. While
   /// one is watched, bots cannot drive this session.
@@ -38,16 +35,12 @@ import AppletCore
     lock = try InstanceLock(
       location: package.url, directory: root.appendingPathComponent("Locks"))
   }
-  func place() async -> WindowPlace? {
-    if let web { return web.place }
-    return await native?.place()
-  }
+  func place() -> WindowPlace? { web?.place }
   func snapshot() async throws -> NSImage {
     guard state == "running" else {
       throw AppletError("Session \(id) (\(mode)) is \(state).", code: "session-not-running")
     }
     if let web { return try await web.snapshot() }
-    if let native { return try await native.snapshot() }
     throw AppletError("The noodlet has no running view.")
   }
   /// Hands the noodlet's sound to the recording. A noodlet that cannot be heard
@@ -58,13 +51,11 @@ import AppletCore
     }
     do {
       try await web?.listen(sink)
-      try await native?.listen(sink)
     } catch { log.append("recording", "Recording without sound: \(error.localizedDescription)") }
   }
   func stopListening() async {
     do {
       try await web?.stopListening()
-      try await native?.stopListening()
     } catch {
       log.append("recording", "The end of the sound may be missing: \(error.localizedDescription)")
     }
@@ -74,8 +65,6 @@ import AppletCore
     recording = nil
     web?.stop()
     web = nil
-    native?.stop()
-    native = nil
     injector = nil
     streamer?.stop()
     streamer = nil
@@ -123,7 +112,7 @@ import AppletCore
   /// The running window a noodlet can play on another display, whichever runtime draws it.
   func castTarget(for key: String) -> NoodletCastTarget? {
     sessions.values.lazy.filter { $0.package.key == key }
-      .compactMap { $0.web as NoodletCastTarget? ?? $0.native }.first
+      .compactMap(\.web).first
   }
   func package(showing window: NSWindow?) -> NoodletPackage? {
     guard let window else { return nil }
@@ -187,16 +176,6 @@ import AppletCore
         if fromHub(identity, path: nil) { library.markHub(package.key) }
         request.path = package.url.path
         request.noodletID = nil
-      }
-      if request.operation == .typecheck {
-        let sources = (request.files ?? [:]).filter { $0.key.hasSuffix(".swift") }
-        guard !sources.isEmpty else { throw AppletError("Provide --path to a Swift file or folder.") }
-        let result = try await NativeRunner.typecheck(sources, root: library.root)
-        var response = AppletResponse()
-        response.state = result.passed ? "valid" : "failed"
-        response.text = result.diagnostics
-        if !result.passed { response.error = "Typecheck failed. Read text for compiler diagnostics." }
-        return response
       }
       if request.operation == .info {
         let package: NoodletPackage
@@ -353,7 +332,6 @@ import AppletCore
         guard let socket else { throw AppletError("A live view needs a connection of its own.") }
         let streamer = session.streamer ?? SurfaceStreamer(capture: { [weak session] in
           guard let session else { return nil }
-          if session.state == "running", let native = session.native { return (try await native.liveFrame(), session.size) }
           guard let picture = try await session.snapshot().cgImage(forProposedRect: nil, context: nil, hints: nil) else {
             throw AppletError("The noodlet cannot be shown.")
           }
@@ -382,9 +360,9 @@ import AppletCore
         var start = request
         start.mode = request.mode ?? (session.dataRoot.lastPathComponent == "Testing" ? "headless" : session.mode)
         start.testClock = request.testClock ?? (start.mode == "headless" && session.testClock)
-        try validateClock(start, package: session.package)
+        try validateClock(start)
         // A noodlet the user is watching stays up until its next version takes its place.
-        let place = start.mode == "foreground" ? await session.place() : nil
+        let place = start.mode == "foreground" ? session.place() : nil
         // One the user has closed comes back out of sight: only they bring a noodlet to the front.
         if place == nil, start.mode == "foreground" { start.mode = "background" }
         func retire() {
@@ -405,10 +383,7 @@ import AppletCore
         try await show(session)
         return status(session)
       case .hide:
-        if let web = session.web { web.hide() }
-        if let native = session.native {
-          _ = try await native.perform(AppletRequest(.hide))
-        }
+        session.web?.hide()
         session.mode = session.dataRoot.lastPathComponent == "Testing" ? "headless" : "background"
         return status(session)
       case .screenshot, .present:
@@ -464,14 +439,8 @@ import AppletCore
         if request.operation == .step, !session.testClock {
           throw AppletError("step requires an HTML session opened with --mode headless --test-clock.", code: "unsupported-operation")
         }
-        let result: String
-        if let web = session.web {
-          result = try await web.perform(request)
-        } else if let native = session.native {
-          result = try await native.perform(request)
-        } else {
-          throw AppletError("No runner is attached.")
-        }
+        guard let web = session.web else { throw AppletError("No runner is attached.") }
+        let result = try await web.perform(request)
         var response = status(session)
         response.value = result
         return response
@@ -501,8 +470,7 @@ import AppletCore
     response.state = "available"
     return response
   }
-  /// What a person watching remotely did: real events in an HTML noodlet, the noodlet's own
-  /// controls in a native one.
+  /// What a person watching remotely did, as real events in the noodlet's page.
   func deliver(_ input: SurfaceInput, to session: AppletSession) async throws {
     guard session.state == "running" else {
       throw AppletError("Session \(session.id) is \(session.state).", code: "session-not-running")
@@ -518,23 +486,7 @@ import AppletCore
       try session.injector?.injector.deliver(input)
       return
     }
-    guard let native = session.native else { throw AppletError("The noodlet has no view.") }
-    guard let request = Self.nativeRequest(for: input, session: session.id) else { return }
-    _ = try await native.perform(request)
-  }
-  /// What a remote viewer did as a native noodlet's runtime takes it: a click where the pointer
-  /// lifts, a scroll, typing, or a key by name, held keys going down and coming up on their own.
-  static func nativeRequest(for input: SurfaceInput, session: UUID) -> AppletRequest? {
-    var request: AppletRequest
-    switch input {
-    case .pointer(.up, let x, let y, _): request = AppletRequest(.click, sessionID: session); request.x = x; request.y = y
-    case .pointer: return nil
-    case .scroll(_, _, let dx, let dy): request = AppletRequest(.scroll, sessionID: session); request.toX = dx; request.toY = dy
-    case .text(let text): request = AppletRequest(.type, sessionID: session); request.text = text
-    case .hold(let key, let pressed): request = AppletRequest(.key, sessionID: session); request.text = key; request.pressed = pressed
-    case .key(let key): request = AppletRequest(.key, sessionID: session); request.text = key.rawValue
-    }
-    return request
+    throw AppletError("The noodlet has no view.")
   }
   private func belongs(_ package: NoodletPackage, owner: String) -> Bool {
     library.owner(of: package.url) == owner
@@ -558,16 +510,16 @@ import AppletCore
       return $0.id.uuidString > $1.id.uuidString
     }.first
   }
-  private func validateClock(_ request: AppletRequest, package: NoodletPackage) throws {
-    if request.testClock == true, request.mode != "headless" || package.manifest.runtime != "html" {
-      throw AppletError("--test-clock requires HTML and --mode headless.", code: "unsupported-operation")
+  private func validateClock(_ request: AppletRequest) throws {
+    if request.testClock == true, request.mode != "headless" {
+      throw AppletError("--test-clock requires --mode headless.", code: "unsupported-operation")
     }
   }
   private func launch(
     _ package: NoodletPackage, request: AppletRequest, owner: String, in place: WindowPlace? = nil
   ) async throws -> AppletResponse
   {
-    try validateClock(request, package: package)
+    try validateClock(request)
     let session = try AppletSession(
       package: package, owner: owner, mode: request.mode ?? "background",
       size: (package.manifest.window ?? NoodletWindowOptions()).size(
@@ -581,79 +533,40 @@ import AppletCore
       if request.operation != .build, let refusal = await authorize(package) {
         throw AppletError(refusal, code: "permission-denied")
       }
-      if package.manifest.runtime == "html" {
-        if request.operation == .build {
-          session.state = "built"
-          session.lock = nil
-          session.native = nil
-          return status(session)
-        }
-        let storeKey =
-          "store.\(package.key).\(session.mode == "headless" ? "test" : "user")"
-        let storeID =
-          defaults.string(forKey: storeKey).flatMap(UUID.init(uuidString:))
-          ?? UUID()
-        defaults.set(storeID.uuidString, forKey: storeKey)
-        let runner = WebRunner(
-          package: package, dataRoot: session.dataRoot, log: session.log,
-          size: session.size, storeID: storeID,
-          rememberFrame: session.mode != "headless" && request.width == nil && request.height == nil,
-          testClock: session.testClock
-        )
-        runner.failed = { [weak self, weak session] message in
-          guard let session else { return }
-          session.stop()
-          session.state = "failed"
-          session.failure = message
-          _ = self?.status(session)
-          self?.objectWillChange.send()
-        }
-        runner.closed = { [weak self, weak session] in
-          guard let session else { return }
-          session.stop()
-          _ = self?.status(session)
-          self?.objectWillChange.send()
-        }
-        runner.castChanged = { [weak self] in self?.objectWillChange.send() }
-        session.web = runner
-        try await runner.start(foreground: session.mode == "foreground", in: place)
-      } else {
-        let runner = NativeRunner(
-          package: package, dataRoot: session.dataRoot,
-          buildRoot: library.root.appendingPathComponent(
-            "Builds/\(session.id.uuidString)"), log: session.log)
-        // Authorization already passed, so every declared permission is granted.
-        runner.devices = package.manifest.permissions ?? []
-        runner.castChanged = { [weak self] in self?.objectWillChange.send() }
-        session.native = runner
-        session.state = "building"
-        _ = status(session)
-        objectWillChange.send()
-        try await runner.build()
-        guard session.state != "stopped" else { throw AppletError("Build cancelled.") }
-        if request.operation == .build {
-          session.state = "built"
-          session.lock = nil
-          session.native = nil
-          return status(session)
-        }
-        runner.exited = { [weak self, weak session, weak runner] code, signal in
-          guard let session else { return }
-          if session.state != "stopped" {
-            session.state = code == 0 ? "stopped" : "failed"
-            let reason = code == 0 ? nil : runner?.firstErrorLine
-            let summary = "Native process \(signal ? "signal":"status") \(code)\(reason.map { ": \($0)" } ?? ".")"
-            if code != 0 { session.failure = summary }
-            session.log.append(signal ? "crash" : "exit", summary)
-            session.lock = nil
-          }
-          _ = self?.status(session)
-          self?.objectWillChange.send()
-        }
-        try await runner.start(
-          mode: session.mode, size: session.size,
-          rememberFrame: request.width == nil && request.height == nil, in: place)
+      if request.operation == .build {
+        session.state = "built"
+        session.lock = nil
+        return status(session)
       }
+      let storeKey =
+        "store.\(package.key).\(session.mode == "headless" ? "test" : "user")"
+      let storeID =
+        defaults.string(forKey: storeKey).flatMap(UUID.init(uuidString:))
+        ?? UUID()
+      defaults.set(storeID.uuidString, forKey: storeKey)
+      let runner = WebRunner(
+        package: package, dataRoot: session.dataRoot, log: session.log,
+        size: session.size, storeID: storeID,
+        rememberFrame: session.mode != "headless" && request.width == nil && request.height == nil,
+        testClock: session.testClock
+      )
+      runner.failed = { [weak self, weak session] message in
+        guard let session else { return }
+        session.stop()
+        session.state = "failed"
+        session.failure = message
+        _ = self?.status(session)
+        self?.objectWillChange.send()
+      }
+      runner.closed = { [weak self, weak session] in
+        guard let session else { return }
+        session.stop()
+        _ = self?.status(session)
+        self?.objectWillChange.send()
+      }
+      runner.castChanged = { [weak self] in self?.objectWillChange.send() }
+      session.web = runner
+      try await runner.start(foreground: session.mode == "foreground", in: place)
       session.state = "running"
       session.log.append("lifecycle", "Ready.")
       library.remember(package)
@@ -717,8 +630,7 @@ import AppletCore
     guard session.state == "running" else {
       throw AppletError("Session \(session.id) (\(session.mode)) is \(session.state).", code: "session-not-running")
     }
-    if let web = session.web { web.show() }
-    if let native = session.native { _ = try await native.perform(AppletRequest(.show)) }
+    session.web?.show()
     session.mode = "foreground"
   }
   private func status(_ session: AppletSession) -> AppletResponse {
@@ -729,15 +641,13 @@ import AppletCore
     response.mode = session.mode
     response.dataScope = session.dataRoot.lastPathComponent == "Testing" ? "test" : "user"
     response.testClock = session.testClock
-    response.viewAvailable = session.state == "running" && (session.web != nil || session.native != nil)
+    response.viewAvailable = session.state == "running" && session.web != nil
     response.rendering = session.web?.rendering
     response.path = session.package.url.path
-    response.capabilities =
-      session.package.manifest.runtime == "html"
-      ? [
-        "inspect", "eval", "synthetic-input", "screenshot", "silent-video", "storage",
-        "foreground-file-dialogs",
-      ] : ["inspect", "native-input", "view-screenshot", "silent-video", "data-directory"]
+    response.capabilities = [
+      "inspect", "eval", "synthetic-input", "screenshot", "silent-video", "storage",
+      "foreground-file-dialogs",
+    ]
     if session.testClock { response.capabilities?.append("step") }
     let directory = library.root.appendingPathComponent("Sessions")
     try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
