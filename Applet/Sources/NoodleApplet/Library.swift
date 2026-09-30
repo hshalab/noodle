@@ -150,7 +150,7 @@ struct HubPerson: Hashable, Identifiable, Decodable {
     }
     persistRegistrations()
     removeCopies(secrets: secrets)
-    removeSwiftBuilds()
+    removeSwiftBuilds(secrets: secrets)
     scan()
     if watchChanges {
       timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
@@ -177,11 +177,22 @@ struct HubPerson: Hashable, Identifiable, Decodable {
   private static let lists: [(ReferenceWritableKeyPath<AppletLibrary, [String]>, String)] = [
     (\.recent, "recent"), (\.pinned, "pinned"), (\.hidden, "hidden"), (\.hub, "hub"),
   ]
-  // TODO(Applet 0.20.0): remove with its call in init and
-  // LibraryTests.testWhatSwiftNoodletsLeftGoesAndTheirDataStays. Milestone: Applet 0.19.0.
+  // TODO(Applet 0.20.0): remove with installedOrbit, its call in init,
+  // LibraryTests.testWhatSwiftNoodletsLeftGoesAndTheirDataStays and
+  // LibraryTests.testTheSwiftExampleGoesUnlessItWasChanged. Milestone: Applet 0.19.0.
+  /// The Orbital playground example as Applet put it in the library, by its Orbit.swift.
+  static var installedOrbit = "ed26526b98a23950c3ffbf3f58d91f5b8e6d2ca9edb3840fe151babe17b089d9"
   /// Noodlets written in Swift were built under Builds and ran with a private home under Homes.
-  private func removeSwiftBuilds() {
+  /// The Swift example goes too, with what Applet kept for it, unless the person changed it.
+  private func removeSwiftBuilds(secrets: AppletSecrets) {
     for folder in ["Builds", "Homes"] { try? FileManager.default.removeItem(at: root.appendingPathComponent(folder)) }
+    let orbit = Self.canonical(documents.appendingPathComponent("Orbit.\(AppletBuildIdentity.current.fileExtension)"))
+    guard let source = try? Data(contentsOf: orbit.appendingPathComponent("Orbit.swift")),
+      NoodletPackage.digest(source) == Self.installedOrbit,
+      (try? FileManager.default.removeItem(at: orbit)) != nil
+    else { return }
+    forget(NoodletPackage.digest(Data(orbit.path.utf8)), secrets: secrets)
+    for (list, name) in Self.lists { defaults.set(self[keyPath: list], forKey: name) }
   }
   // TODO(Applet 0.13.0): remove with its call in init, LibraryTests.testCopiesFromBeforeGoAndWhatTheyKeptFollowsTheOriginal
   // and LibraryTests.testACopyWhoseOriginalCannotBeReadIsKeptForLater. Milestone: Applet 0.12.0.

@@ -130,7 +130,7 @@ import XCTest
         let old = try session("background"); old.stop()
         let latest = try session("headless")
         var status = AppletRequest(.status); status.noodletID = registered.noodletID; status.owner = "local"
-        for state in ["starting", "building", "running", "failed", "stopped"] {
+        for state in ["starting", "running", "failed", "stopped"] {
             latest.state = state
             let response = try await runtime.handle(status, identity: identity).checked()
             XCTAssertEqual(response.sessionID, latest.id, state)

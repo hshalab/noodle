@@ -120,6 +120,44 @@ final class LibraryTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: root.appendingPathComponent("Data/key/User/state.json").path))
     }
 
+    /// The Orbital playground example Applet put in the library, written in Swift, goes with what
+    /// Applet kept for it, unless the person changed it.
+    // TODO(Applet 0.20.0): remove with AppletLibrary.removeSwiftBuilds. Milestone: Applet 0.19.0.
+    @MainActor func testTheSwiftExampleGoesUnlessItWasChanged() async throws {
+        let original = AppletLibrary.installedOrbit
+        defer { AppletLibrary.installedOrbit = original }
+        AppletLibrary.installedOrbit = NoodletPackage.digest(Data("// orbit".utf8))
+        for (source, removed) in [("// orbit", true), ("// my orbit", false)] {
+            let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            let suite = "AppletLibraryTests." + UUID().uuidString
+            let defaults = UserDefaults(suiteName: suite)!
+            defer {
+                try? FileManager.default.removeItem(at: root)
+                defaults.removePersistentDomain(forName: suite)
+            }
+            let orbit = root.appendingPathComponent("Noodlets/Orbit.\(AppletBuildIdentity.current.fileExtension)")
+            try FileManager.default.createDirectory(at: orbit, withIntermediateDirectories: true)
+            try Data(#"{"version":1,"title":"Orbital playground","runtime":"swift","entry":"Orbit.swift"}"#.utf8)
+                .write(to: orbit.appendingPathComponent("noodlet.json"))
+            try Data(source.utf8).write(to: orbit.appendingPathComponent("Orbit.swift"))
+            let key = NoodletPackage.digest(Data(orbit.resolvingSymlinksInPath().standardizedFileURL.path.utf8))
+            let data = root.appendingPathComponent("Data/\(key)/User/state.json")
+            try FileManager.default.createDirectory(at: data.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data("{}".utf8).write(to: data)
+            defaults.set([key], forKey: "pinned")
+            defaults.set([key], forKey: "recent")
+
+            let library = botLibrary(root: root, defaults: defaults)
+            for _ in 0..<50 where removed && FileManager.default.fileExists(atPath: data.path) {
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            XCTAssertEqual(FileManager.default.fileExists(atPath: orbit.path), !removed, source)
+            XCTAssertEqual(FileManager.default.fileExists(atPath: data.path), !removed, source)
+            XCTAssertEqual(library.pinned, removed ? [] : [key], source)
+            XCTAssertEqual(defaults.stringArray(forKey: "recent"), removed ? [] : [key], source)
+        }
+    }
+
     /// Applet used to keep a copy of each noodlet a bot sent. The copies go, and what Applet kept
     /// for one follows the bot's own noodlet; a copy whose original is gone goes with its data.
     // TODO(Applet 0.13.0): remove with AppletLibrary.removeCopies. Milestone: Applet 0.12.0.

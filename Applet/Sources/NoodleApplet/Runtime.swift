@@ -9,7 +9,7 @@ import AppletCore
   var failure: String?
   let createdAt = Date()
   let testClock: Bool
-  var isActive: Bool { ["starting", "building", "running"].contains(state) }
+  var isActive: Bool { ["starting", "running"].contains(state) }
   /// Whether showing this session would still leave the user without the noodlet
   /// they asked for. A page's sound follows its window, but a test session's data
   /// is fixed when it starts.
@@ -272,10 +272,7 @@ import AppletCore
           response.state = "valid"
           return response
         }
-        if let existing = sessions.values.first(where: {
-          $0.package.key == package.key
-            && ["starting", "building", "running"].contains($0.state)
-        }) {
+        if let existing = sessions.values.first(where: { $0.package.key == package.key && $0.isActive }) {
           guard owner == "local" || existing.owner == owner else {
             throw AppletError("This package is already running for another caller.")
           }
