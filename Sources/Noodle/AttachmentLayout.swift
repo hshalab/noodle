@@ -33,12 +33,26 @@ struct AttachmentGroup<Content: View>: View {
     @ViewBuilder let content: (ConversationAttachment) -> Content
 
     var body: some View {
+        if mode == .stack {
+            // Only files Quick Look pages through together stack; the rest wrap above them, whole.
+            let alone = attachments.filter { !$0.joinsPreviewGallery }
+            let together = attachments.filter(\.joinsPreviewGallery)
+            VStack(alignment: alignment, spacing: 8) {
+                if !alone.isEmpty { rows(alone, mode: .wrap) }
+                if !together.isEmpty { rows(together, mode: .stack) }
+            }
+        } else {
+            rows(attachments, mode: mode)
+        }
+    }
+
+    private func rows(_ attachments: [ConversationAttachment], mode: ChatAttachmentLayout) -> some View {
         let layout = mode == .vertical
             ? AnyLayout(VStackLayout(alignment: alignment, spacing: 3))
             : AnyLayout(WrappingAttachmentLayout(alignment: alignment,
                                                  spacing: mode == .stack ? 12 : 8,
                                                  overlapsAttachments: mode == .stack))
-        layout {
+        return layout {
             ForEach(attachments) { attachment in
                 content(attachment)
                     .background {

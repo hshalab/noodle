@@ -109,6 +109,25 @@ final class AttachmentLayoutTests: XCTestCase {
         }
     }
 
+    /// Stack overlaps only the files Quick Look pages through together; a noodlet wraps above them, whole.
+    @MainActor func testStackOverlapsOnlyFilesThatPreviewTogether() throws {
+        let noodlet = ConversationAttachment(conversationID: UUID(), originalFilename: "Noodlet", storedFilename: "Noodlet",
+            mediaType: "text/uri-list", byteCount: 1, url: NoodletLink.url(for: UUID()))
+        let items = [noodlet, attachment("image/png"), attachment("image/png")]
+        let colors: [Color] = [.red, .green, .blue]
+        let group = AttachmentGroup(attachments: items, mode: .stack, alignment: .leading) { item in
+            colors[items.firstIndex(of: item)!].frame(width: 150, height: 200)
+        }
+        let renderer = ImageRenderer(content: group)
+        renderer.proposedSize = ProposedViewSize(width: 500, height: nil)
+        let image = try XCTUnwrap(renderer.cgImage)
+        XCTAssertEqual(image.width, 213)
+        XCTAssertEqual(image.height, 420)
+        let bitmap = NSBitmapImageRep(cgImage: image)
+        let noodletCorner = try XCTUnwrap(bitmap.colorAt(x: 140, y: 190)?.usingColorSpace(.deviceRGB))
+        XCTAssertGreaterThan(noodletCorner.redComponent, 0.5, "Nothing may cover the noodlet")
+    }
+
     @MainActor func testRealMixedAttachmentsFitNarrowLayoutsAndKeepTheirOrder() throws {
         let f = try StoreFixture()
         defer { f.cleanUp() }
@@ -130,9 +149,11 @@ final class AttachmentLayoutTests: XCTestCase {
                     AttachmentInlinePreview(attachment: item, fileURL: file, shouldLoad: false,
                         isSelected: false, select: {}, preview: {}).environment(f.store)
                 }
-                let sizes = try previews.map { preview in
-                    let renderer = ImageRenderer(content: preview)
-                    renderer.proposedSize = ProposedViewSize(width: mode == .stack ? min(220, width) : width, height: nil)
+                // Stack overlaps only the files Quick Look pages through together; the rest wrap.
+                let stacked = items.map { mode == .stack && $0.joinsPreviewGallery }
+                let sizes = try previews.indices.map { index in
+                    let renderer = ImageRenderer(content: previews[index])
+                    renderer.proposedSize = ProposedViewSize(width: stacked[index] ? min(220, width) : width, height: nil)
                     let image = try XCTUnwrap(renderer.cgImage)
                     XCTAssertLessThanOrEqual(CGFloat(image.width), width, "Every attachment type must fit a narrow chat")
                     return CGSize(width: image.width, height: image.height)
@@ -147,13 +168,19 @@ final class AttachmentLayoutTests: XCTestCase {
                 if mode == .vertical {
                     XCTAssertEqual(CGFloat(image.height), sizes.map(\.height).reduce(0, +) + 15, accuracy: 6)
                 } else {
-                    let plan = AttachmentRowPlan(sizes: sizes, availableWidth: width,
-                        spacing: mode == .stack ? 12 : 8, trailing: true, overlapsAttachments: mode == .stack)
-                    XCTAssertEqual(CGFloat(image.height), plan.size.height, accuracy: 6)
-                    for index in 1..<plan.frames.count {
-                        let previous = plan.frames[index - 1], current = plan.frames[index]
-                        XCTAssertTrue(current.minY > previous.minY || current.minX > previous.minX,
-                            "Mixed attachments must retain their message order")
+                    let parts = mode == .stack ? [false, true] : [false]
+                    let plans = parts.map { overlapping in
+                        AttachmentRowPlan(sizes: sizes.indices.filter { stacked[$0] == overlapping }.map { sizes[$0] },
+                            availableWidth: width, spacing: overlapping ? 12 : 8, trailing: true, overlapsAttachments: overlapping)
+                    }
+                    XCTAssertEqual(CGFloat(image.height), plans.map(\.size.height).reduce(0, +) + CGFloat(plans.count - 1) * 8,
+                                   accuracy: 6)
+                    for plan in plans {
+                        for index in plan.frames.indices.dropFirst() {
+                            let previous = plan.frames[index - 1], current = plan.frames[index]
+                            XCTAssertTrue(current.minY > previous.minY || current.minX > previous.minX,
+                                "Mixed attachments must retain their message order")
+                        }
                     }
                 }
             }
@@ -198,7 +225,8 @@ final class AttachmentLayoutTests: XCTestCase {
             let vertical = try XCTUnwrap(heights[.vertical])
             XCTAssertLessThan(try XCTUnwrap(heights[.wrap]), vertical / 2,
                 "Six annotation cards should share rows instead of filling one tall column")
-            XCTAssertLessThan(try XCTUnwrap(heights[.stack]), try XCTUnwrap(heights[.wrap]))
+            XCTAssertEqual(try XCTUnwrap(heights[.stack]), try XCTUnwrap(heights[.wrap]),
+                "Annotations open on their own, so Stack wraps them as Wrap does")
         }
     }
 

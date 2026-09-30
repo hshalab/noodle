@@ -235,6 +235,33 @@ enum AttachmentLayout: String, CaseIterable, Identifiable {
     }
 }
 
+/// A message's files, as on the Mac: Stack overlaps only files that swipe together; the rest wrap above them, whole.
+struct MessageAttachments<Content: View>: View {
+    let attachments: [LinkAttachment]
+    let mode: AttachmentLayout
+    let trailing: Bool
+    /// An attachment's view, told whether it shares a row with others.
+    @ViewBuilder let content: (LinkAttachment, Bool) -> Content
+
+    var body: some View {
+        let parts = mode == .stack ? LinkAttachment.arranged(attachments) : (alone: [], together: attachments)
+        VStack(alignment: trailing ? .trailing : .leading, spacing: 8) {
+            if !parts.alone.isEmpty { rows(parts.alone, mode: .wrap) }
+            if !parts.together.isEmpty { rows(parts.together, mode: mode) }
+        }
+    }
+
+    private func rows(_ attachments: [LinkAttachment], mode: AttachmentLayout) -> some View {
+        let together = mode != .vertical && attachments.count > 1
+        return AttachmentRows(mode: mode, trailing: trailing) {
+            ForEach(attachments) { attachment in
+                content(attachment, together)
+                    .shadow(color: mode == .stack && together ? .black.opacity(0.3) : .clear, radius: 3, y: 2)
+            }
+        }
+    }
+}
+
 /// Places a message's files by `mode`, each at its own size. Measuring and placing share one plan.
 struct AttachmentRows: Layout {
     let mode: AttachmentLayout

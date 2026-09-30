@@ -12,6 +12,7 @@ All notable changes to Noodle are documented here, following
 
 ### Changed
 
+- Stack overlaps only files Quick Look pages through together; noodlets, browsers, computers, voice messages and annotations sit side by side above them.
 - Hold ⌘, ⌥ or ⇧ while clicking a web link or a file to skip Quick Look: links open in your browser, files in their default app.
 
 ### Fixed

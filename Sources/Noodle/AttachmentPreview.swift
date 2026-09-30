@@ -25,7 +25,7 @@ extension ConversationAttachment {
     var opensInCompanion: Bool { companionKey != nil }
 
     /// Plain files open in Quick Look together; links, voice messages and annotations open on their own.
-    private var joinsPreviewGallery: Bool { annotation == nil && url == nil && voice == nil && !opensInCompanion }
+    var joinsPreviewGallery: Bool { annotation == nil && url == nil && voice == nil && !opensInCompanion }
 
     /// The files Quick Look pages through when one attachment of a message opens, and where it starts.
     static func previewGallery(opening attachment: ConversationAttachment,

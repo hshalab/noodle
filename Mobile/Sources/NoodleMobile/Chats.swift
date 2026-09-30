@@ -1581,13 +1581,9 @@ private struct Bubble: View {
             LinkPreviewCard(url: url)
         }
         if !message.attachments.isEmpty {
-            let mode = AttachmentLayout(rawValue: attachmentLayout) ?? .standard
-            let together = mode != .vertical && message.attachments.count > 1
-            AttachmentRows(mode: mode, trailing: message.author == .you) {
-                ForEach(message.attachments) { attachment in
-                    AttachmentView(chats: chats, thread: thread, attachment: attachment, group: message.attachments, compact: together)
-                        .shadow(color: mode == .stack && together ? .black.opacity(0.3) : .clear, radius: 3, y: 2)
-                }
+            MessageAttachments(attachments: message.attachments, mode: AttachmentLayout(rawValue: attachmentLayout) ?? .standard,
+                               trailing: message.author == .you) { attachment, compact in
+                AttachmentView(chats: chats, thread: thread, attachment: attachment, group: message.attachments, compact: compact)
             }
             .modifier(Reactions(badges: reactions, shown: !showsText && !message.reactions.isEmpty, trailing: message.author == .you))
         }

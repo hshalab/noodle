@@ -4,7 +4,12 @@
 
 ### What to Test
 
+- With Stack chosen for files, open a message with a noodlet and several pictures: the noodlet sits whole above them, and only the pictures overlap.
 - Press return in an empty message field, go back to the list and open the conversation again: the field is empty, says Message, and is as tall as the plus beside it.
+
+### Changed
+
+- Stack overlaps only files you can swipe through together, as on the Mac; noodlets, browsers, computers and voice messages sit side by side above them.
 
 ### Fixed
 
