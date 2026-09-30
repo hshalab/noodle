@@ -1,3 +1,4 @@
+import CryptoKit
 import HubLink
 import ImageIO
 @preconcurrency import LinkPresentation
@@ -364,55 +365,140 @@ enum LinkPreview {
     }
 }
 
-/// Fetches each link's preview once per launch, failures included.
-@MainActor final class LinkMetadataCache {
-    static let shared = LinkMetadataCache()
-    private var results: [URL: LPLinkMetadata?] = [:]
-    private var pending: [URL: Task<LPLinkMetadata?, Never>] = [:]
+/// What a link's card shows.
+struct LinkCard: Codable, Equatable {
+    var title: String
+    var site: String
+    var image: Data?
 
-    func metadata(for url: URL) async -> LPLinkMetadata? {
-        if let result = results[url] { return result }
-        let task = pending[url] ?? Task {
-            let provider = LPMetadataProvider()
-            provider.timeout = 10
-            return try? await provider.startFetchingMetadata(for: url)
-        }
-        pending[url] = task
-        let result = await task.value
-        results[url] = result
-        pending[url] = nil
-        return result
+    /// The card of a page that gave nothing away: its site alone.
+    init(site url: URL) {
+        let host = url.host() ?? url.absoluteString
+        let site = host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+        self.init(title: site, site: site, image: nil)
+    }
+
+    init(title: String, site: String, image: Data?) {
+        self.title = title
+        self.site = site
+        self.image = image
     }
 }
 
+/// Link cards, fetched once and kept on this phone with their conversation until it is deleted.
+/// A page that gives nothing away gets a card naming its site and is tried again next launch.
+@MainActor final class LinkPreviews {
+    typealias Fetch = @MainActor (URL) async -> LinkCard?
+
+    private let folder: URL
+    private let fetch: Fetch
+    private var cards: [URL: LinkCard] = [:]
+    private var pending: [URL: Task<LinkCard, Never>] = [:]
+
+    init(folder: URL, fetch: @escaping Fetch = LinkPreviews.fetched) {
+        self.folder = folder
+        self.fetch = fetch
+    }
+
+    func card(for url: URL, in conversationID: UUID) async -> LinkCard {
+        let file = self.file(for: url, in: conversationID)
+        if let card = cards[file] { return card }
+        if let data = try? Data(contentsOf: file), let card = try? JSONDecoder().decode(LinkCard.self, from: data) {
+            cards[file] = card
+            return card
+        }
+        let task = pending[file] ?? Task {
+            guard let card = await fetch(url) else { return LinkCard(site: url) }
+            try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? JSONEncoder().encode(card).write(to: file, options: .atomic)
+            return card
+        }
+        pending[file] = task
+        let card = await task.value
+        cards[file] = card
+        pending[file] = nil
+        return card
+    }
+
+    func forget(_ conversationID: UUID) {
+        try? FileManager.default.removeItem(at: folder.appendingPathComponent(conversationID.uuidString, isDirectory: true))
+        cards = cards.filter { $0.key.deletingLastPathComponent().lastPathComponent != conversationID.uuidString }
+    }
+
+    /// Forgets the cards of every conversation but these.
+    func keep(only conversationIDs: Set<UUID>) {
+        let names = Set(conversationIDs.map(\.uuidString))
+        for folder in (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
+        where !names.contains(folder.lastPathComponent) {
+            if let id = UUID(uuidString: folder.lastPathComponent) { forget(id) }
+        }
+    }
+
+    private func file(for url: URL, in conversationID: UUID) -> URL {
+        let name = SHA256.hash(data: Data(url.absoluteString.utf8)).map { String(format: "%02x", $0) }.joined()
+        return folder.appendingPathComponent(conversationID.uuidString, isDirectory: true).appendingPathComponent(name + ".json")
+    }
+
+    /// The page's title and picture, fetched from the phone. The picture is kept small.
+    static func fetched(_ url: URL) async -> LinkCard? {
+        let provider = LPMetadataProvider()
+        provider.timeout = 10
+        guard let metadata = try? await provider.startFetchingMetadata(for: url) else { return nil }
+        let image: Data? = await withCheckedContinuation { continuation in
+            guard let item = metadata.imageProvider, item.canLoadObject(ofClass: UIImage.self) else { return continuation.resume(returning: nil) }
+            item.loadObject(ofClass: UIImage.self) { object, _ in
+                guard let image = object as? UIImage, image.size.width > 0 else { return continuation.resume(returning: nil) }
+                let width = min(image.size.width * image.scale, 560)
+                let size = CGSize(width: width, height: (width * image.size.height / image.size.width).rounded())
+                let format = UIGraphicsImageRendererFormat()
+                format.scale = 1
+                continuation.resume(returning: UIGraphicsImageRenderer(size: size, format: format)
+                    .jpegData(withCompressionQuality: 0.8) { _ in image.draw(in: CGRect(origin: .zero, size: size)) })
+            }
+        }
+        let site = LinkCard(site: url).site
+        return LinkCard(title: metadata.title.flatMap { $0.isEmpty ? nil : $0 } ?? site, site: site, image: image)
+    }
+}
+
+/// The card for the first public web link in a message, drawn as on the Mac.
 struct LinkPreviewCard: View {
     let url: URL
-    @State private var metadata: LPLinkMetadata?
+    let previews: LinkPreviews
+    let conversationID: UUID
+    @State private var card: LinkCard?
     @Environment(\.openURL) private var openURL
 
     var body: some View {
-        Group {
-            if let metadata {
-                // Tapped here rather than in the card, so the link opens as the conversation's other links do.
-                Button { openURL(url) } label: {
-                    LinkPresentationView(metadata: metadata).frame(maxWidth: 280).allowsHitTesting(false)
+        // Tapped here rather than in the card, so the link opens as the conversation's other links do.
+        Button { openURL(url) } label: {
+            VStack(alignment: .leading, spacing: 0) {
+                ZStack {
+                    Color.black.opacity(0.28)
+                    if let data = card?.image, let image = UIImage(data: data) {
+                        Image(uiImage: image).resizable().scaledToFill()
+                            .frame(width: 280, height: 158, alignment: .top)
+                    } else if card == nil {
+                        ProgressView()
+                    } else {
+                        Image(systemName: "link").font(.system(size: 26, weight: .light)).foregroundStyle(.secondary)
+                    }
                 }
-                .buttonStyle(.plain)
+                .frame(width: 280, height: 158)
+                .clipped()
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(card?.title ?? LinkCard(site: url).title)
+                        .font(.subheadline.weight(.semibold)).lineLimit(2).multilineTextAlignment(.leading)
+                    Text(card?.site ?? LinkCard(site: url).site).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+                .padding(.horizontal, 12).padding(.vertical, 10)
+                .frame(width: 280, alignment: .leading)
             }
+            .background(Color(.tertiarySystemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
-        .task(id: url) { metadata = await LinkMetadataCache.shared.metadata(for: url) }
-    }
-}
-
-private struct LinkPresentationView: UIViewRepresentable {
-    let metadata: LPLinkMetadata
-
-    func makeUIView(context: Context) -> LPLinkView { LPLinkView(metadata: metadata) }
-
-    func updateUIView(_ view: LPLinkView, context: Context) {}
-
-    func sizeThatFits(_ proposal: ProposedViewSize, uiView: LPLinkView, context: Context) -> CGSize? {
-        uiView.sizeThatFits(CGSize(width: proposal.width ?? 280, height: .greatestFiniteMagnitude))
+        .buttonStyle(.plain)
+        .task(id: url) { card = await previews.card(for: url, in: conversationID) }
     }
 }
 

@@ -54,6 +54,7 @@ enum HubThread: HubConversation {
 /// The bots and groups this phone's user keeps on the Hub and their conversations, kept current from the Hub's events.
 @MainActor @Observable final class HubChats {
     let pairing: HubPairing
+    @ObservationIgnored let linkPreviews: LinkPreviews
     private(set) var agents: [LinkBot] = []
     private(set) var groups: [LinkGroup] = []
     var error: String?
@@ -97,6 +98,7 @@ enum HubThread: HubConversation {
 
     init(pairing: HubPairing) {
         self.pairing = pairing
+        linkPreviews = LinkPreviews(folder: pairing.directory.appendingPathComponent("Link Previews", isDirectory: true))
         pinned = Set((try? JSONDecoder().decode([UUID].self, from: Data(contentsOf: pairing.directory.appendingPathComponent("pins.json")))) ?? [])
         seen = try? JSONDecoder().decode([UUID: Date].self, from: Data(contentsOf: seenURL))
         drafts = (try? JSONDecoder().decode([UUID: String].self, from: Data(contentsOf: draftsURL))) ?? [:]
@@ -301,6 +303,7 @@ enum HubThread: HubConversation {
     private func forget(_ conversation: some HubConversation) {
         conversations[conversation.conversationID] = nil
         read[conversation.conversationID] = nil
+        linkPreviews.forget(conversation.conversationID)
         if seen?.removeValue(forKey: conversation.conversationID) != nil { saveSeen() }
         if pinned.remove(conversation.id) != nil { savePins() }
     }
@@ -460,6 +463,7 @@ enum HubThread: HubConversation {
     private func forgetGone() {
         let kept = Set(threads.map(\.conversationID))
         conversations = conversations.filter { kept.contains($0.key) }
+        linkPreviews.keep(only: kept)
     }
 
     /// Your messages the Hub has not confirmed, kept on this phone with their files to send again.
@@ -1578,7 +1582,7 @@ private struct Bubble: View {
                 .modifier(Reactions(badges: reactions, shown: !message.reactions.isEmpty, trailing: message.author == .you))
         }
         if let url = LinkPreview.firstURL(in: message.body) {
-            LinkPreviewCard(url: url)
+            LinkPreviewCard(url: url, previews: chats.linkPreviews, conversationID: thread.conversationID)
         }
         if !message.attachments.isEmpty {
             MessageAttachments(attachments: message.attachments, mode: AttachmentLayout(rawValue: attachmentLayout) ?? .standard,

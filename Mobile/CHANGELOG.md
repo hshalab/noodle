@@ -4,15 +4,19 @@
 
 ### What to Test
 
+- Open a conversation where a bot sent a web link: a card with the page's picture and title shows under the message. Quit and reopen Noodle, or turn on Airplane Mode: the card is still there.
+- A link to a page that shares no preview still gets a card with the site's name.
 - With Stack chosen for files, open a message with a noodlet and several pictures: the noodlet sits whole above them, and only the pictures overlap.
 - Press return in an empty message field, go back to the list and open the conversation again: the field is empty, says Message, and is as tall as the plus beside it.
 
 ### Changed
 
+- Link cards look as on the Mac, and are kept on this iPhone until their conversation is deleted, instead of being fetched again each time Noodle opens.
 - Stack overlaps only files you can swipe through together, as on the Mac; noodlets, browsers, computers and voice messages sit side by side above them.
 
 ### Fixed
 
+- A link to a page that shares no preview showed no card at all.
 - A message field left with only blank lines no longer comes back taller than the plus beside it, without its placeholder.
 
 ## [0.10.0] - 2026-09-30
