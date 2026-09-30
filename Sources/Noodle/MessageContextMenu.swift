@@ -9,6 +9,7 @@ struct MessageContextMenu: NSViewRepresentable {
     let copy: () -> Void
     let preview: (() -> Void)?
     let reveal: (() -> Void)?
+    var save: (() -> Void)? = nil
     var backgroundImageURL: URL? = nil
     var useAsBackground: (() -> Void)? = nil
     var backgroundTargetName: String = "this conversation"
@@ -56,6 +57,9 @@ struct MessageContextMenu: NSViewRepresentable {
             }
             if let preview = configuration.preview {
                 addItem("Quick Look", symbol: "eye", to: menu, action: preview)
+            }
+            if let save = configuration.save {
+                addItem("Save…", symbol: "square.and.arrow.down", to: menu, action: save)
             }
             if let reveal = configuration.reveal {
                 addItem("Show in Finder", symbol: "folder", to: menu, action: reveal)

@@ -111,6 +111,25 @@ final class AttachmentDragTests: XCTestCase {
         }
     }
 
+    func testSaveWritesTheOriginalBytesAndReplacesTheChosenFile() throws {
+        let root = try directory(), source = root.appendingPathComponent("stored-file")
+        let destination = root.appendingPathComponent("Chosen.pdf")
+        try Data("original".utf8).write(to: source)
+        try Data("older file the person chose to replace".utf8).write(to: destination)
+        try AttachmentDrag.save(fileURL: source, to: destination)
+        XCTAssertEqual(try String(contentsOf: destination, encoding: .utf8), "original")
+        XCTAssertEqual(try String(contentsOf: source, encoding: .utf8), "original")
+        XCTAssertThrowsError(try AttachmentDrag.save(fileURL: root, to: root.appendingPathComponent("Folder")))
+    }
+
+    func testOnlyFilesOfferSaving() {
+        XCTAssertTrue(attachment("Report.pdf").isSavable)
+        for url in [URL(string: "https://example.com")!, CompanionLink.noodlet(UUID()).url] {
+            XCTAssertFalse(ConversationAttachment(conversationID: UUID(), originalFilename: "Link.webloc",
+                storedFilename: "stored-file", mediaType: "application/x-webloc", byteCount: 7, url: url).isSavable)
+        }
+    }
+
     @MainActor func testStoreReportsMissingAttachmentWithoutOfferingBrokenFileURL() throws {
         let fixture = try StoreFixture()
         defer { fixture.cleanUp() }

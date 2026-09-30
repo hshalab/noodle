@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### What to Test
+
+- Press return in an empty message field, go back to the list and open the conversation again: the field is empty, says Message, and is as tall as the plus beside it.
+
+### Fixed
+
+- A message field left with only blank lines no longer comes back taller than the plus beside it, without its placeholder.
+
 ## [0.10.0] - 2026-09-30
 
 ### Changed

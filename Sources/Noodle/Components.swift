@@ -374,6 +374,7 @@ struct MessageBubble: View {
             },
             preview: attachment.map { item in { previewAttachment(item, store.attachments(for: message)) } },
             reveal: attachment.map { item in { store.revealAttachment(item) } },
+            save: attachment.flatMap { item in item.isSavable ? { store.saveAttachment(item) } : nil },
             backgroundImageURL: attachment.map { store.attachmentFileURL($0) },
             useAsBackground: attachment.map { item in
                 { Task { await store.useAttachmentAsBackground(item) } }

@@ -395,6 +395,27 @@ private actor RecordedSubscriptions: PushSubscriptions {
         #expect(!chats.isLoaded)
     }
 
+    /// A draft of nothing but blank lines or spaces is not kept, so the field comes back empty, at its usual size.
+    @Test func aBlankDraftIsNotKept() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let chats = HubChats(pairing: HubPairing(directory: directory, deviceName: "iPhone"))
+        try FileManager.default.createDirectory(at: chats.pairing.directory, withIntermediateDirectories: true)
+        let scout = LinkBot(id: UUID(), conversationID: UUID(), draft: LinkBotDraft(name: "Scout", provider: "claude"),
+                            createdAt: Date(timeIntervalSince1970: 0))
+        let atlas = LinkBot(id: UUID(), conversationID: UUID(), draft: LinkBotDraft(name: "Atlas", provider: "codex"),
+                            createdAt: Date(timeIntervalSince1970: 0))
+        chats.setDraft("Hello\n", for: scout)
+        chats.setDraft("\n", for: scout)
+        #expect(chats.draft(for: scout) == "")
+        #expect(HubChats(pairing: HubPairing(directory: directory, deviceName: "iPhone")).draft(for: scout) == "")
+
+        // One saved before blank drafts were dropped comes back empty too.
+        try JSONEncoder().encode([atlas.conversationID: " \n "])
+            .write(to: chats.pairing.directory.appendingPathComponent("drafts.json"), options: .atomic)
+        #expect(HubChats(pairing: HubPairing(directory: directory, deviceName: "iPhone")).draft(for: atlas) == "")
+    }
+
     @Test func aDeletedBotLeavesTheListThePinsAndTheSavedCopy() async throws {
         let hub = FakeHub()
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

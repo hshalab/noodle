@@ -27,6 +27,17 @@ final class AppIdentityTests: XCTestCase {
         XCTAssertTrue(info.contains("<key>NSCameraUsageDescription</key>"))
     }
 
+    /// Saving an attachment writes only where the person chooses in the save panel; no folder is open otherwise.
+    func testSandboxPolicyWritesOnlyWhereThePersonSaves() throws {
+        let policy = try Self.sandboxPolicy()
+        XCTAssertEqual(policy["com.apple.security.files.user-selected.read-write"] as? Bool, true)
+        XCTAssertNil(policy["com.apple.security.files.user-selected.read-only"])
+        XCTAssertNil(policy["com.apple.security.files.downloads.read-write"])
+        let script = try String(contentsOf: Self.repository.appendingPathComponent("scripts/verify-noodle-release.sh"),
+                                encoding: .utf8)
+        XCTAssertTrue(script.contains("<key>com.apple.security.files.user-selected.read-write</key><true/>"))
+    }
+
     /// Release verification pins how many entitlements the reviewed policy has, so an unreviewed one
     /// cannot ship: the policy alone, and a public release's, with its iCloud container and the two
     /// keys its provisioning profile adds. The pins have to follow the policy when it changes.

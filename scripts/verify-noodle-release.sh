@@ -34,7 +34,7 @@ elif [[ "${NOODLE_REQUIRE_DEVELOPER_ID:-0}" == "1" ]]; then
 fi
 if [[ "$entitlement_count" != "$expected_count" ]] \
     || ! print -r -- "$app_entitlements" | grep -q '<key>com.apple.security.app-sandbox</key><true/>' \
-    || ! print -r -- "$app_entitlements" | grep -q '<key>com.apple.security.files.user-selected.read-only</key><true/>' \
+    || ! print -r -- "$app_entitlements" | grep -q '<key>com.apple.security.files.user-selected.read-write</key><true/>' \
     || ! print -r -- "$app_entitlements" | grep -q '<key>com.apple.security.network.client</key><true/>' \
     || ! print -r -- "$app_entitlements" | grep -q '<key>com.apple.security.network.server</key><true/>' \
     || ! print -r -- "$app_entitlements" | grep -q '<key>com.apple.security.device.audio-input</key><true/>' \

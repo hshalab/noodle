@@ -147,11 +147,16 @@ enum HubThread: HubConversation {
 
     private var backgroundsFolder: URL { pairing.directory.appendingPathComponent("Backgrounds", isDirectory: true) }
 
-    func draft(for conversation: some HubConversation) -> String { drafts[conversation.conversationID] ?? "" }
+    /// A draft of nothing but blank lines or spaces is no draft: the field comes back empty, at its usual size.
+    func draft(for conversation: some HubConversation) -> String {
+        let draft = drafts[conversation.conversationID] ?? ""
+        return draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "" : draft
+    }
 
     func setDraft(_ text: String, for conversation: some HubConversation) {
-        guard drafts[conversation.conversationID, default: ""] != text else { return }
-        drafts[conversation.conversationID] = text.isEmpty ? nil : text
+        let kept = text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : text
+        guard drafts[conversation.conversationID] != kept else { return }
+        drafts[conversation.conversationID] = kept
         try? JSONEncoder().encode(drafts).write(to: draftsURL, options: .atomic)
     }
 
