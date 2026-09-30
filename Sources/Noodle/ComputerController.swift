@@ -188,6 +188,11 @@ import SwiftUI
         }
     }
     func selectedIDs(for agent: AgentRecord) -> Set<UUID> { registry.assigned(to: agent.id) }
+    /// The listed computers a person can open from the bot's profile.
+    func assigned(to agent: AgentRecord) -> [RemoteComputer] {
+        let ids = selectedIDs(for: agent)
+        return registry.computers.filter { ids.contains($0.id) }
+    }
     func validate(_ ids: Set<UUID>) throws {
         guard readable else { throw ComputerBridgeError("Computer assignments could not be read.") }
         guard ids.isSubset(of: Set(registry.computers.map(\.id))) else { throw ComputerBridgeError("One of the selected computers is no longer registered.") }

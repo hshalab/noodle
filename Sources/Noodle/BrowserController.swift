@@ -37,6 +37,11 @@ import SwiftUI
         }
     }
     func selectedIDs(for agent: AgentRecord) -> Set<UUID> { registry.assigned(to: agent.id) }
+    /// The listed browsers a person can open from the bot's profile.
+    func assigned(to agent: AgentRecord) -> [RemoteBrowser] {
+        let ids = selectedIDs(for: agent)
+        return registry.browsers.filter { ids.contains($0.id) }
+    }
     func validate(_ ids: Set<UUID>) throws {
         guard readable, ids.isSubset(of: Set(registry.browsers.map(\.id))) else { throw BrowserError("One of the selected browsers is unavailable.") }
     }

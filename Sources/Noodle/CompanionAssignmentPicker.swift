@@ -185,7 +185,7 @@ struct CompanionAssignmentChooser<Prompt: View, LibraryButton: View>: View {
     }
 }
 
-private struct CompanionAssignmentAvatar: View {
+struct CompanionAssignmentAvatar: View {
     let item: CompanionAssignmentItem
     let size: CGFloat
     var body: some View {

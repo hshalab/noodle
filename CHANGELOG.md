@@ -9,6 +9,7 @@ All notable changes to Noodle are documented here, following
 ### Added
 
 - Right-click a file in a conversation and choose Save… to save a copy anywhere, including iCloud Drive.
+- A bot's profile has Computer and Browser buttons that open its assigned computers and browsers, with a choice when it has more than one.
 
 ### Changed
 

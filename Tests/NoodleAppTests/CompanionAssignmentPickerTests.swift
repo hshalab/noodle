@@ -82,6 +82,30 @@ import XCTest
         print("BROWSER_ASSIGNMENT_PREVIEW: \(output.path)")
     }
 
+    /// A bot's profile offers the computers and browsers it is assigned, in catalogue order.
+    func testAssignedComputersAndBrowsersAreListedForTheProfile() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let repository = WorkspaceRepository(rootURL: root); try repository.prepare()
+        let agent = try repository.createAgent(named: "Fixture").agent
+        let work = RemoteBrowser(id: UUID(), name: "Work"), personal = RemoteBrowser(id: UUID(), name: "Personal")
+        let mac = RemoteComputer(id: UUID(), name: "Mac", kind: "Mac", state: "Running", symbol: "desktopcomputer", colour: 0)
+        let linux = RemoteComputer(id: UUID(), name: "Linux", kind: "Linux", state: "Stopped", symbol: "terminal", colour: 1)
+        let browsers = BrowserController(repository: repository, connection: { _ in
+            var response = BrowserResponse(); response.browsers = [work, personal]; return response
+        })
+        let computers = ComputerController(repository: repository, applicationLookup: { nil }, connection: { _ in
+            var response = ComputerResponse(computers: [mac, linux]); response.capabilities = ComputerCapabilities(); return response
+        })
+        await browsers.refresh(); await computers.refresh()
+        XCTAssertEqual(browsers.assigned(to: agent), [])
+        XCTAssertEqual(computers.assigned(to: agent), [])
+        try browsers.assign([personal.id, work.id], to: agent, synchronizeWorkspace: false)
+        try computers.assign([linux.id], to: agent, synchronizeWorkspace: false)
+        XCTAssertEqual(browsers.assigned(to: agent), [work, personal])
+        XCTAssertEqual(computers.assigned(to: agent), [linux])
+    }
+
     /// A computer made from the bot editor is Computer's own, listed like any other.
     func testANewComputerIsMadeThroughComputerAndListedHere() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

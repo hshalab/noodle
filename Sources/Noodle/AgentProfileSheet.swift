@@ -1,4 +1,6 @@
 import AppKit
+import BrowserBridge
+import ComputerBridge
 import SwiftUI
 import NoodleCore
 import NoodleRuntimeSettings
@@ -65,6 +67,26 @@ struct AgentProfileSheet: View {
                     .accessibilityLabel("Direct Message")
                     Divider().frame(height: 32).accessibilityHidden(true)
                 }
+                let computers = store.computers.assigned(to: agent)
+                if !computers.isEmpty {
+                    CompanionOpenButton(title: "Computer", systemImage: "desktopcomputer",
+                        items: computers.map { CompanionAssignmentItem(id: $0.id, name: $0.name, state: $0.state,
+                            symbol: $0.symbol, colour: $0.colour, icon: $0.icon) },
+                        label: actionLabel) { id in
+                        try await store.computers.open(ComputerLink.url(computer: id, terminal: nil, view: nil))
+                    }
+                    Divider().frame(height: 32).accessibilityHidden(true)
+                }
+                let browsers = store.browsers.assigned(to: agent)
+                if !browsers.isEmpty {
+                    CompanionOpenButton(title: "Browser", systemImage: "globe",
+                        items: browsers.map { CompanionAssignmentItem(id: $0.id, name: $0.name, state: $0.paused ? "Paused" : "Ready",
+                            symbol: $0.symbol, colour: $0.colour, icon: $0.icon) },
+                        label: actionLabel) { id in
+                        try await store.browsers.open(BrowserLink.url(browser: id, tab: nil))
+                    }
+                    Divider().frame(height: 32).accessibilityHidden(true)
+                }
                 Button(action: edit) {
                     actionLabel("Edit", systemImage: "pencil")
                 }
@@ -84,8 +106,14 @@ struct AgentProfileSheet: View {
             .buttonStyle(.plain)
         }
         .padding(20)
-        .frame(width: 320)
+        // Four actions fit the usual width; each companion button adds room so labels stay whole.
+        .frame(width: max(320, 40 + CGFloat(actionCount) * 70))
         .background(ProfileOutsideClickDismissal { dismiss() })
+    }
+
+    private var actionCount: Int {
+        [reply != nil, directMessage != nil, !store.computers.assigned(to: agent).isEmpty,
+         !store.browsers.assigned(to: agent).isEmpty].filter { $0 }.count + 2
     }
 
     private func actionLabel(_ title: String, systemImage: String) -> some View {
@@ -104,6 +132,54 @@ struct AgentProfileSheet: View {
     private var description: String {
         let value = agent.publicDescription?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return value.isEmpty ? "No description yet." : value
+    }
+}
+
+/// Opens the bot's one computer or browser, or offers a choice when it has several.
+private struct CompanionOpenButton<Label: View>: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(NoodleStore.self) private var store
+    let title: String
+    let systemImage: String
+    let items: [CompanionAssignmentItem]
+    let label: (String, String) -> Label
+    let open: (UUID) async throws -> Void
+    @State private var choosing = false
+
+    var body: some View {
+        Button {
+            if items.count == 1 { launch(items[0].id) } else { choosing.toggle() }
+        } label: { label(title, systemImage) }
+        .help(items.count == 1 ? "Open \(items[0].name)" : "Open \(title)")
+        .accessibilityLabel(items.count == 1 ? "Open \(items[0].name)" : "Open \(title)")
+        .popover(isPresented: $choosing, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(items) { item in
+                    Button { launch(item.id) } label: {
+                        HStack(spacing: 8) {
+                            CompanionAssignmentAvatar(item: item, size: 22)
+                            Text(item.name).lineLimit(1)
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.horizontal, 8).padding(.vertical, 5)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(item.tooltip)
+                    .accessibilityLabel("Open \(item.name)")
+                }
+            }
+            .padding(6)
+            .frame(minWidth: 200, maxWidth: 280)
+        }
+    }
+
+    private func launch(_ id: UUID) {
+        choosing = false
+        Task {
+            do { try await open(id); dismiss() }
+            catch { store.errorMessage = error.localizedDescription }
+        }
     }
 }
 
