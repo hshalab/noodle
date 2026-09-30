@@ -195,8 +195,7 @@ public enum AppletConnection {
 }
 
 public final class AppletConnectionServer: @unchecked Sendable {
-    private var source: DispatchSourceRead?
-    private let permits = DispatchSemaphore(value: 4)
+    private let slots = ConnectionSlots(4)
     private let url: URL
     public init(
         socket url: URL, team: String, clientIDs: [String] = AppletConnection.clientIDs,
@@ -232,14 +231,12 @@ public final class AppletConnectionServer: @unchecked Sendable {
         _ = fcntl(fd, F_SETFL, O_NONBLOCK)
         let source = DispatchSource.makeReadSource(
             fileDescriptor: fd, queue: .global(qos: .userInitiated))
-        let permits = self.permits
+        let slots = self.slots
         source.setEventHandler {
+            // With every slot busy the rest wait in the listen backlog, not dropped unanswered.
+            guard slots.take() else { return }
             let peer = Darwin.accept(fd, nil, nil)
-            guard peer >= 0 else { return }
-            guard permits.wait(timeout: .now()) == .success else {
-                Darwin.close(peer)
-                return
-            }
+            guard peer >= 0 else { slots.signal(); return }
             // Darwin inherits the listener's O_NONBLOCK. Each accepted socket is
             // serviced on a worker with bounded I/O timeouts, not the read source.
             // Without this, a slower signature check can race the first payload.
@@ -260,7 +257,7 @@ public final class AppletConnectionServer: @unchecked Sendable {
                                 ?? AppletResponse(error: "Noodle Applet cannot show noodlets live.")
                             socket.start(with: (try? JSONEncoder().encode(response)) ?? Data())
                             if response.error != nil { socket.close() }
-                            permits.signal()
+                            slots.signal()
                         }
                         return
                     }
@@ -268,14 +265,14 @@ public final class AppletConnectionServer: @unchecked Sendable {
                         let response = await handler(request, identity)
                         try? AppletConnection.send(JSONEncoder().encode(response), peer)
                         Darwin.close(peer)
-                        permits.signal()
+                        slots.signal()
                     }
                 } catch {
                     try? AppletConnection.send(
                         JSONEncoder().encode(AppletResponse(error: error.localizedDescription)),
                         peer)
                     Darwin.close(peer)
-                    permits.signal()
+                    slots.signal()
                 }
             }
         }
@@ -283,8 +280,37 @@ public final class AppletConnectionServer: @unchecked Sendable {
             Darwin.close(fd)
             unlink(url.path)
         }
-        self.source = source
+        slots.source = source
         source.resume()
     }
-    deinit { source?.cancel() }
+    deinit { slots.cancel() }
+}
+
+/// Connections served at once. While none is free the listener stops accepting.
+private final class ConnectionSlots: @unchecked Sendable {
+    private let lock = NSLock()
+    private var free: Int
+    private var paused = false
+    var source: DispatchSourceRead?
+    init(_ count: Int) { free = count }
+    func take() -> Bool {
+        lock.withLock {
+            if free > 0 { free -= 1; return true }
+            if !paused { paused = true; source?.suspend() }
+            return false
+        }
+    }
+    func signal() {
+        lock.withLock {
+            free += 1
+            if paused { paused = false; source?.resume() }
+        }
+    }
+    func cancel() {
+        lock.withLock {
+            // Releasing a suspended source traps.
+            if paused { paused = false; source?.resume() }
+            source?.cancel()
+        }
+    }
 }

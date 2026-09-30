@@ -25,7 +25,12 @@ def main():
     with tempfile.TemporaryDirectory(prefix='applet-peers-', dir='/tmp') as temporary:
         root = Path(temporary)
         executable = root / 'probe'
-        run('xcrun', 'swiftc', '-parse-as-library', *sorted((ROOT / 'Applet/Protocol/Sources/AppletBridge').glob('*.swift')),
+        # AppletBridge re-exports Surface, so that module is built first.
+        run('xcrun', 'swiftc', '-parse-as-library', '-module-name', 'Surface', '-emit-module', '-emit-library', '-static',
+            '-emit-module-path', root / 'Surface.swiftmodule', '-o', root / 'libSurface.a',
+            *sorted((ROOT / 'Shared/Surface/Sources/Surface').glob('*.swift')))
+        run('xcrun', 'swiftc', '-parse-as-library', '-I', root, '-L', root, '-lSurface',
+            *sorted((ROOT / 'Applet/Protocol/Sources/AppletBridge').glob('*.swift')),
             ROOT / 'Applet/Tests/ConnectionIsolation.swift', '-o', executable)
         peers = {}
         for channel, suffix in [('production', ''), ('development', '.local')]:
@@ -63,6 +68,21 @@ def main():
             finally:
                 server.terminate()
                 server.wait(timeout=5)
+        # A burst larger than the requests served at once, as the Shared popover sends
+        # one per noodlet: the rest wait their turn instead of being dropped.
+        socket = root / 'burst.sock'
+        server = subprocess.Popen([str(peers['production', 'server']), 'server', str(socket), team, 'hold'])
+        try:
+            for _ in range(100):
+                if socket.exists():
+                    break
+                time.sleep(.05)
+            burst = subprocess.check_output([str(peers['production', 'broker']), 'burst', str(socket), team, '12'], text=True)
+            assert burst.startswith('answered 12 of 12'), burst
+            print('PASS: a burst of 12 requests is answered in full')
+        finally:
+            server.terminate()
+            server.wait(timeout=5)
 
 
 if __name__ == '__main__':

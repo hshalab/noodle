@@ -13,6 +13,7 @@ All notable changes to Noodle are documented here, following
 ### Fixed
 
 - Add Annotation (⇧⌘A) and Annotate Region (⇧⌘R) work in a conversation again after the main window has been closed and reopened.
+- The Shared list shows every noodlet's picture and name instead of "Noodlet unavailable" for all but the first few. Noodle now asks Noodle Applet for them a couple at a time.
 
 ## [0.35.0] - 2026-09-29
 

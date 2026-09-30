@@ -48,7 +48,7 @@ struct NoodletAttachmentCard: View {
 
     /// The live noodlet's title and thumbnail, kept for the conversation's Shared popover.
     @MainActor static func load(_ url: URL, from applets: AppletController) async throws -> (title: String, image: NSImage?) {
-        let access = try await applets.resolvePreview(url)
+        let access = try await oneOfFew { try await applets.resolvePreview(url) }
         defer { withExtendedLifetime(access) {} }
         var image = access.imageData.flatMap(NSImage.init(data:)) ?? NSImage(contentsOf: access.url.appendingPathComponent("preview.png"))
         if image == nil {
@@ -58,5 +58,16 @@ struct NoodletAttachmentCard: View {
         }
         loaded[url] = (access.title, image)
         return (access.title, image)
+    }
+
+    @MainActor private static var asking = 0
+    @MainActor private static var waiting: [CheckedContinuation<Void, Never>] = []
+
+    /// Applet answers only a few requests at once, and the Shared popover asks for every noodlet
+    /// together, so they take turns and leave room for bots.
+    @MainActor private static func oneOfFew<T>(_ body: () async throws -> T) async throws -> T {
+        if asking < 2 { asking += 1 } else { await withCheckedContinuation { waiting.append($0) } }
+        defer { if waiting.isEmpty { asking -= 1 } else { waiting.removeFirst().resume() } }
+        return try await body()
     }
 }

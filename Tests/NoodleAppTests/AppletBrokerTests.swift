@@ -165,6 +165,38 @@ import XCTest
         XCTAssertEqual(requests.count, 1)
     }
 
+    /// Applet serves only a few connections at once and drops the rest, so the Shared popover's
+    /// rows must not ask for every noodlet's preview together.
+    func testNoodletPreviewsAreRequestedAFewAtATime() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let package = root.appendingPathComponent("Flap").appendingPathExtension(AppletBuildIdentity.current.fileExtension)
+        try FileManager.default.createDirectory(at: package, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data("{}".utf8).write(to: package.appendingPathComponent("noodlet.json"))
+        let bookmark = try package.bookmarkData()
+        let pixel = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 1, pixelsHigh: 1, bitsPerSample: 8, samplesPerPixel: 4,
+                                     hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)
+        let png = try XCTUnwrap(pixel?.representation(using: .png, properties: [:]))
+        let tracker = ConcurrencyTracker()
+        let controller = AppletController(repository: WorkspaceRepository(rootURL: root), connection: { request in
+            await tracker.enter()
+            for _ in 0..<20 { await Task.yield() }
+            await tracker.leave()
+            var response = AppletResponse()
+            response.noodletID = request.noodletID
+            response.previewBookmark = bookmark
+            response.data = png
+            response.mediaType = "image/png"
+            return response
+        })
+        let loads = (0..<8).map { _ in
+            Task { try await NoodletAttachmentCard.load(NoodletLink.url(for: UUID()), from: controller) }
+        }
+        for load in loads { _ = try await load.value }
+        let peak = await tracker.peak
+        XCTAssertLessThanOrEqual(peak, 2)
+    }
+
     func testAttachmentOpenRequestsTheLiveForegroundRuntimeAndReportsFailures() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let repository = WorkspaceRepository(rootURL: root)
@@ -470,6 +502,12 @@ import XCTest
         XCTAssertEqual(response.sessionID, id)
         XCTAssertEqual(response.error, "Compiler error")
     }
+}
+private actor ConcurrencyTracker {
+    private var current = 0
+    private(set) var peak = 0
+    func enter() { current += 1; peak = max(peak, current) }
+    func leave() { current -= 1 }
 }
 private actor AppletRequestRecorder {
     var requests: [AppletRequest] = []
