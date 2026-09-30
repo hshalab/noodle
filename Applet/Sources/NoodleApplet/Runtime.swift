@@ -286,7 +286,6 @@ import AppletCore
         }
         let package = try NoodletPackage(url: canonical)
         if fromHub(identity, path: canonical.path) { library.markHub(package.key) }
-        _ = try package.files()
         _ = try library.linkID(for: package)
         library.scan()
         if request.operation == .validate {

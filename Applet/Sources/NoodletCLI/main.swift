@@ -46,7 +46,6 @@ import Foundation
             return
         }
         args.removeFirst()
-        if command == "convert" { try convert(args); return }
         guard AppletBuildIdentity.processIdentity != nil else {
             throw AppletError("Use the CLI from a signed Noodle or Applet build for this environment.")
         }
@@ -218,15 +217,6 @@ import Foundation
             }
         }
         try emit(response, text: flags["--text-output"] != nil)
-    }
-    static func convert(_ args: [String]) throws {
-        guard args.count == 4, args[0] == "--path", args[2] == "--output" else {
-            throw AppletError("Usage: noodlet convert --path SOURCE --output NEW_DOCUMENT")
-        }
-        let copy = try NoodletPackage.convert(from: URL(fileURLWithPath: args[1]), to: URL(fileURLWithPath: args[3]))
-        var response = AppletResponse()
-        response.path = copy.url.path; response.title = copy.manifest.title
-        try emit(response, text: false)
     }
     static func emit(_ response: AppletResponse, text: Bool) throws {
         if text {

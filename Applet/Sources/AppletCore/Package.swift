@@ -77,9 +77,8 @@ public struct NoodletPackage: Sendable {
   public let url: URL
   public let manifest: NoodletManifest
   public var key: String { Self.digest(Data(url.path.utf8)) }
-  public static func digest(_ data: Data) -> String {
-    SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
-  }
+  public static func digest(_ data: Data) -> String { hex(SHA256.hash(data: data)) }
+  static func hex(_ digest: SHA256.Digest) -> String { digest.map { String(format: "%02x", $0) }.joined() }
   public init(url: URL, build: AppletBuildIdentity = .current) throws {
     self.url = url.resolvingSymlinksInPath().standardizedFileURL
     guard AppletBuildIdentity.document(self.url) == build,
@@ -101,17 +100,6 @@ public struct NoodletPackage: Sendable {
       throw AppletError("Missing entry file: \(manifest.entry)")
     }
   }
-  /// Explicit transfer only: read a source from either channel and create a new copy.
-  /// Never relabel or overwrite the original document or an existing destination.
-  public static func convert(from source: URL, to destination: URL) throws -> Self {
-    guard let sourceBuild = AppletBuildIdentity.document(source),
-          let destinationBuild = AppletBuildIdentity.document(destination),
-          !FileManager.default.fileExists(atPath: destination.path) else {
-      throw AppletError("Choose a new .noodlet or .noodlet-dev destination for the copy.")
-    }
-    let package = try Self(url: source, build: sourceBuild)
-    return try install(package.files(), to: destination, build: destinationBuild, replaceExisting: false)
-  }
   public static func child(_ relative: String, in root: URL) throws -> URL {
     try AppletRequest.validateRelativePath(relative)
     var current = root
@@ -125,42 +113,46 @@ public struct NoodletPackage: Sendable {
     }
     return current
   }
-  public func files() throws -> [String: Data] {
+  /// The package's files, relative to it and sorted. Hidden files and folders, such as
+  /// `.git`, and links are not part of a noodlet.
+  public func names() throws -> [String] {
     guard
       let iterator = FileManager.default.enumerator(
-        at: url,
-        includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey])
+        at: url, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles])
     else { throw AppletError("Cannot read package.") }
-    var files: [String: Data] = [:]
-    var bytes = 0
-    for case let file as URL in iterator {
-      let v = try file.resourceValues(forKeys: [
-        .isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey,
-      ])
-      guard v.isSymbolicLink != true else { throw AppletError("Package contains a symlink.") }
-      guard v.isRegularFile == true else { continue }
-      bytes += v.fileSize ?? 0
-      guard files.count < 512, bytes <= 20 * 1_048_576 else {
-        throw AppletError("Package exceeds 512 files or 20 MiB.")
-      }
+    var names: [String] = []
+    for case let file as URL in iterator
+    where try file.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true {
       let path = file.standardizedFileURL.path
-      guard path.hasPrefix(url.path + "/") else {
-        throw AppletError("Package enumeration escaped its root.")
-      }
-      let name = String(path.dropFirst(url.path.count + 1))
-      files[name] = try Data(contentsOf: Self.child(name, in: url))
+      guard path.hasPrefix(url.path + "/") else { continue }
+      names.append(String(path.dropFirst(url.path.count + 1)))
     }
-    return files
+    return names.sorted()
   }
   public var revision: String {
-    guard let files = try? files() else { return "unreadable" }
-    var bytes = Data()
-    for name in files.keys.sorted() {
-      bytes.append(Data(name.utf8))
-      bytes.append(0)
-      bytes.append(Data(Self.digest(files[name]!).utf8))
+    guard let names = try? names() else { return "unreadable" }
+    var hash = SHA256()
+    for name in names {
+      guard let handle = try? FileHandle(forReadingFrom: url.appendingPathComponent(name))
+      else { return "unreadable" }
+      defer { try? handle.close() }
+      var file = SHA256()
+      while let chunk = try? handle.read(upToCount: 1_048_576), !chunk.isEmpty { file.update(data: chunk) }
+      hash.update(data: Data(name.utf8) + Data([0]) + Data(Self.hex(file.finalize()).utf8))
     }
-    return Self.digest(bytes)
+    return Self.hex(hash.finalize())
+  }
+  /// A copy-on-write clone where a confined noodlet may read it; the package's own disk space
+  /// is shared until either side changes.
+  public func clone(to destination: URL) throws {
+    let fm = FileManager.default
+    try fm.createDirectory(at: destination, withIntermediateDirectories: true)
+    for name in try names() {
+      let target = destination.appendingPathComponent(name)
+      try fm.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+      guard copyfile(url.appendingPathComponent(name).path, target.path, nil, copyfile_flags_t(COPYFILE_CLONE)) == 0
+      else { throw AppletError("Cannot prepare \(name) for the noodlet.") }
+    }
   }
   public static func install(_ files: [String: Data], to destination: URL, build: AppletBuildIdentity = .current, replaceExisting: Bool = true) throws -> Self {
     guard destination.pathExtension == build.fileExtension else {

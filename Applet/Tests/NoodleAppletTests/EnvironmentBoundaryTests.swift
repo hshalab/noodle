@@ -27,6 +27,24 @@ import XCTest
         XCTAssertTrue(runtime.sessions.isEmpty)
     }
 
+    /// A bot's noodlet is used where it is, so its size is up to the bot.
+    func testABotNoodletOverTwentyMegabytesValidates() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let suite = "AppletLargePackage." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { try? FileManager.default.removeItem(at: root); defaults.removePersistentDomain(forName: suite) }
+        let library = botLibrary(root: root, defaults: defaults)
+        let runtime = AppletRuntime(library: library, defaults: defaults)
+        var request = AppletRequest(.validate)
+        let path = try botNoodlet(htmlNoodlet("Film"), named: "Film", owner: "ada", root: root)
+        try Data(count: 21 * 1_048_576).write(to: URL(fileURLWithPath: path).appendingPathComponent("film.mp4"))
+        request.path = path
+        request.owner = "ada"
+        let response = await runtime.handle(request, identity: AppletBuildIdentity.current.noodleID)
+        XCTAssertNil(response.error)
+        XCTAssertEqual(response.state, "valid")
+    }
+
     /// Noodle Hub passes on its bots' requests as Noodle does, each for the bot that asked: a Hub
     /// bot reaches only its own noodlets, while the Hub itself, asking for nobody, reaches any.
     func testAHubBotReachesOnlyItsOwnNoodlets() async throws {

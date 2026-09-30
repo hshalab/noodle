@@ -21,7 +21,6 @@ final class PackageTests: XCTestCase {
         let first = try NoodletPackage.install(files(), to: root)
         let revision = first.revision
         XCTAssertEqual(first.manifest.title, "Test")
-        _ = try first.files()
         let second = try NoodletPackage.install(files("changed"), to: root)
         XCTAssertNotEqual(revision, second.revision)
         XCTAssertEqual(
@@ -37,8 +36,35 @@ final class PackageTests: XCTestCase {
         let package = try NoodletPackage.install(files(), to: destination)
         try FileManager.default.createSymbolicLink(
             at: destination.appendingPathComponent("outside"), withDestinationURL: root)
-        XCTAssertThrowsError(try package.files())
+        XCTAssertEqual(try package.names(), ["index.html", "noodlet.json"])
         XCTAssertThrowsError(try NoodletPackage.child("outside/file", in: destination))
+    }
+    /// Nothing is sent anywhere, so a package may be as large as its assets need.
+    func testALargePackageHasARevision() throws {
+        let root = try temporary().appendingPathComponent("Large.noodlet")
+        let package = try NoodletPackage.install(files(), to: root)
+        try Data(count: 21 * 1_048_576).write(to: root.appendingPathComponent("movie.mp4"))
+        XCTAssertNotEqual(package.revision, "unreadable")
+    }
+    /// A bot may keep its noodlet under git; hidden folders are not part of it.
+    func testRevisionAndCloneLeaveOutHiddenFilesAndLinks() throws {
+        let root = try temporary()
+        let destination = root.appendingPathComponent("Test.noodlet")
+        let package = try NoodletPackage.install(files(), to: destination)
+        let revision = package.revision
+        try FileManager.default.createDirectory(
+            at: destination.appendingPathComponent(".git"), withIntermediateDirectories: true)
+        try Data("ref".utf8).write(to: destination.appendingPathComponent(".git/HEAD"))
+        try Data().write(to: destination.appendingPathComponent(".DS_Store"))
+        try FileManager.default.createSymbolicLink(
+            at: destination.appendingPathComponent("outside"), withDestinationURL: root)
+        XCTAssertEqual(package.revision, revision)
+        let clone = root.appendingPathComponent("Clone.noodlet")
+        try package.clone(to: clone)
+        XCTAssertEqual(
+            try FileManager.default.contentsOfDirectory(atPath: clone.path).sorted(),
+            ["index.html", "noodlet.json"])
+        XCTAssertEqual(try NoodletPackage(url: clone).revision, revision)
     }
     func testLockCanonicalLocationAndRelease() throws {
         let root = try temporary()

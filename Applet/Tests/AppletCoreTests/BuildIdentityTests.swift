@@ -11,7 +11,7 @@ final class BuildIdentityTests: XCTestCase {
         _ = try NoodletPackage.install(files, to: current, build: .development)
         let legacy = root.appendingPathComponent("Example.noodlet-local")
         try FileManager.default.moveItem(at: current, to: legacy)
-        XCTAssertEqual(try NoodletPackage(url: legacy, build: .development).files(), files)
+        XCTAssertEqual(try NoodletPackage(url: legacy, build: .development).names(), files.keys.sorted())
         XCTAssertThrowsError(try NoodletPackage(url: legacy, build: .production))
         XCTAssertThrowsError(try NoodletPackage.install(files, to: legacy, build: .development))
         let id = UUID(), oldLink = URL(string: "noodlet-local://" + UUID().uuidString)!
@@ -59,24 +59,6 @@ final class BuildIdentityTests: XCTestCase {
         XCTAssertNil(AppletApplication.select(running: [prod], sibling: nil, registered: prod, build: .development, identify: identify))
         XCTAssertEqual(AppletApplication.select(running: [local, prod], sibling: local, registered: prod, build: .production, identify: identify), prod)
         XCTAssertNil(AppletApplication.select(running: [local], sibling: local, registered: local, build: .production, identify: identify))
-    }
-    func testConversionCopiesAndDoesNotOverwriteEitherDocument() throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: root) }
-        let files = ["noodlet.json": Data(#"{"title":"Fixture","runtime":"html","entry":"index.html"}"#.utf8), "index.html": Data("original".utf8)]
-        let source = try NoodletPackage.install(files, to: root.appendingPathComponent("Original.noodlet"), build: .production)
-        let destination = root.appendingPathComponent("Copy.noodlet-dev")
-        XCTAssertThrowsError(try NoodletPackage(url: source.url, build: .development))
-        XCTAssertThrowsError(try NoodletPackage.install(files, to: source.url, build: .development))
-        let copy = try NoodletPackage.convert(from: source.url, to: destination)
-        XCTAssertEqual(try copy.files(), files)
-        XCTAssertEqual(try source.files(), files)
-        XCTAssertThrowsError(try NoodletPackage(url: copy.url, build: .production))
-        try Data("edited copy".utf8).write(to: destination.appendingPathComponent("index.html"))
-        XCTAssertThrowsError(try NoodletPackage.convert(from: source.url, to: destination))
-        XCTAssertEqual(try source.files()["index.html"], files["index.html"])
-        XCTAssertEqual(try Data(contentsOf: destination.appendingPathComponent("index.html")), Data("edited copy".utf8))
-        XCTAssertThrowsError(try NoodletPackage.convert(from: source.url, to: source.url))
     }
     func testUpdateCheckURLStaysInItsBuildChannelAndIsNotANoodletLink() {
         for build in AppletBuildIdentity.allCases {

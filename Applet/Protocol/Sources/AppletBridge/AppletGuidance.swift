@@ -23,8 +23,6 @@ public enum AppletGuidance {
         --target CSS_SELECTOR, --x POINTS, --y POINTS, --to-x POINTS, --to-y POINTS,
         --text TEXT, --file SOURCE.js, --output FILE, --offset BYTES, --duration SECONDS,
         --follow, --text-output, --artifact UUID, --conversation UUID, --test-clock, --frames COUNT.
-        convert --path SOURCE --output NEW_DOCUMENT copies a package between environments.
-        It never overwrites an existing destination, registers a link, or opens an app.
         Commands emit JSON on stdout; errors exit 1. Keep sessionID and log offset.
         info, validate, build, open, status and list entries report noodletID and url
         (noodlet://UUID). This identifies the registered package, not a running session.
@@ -107,9 +105,8 @@ public enum AppletGuidance {
         Noodle manages this skill for every bot while Noodle Applet is installed.
         Removing the companion removes this managed skill and its CLI link.
         Use only the companion matching this Noodle environment. Links and documents
-        from the other environment require an explicit copy/conversion; never fall back
-        to the other companion. `noodlet convert --path SOURCE --output NEW_DOCUMENT`
-        makes a new copy without opening it or overwriting an existing document.
+        from the other environment require an explicit copy; never fall back to the other
+        companion. To move a noodlet across, copy its folder under the other extension.
         Work inside this bot's workspace. Create a folder named `Name.noodlet` with
         `noodlet.json` and ordinary source/assets. Run `./.agents/skills/applet/noodlet`.
         Noodle must be running; it quietly starts the installed Noodle Applet companion.
@@ -118,9 +115,8 @@ public enum AppletGuidance {
         Source updates preserve data. Only one instance of a library package may run.
 
         Git is supported and encouraged for applet development. Track source changes
-        and commit useful checkpoints. Keep the repository root above the `.noodlet`
-        folder (for example, `MyProject/.git` and `MyProject/MyApp.noodlet`) so Git
-        metadata stays out of the package and its 512-file / 20 MiB limits.
+        and commit useful checkpoints. Hidden files and folders, such as `.git`, are not
+        part of the noodlet.
 
         For delivery, prefer validating the source and attaching the returned url using
         Messenger --attach "noodlet://UUID". HTML needs no build step. Validation returns

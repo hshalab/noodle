@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Noodlets are no longer limited to 20 MB or 512 files, and hidden files and folders such as `.git` are no longer counted as part of them. Opening a noodlet no longer reads all its files, and a Swift noodlet's run no longer copies them.
+
+### Removed
+
+- `noodlet convert`. To move a noodlet between Applet and Applet Dev, copy its folder under the other extension.
+
 ### Fixed
 
 - Swift noodlets that draw in 3D with SceneKit show their scene and keep playing when watched or played from your iPhone, also while the Mac is locked. Viewers saw only the noodlet's buttons and text over a grey window.

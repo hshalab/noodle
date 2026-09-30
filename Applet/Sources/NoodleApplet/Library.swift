@@ -121,15 +121,6 @@ struct HubPerson: Hashable, Identifiable, Decodable {
         }
         defaults.set(true, forKey: "examplesInstalled")
       }
-      if installExamples,
-        let source = AppletResources.bundle.url(forResource: "Resources", withExtension: nil)?
-          .appendingPathComponent("Examples/Focus.\(AppletBuildIdentity.current.fileExtension)"),
-        let current = try? NoodletPackage(url: documents.appendingPathComponent("Focus.\(AppletBuildIdentity.current.fileExtension)")),
-        ["fe2f24327c07f9f73b37a4c5d1e8d0e72a87f69d63a43b2d9c14bf965565cf20", "eefb19b06f5a496f30a956a9f1a57dbf30c0dd2ce2c5d4f2176d8f38b6110db2"].contains(current.revision)
-      {
-        // Upgrade only the unmodified bundled example; keep authored changes and saved data.
-        _ = try NoodletPackage.install(NoodletPackage(url: source).files(), to: current.url)
-      }
     } catch { self.error = error.localizedDescription }
     // Restore each opened package independently. A missing or damaged
     // bookmark must never prevent other creations from appearing.

@@ -239,13 +239,14 @@ import AppletCore
     try FileManager.default.createDirectory(at: buildRoot, withIntermediateDirectories: true)
     let resources = AppletResources.bundle.url(forResource: "Resources", withExtension: nil)!
     let source = resources.appendingPathComponent("NoodletRuntime.swift")
-    _ = try NoodletPackage.install(
-      package.files(), to: buildRoot.appendingPathComponent("Package.\(AppletBuildIdentity.current.fileExtension)"))
+    let snapshot = buildRoot.appendingPathComponent("Package.\(AppletBuildIdentity.current.fileExtension)")
+    try? FileManager.default.removeItem(at: snapshot)
+    try package.clone(to: snapshot)
     let toolchain = try Self.toolchain()
     interpreter = toolchain.frontend
     sdk = toolchain.sdk
     plugins = toolchain.plugins
-    let files = try package.files().keys.filter { $0.hasSuffix(".swift") }.sorted().map {
+    let files = try package.names().filter { $0.hasSuffix(".swift") }.map {
       package.url.appendingPathComponent($0)
     }
     var combined = ""

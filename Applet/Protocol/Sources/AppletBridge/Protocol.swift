@@ -120,7 +120,7 @@ public struct AppletRequest: Codable, Sendable {
         }
         if let files {
             guard files.count <= 512, files.values.reduce(0, { $0 + $1.count }) <= 20 * 1_048_576
-            else { throw AppletError("Packages may contain at most 512 files and 20 MiB.") }
+            else { throw AppletError("Send at most 512 files and 20 MiB.") }
             for name in files.keys { try Self.validateRelativePath(name) }
         }
     }
