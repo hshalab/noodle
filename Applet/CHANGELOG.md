@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Swift noodlets that draw in 3D with SceneKit show their scene and keep playing when watched or played from your iPhone, also while the Mac is locked. Viewers saw only the noodlet's buttons and text over a grey window.
+- Swift noodlet games that watch for key presses on their own, instead of in one of their views, react to the keys you play from your iPhone.
+- Swift noodlets that draw with SpriteKit keep playing while the Mac's display is asleep or locked, instead of freezing.
+
 ## [0.18.0] - 2026-09-30
 
 ### Changed

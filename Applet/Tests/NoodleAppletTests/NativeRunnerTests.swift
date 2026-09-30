@@ -189,6 +189,36 @@ final class NativeRunnerTests: XCTestCase {
                                "down 4 104", "up 4 104", "down 34 105", "up 34 105"])
     }
 
+    /// A game may read keys through an event monitor instead of a view. Each key reaches both once;
+    /// monitors are asked in no set order, so only which arrived counts.
+    func testRemoteKeysReachAGameReadingThemThroughAnEventMonitor() throws {
+        let lines = try runBackground("""
+            import SwiftUI
+            final class Keys: NSView {
+                override var acceptsFirstResponder: Bool { true }
+                override func viewDidMoveToWindow() { window?.makeFirstResponder(self) }
+                override func keyDown(with event: NSEvent) { print("view down", event.keyCode) }
+                override func keyUp(with event: NSEvent) { print("view up", event.keyCode) }
+            }
+            struct KeysView: NSViewRepresentable {
+                func makeNSView(context: Context) -> Keys {
+                    _ = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { event in
+                        print("monitor", event.type == .keyDown ? "down" : "up", event.keyCode)
+                        return event
+                    }
+                    return Keys()
+                }
+                func updateNSView(_ view: Keys, context: Context) {}
+            }
+            struct Noodlet: View { var body: some View { KeysView() } }
+            """) { send in
+            for key in ["left", "right", "z"] { XCTAssertNil(try send(key, ["operation": "key", "text": key])["error"], key) }
+        }
+        XCTAssertEqual(lines.sorted(), ["monitor down 123", "monitor down 124", "monitor down 6", "monitor up 123", "monitor up 124",
+                                        "monitor up 6", "view down 123", "view down 124", "view down 6", "view up 123",
+                                        "view up 124", "view up 6"])
+    }
+
     /// Builds `source` with the native runtime, runs it in background mode, which never orders
     /// the window in, and returns what it printed after `drive` sends it commands.
     private func runBackground(

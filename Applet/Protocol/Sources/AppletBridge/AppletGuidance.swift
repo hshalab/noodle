@@ -59,8 +59,9 @@ public enum AppletGuidance {
         This is not real-time gameplay or performance evidence. Close before switching
         between normal/test data or clocks; restart retains test-clock in headless mode.
         Web input events are synthetic. Native capture supports ordinary AppKit/SwiftUI
-        views and SpriteKit scenes; arbitrary Metal, video, and embedded web surfaces
-        may need a renderer-specific capture implementation. No screen permission is used.
+        views, SpriteKit scenes and SceneKit views (SCNView or SceneView); arbitrary Metal,
+        RealityKit, video, and embedded web surfaces may need a renderer-specific capture
+        implementation. No screen permission is used.
         """
     }
     public static func operation(_ operation: AppletOperation) -> String {

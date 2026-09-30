@@ -1,6 +1,7 @@
 import AppKit
 import AVFAudio
 import SwiftUI
+import SceneKit
 import SpriteKit
 
 /// Available to the noodlet's SwiftUI view. Data survives rebuilds and restarts.
@@ -322,8 +323,20 @@ public struct NoodletSecrets: Sendable {
     }
     /// A live view's file, kept open between frames.
     private var liveFile: Int32 = -1
-    /// The view as it looks into `bitmap`, over the window's background, with SpriteKit scenes
-    /// taken from their own textures since they only draw on screen.
+    /// Renderers drawing SceneKit views that do not play by themselves, each kept so its scene plays on.
+    private let sceneRenderers = NSMapTable<SCNView, SCNRenderer>.weakToStrongObjects()
+    /// Renderers stepping SpriteKit scenes while the display is asleep, each kept so its scene plays on.
+    private let spriteRenderers = NSMapTable<SKView, SKRenderer>.weakToStrongObjects()
+    private lazy var device = MTLCreateSystemDefaultDevice()
+    /// Whether the display the window is on, or would be on, is asleep, as when the Mac is locked.
+    /// A SceneKit view plays only while its window is in view on a display that is awake; a SpriteKit
+    /// view plays while the display is awake, even in a hidden window. Neither plays while it sleeps.
+    private var displayAsleep: Bool {
+        let screen = (window.screen ?? NSScreen.main)?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
+        return CGDisplayIsAsleep(screen?.uint32Value ?? CGMainDisplayID()) != 0
+    }
+    /// The view as it looks into `bitmap`, over the window's background, with SpriteKit and
+    /// SceneKit scenes drawn on their own since they only draw on screen.
     func draw(into bitmap: NSBitmapImageRep) throws {
         host.layoutSubtreeIfNeeded()
         // Points to pixels, as the view draws itself.
@@ -341,11 +354,35 @@ public struct NoodletSecrets: Sendable {
         host.cacheDisplay(in:host.bounds,to:bitmap)
         func compositeSprites(_ view: NSView) throws {
             if let sk = view as? SKView, let scene = sk.scene {
-                if !window.isVisible { scene.update(ProcessInfo.processInfo.systemUptime) }
+                if !sk.isPaused, displayAsleep, let device {
+                    // A renderer of its own steps the scene's actions and physics and calls the game's
+                    // per-frame code, as the view would if the display refreshed it.
+                    let renderer = spriteRenderers.object(forKey: sk) ?? SKRenderer(device: device)
+                    spriteRenderers.setObject(renderer, forKey: sk)
+                    if renderer.scene !== scene { renderer.scene = scene }
+                    renderer.update(atTime: ProcessInfo.processInfo.systemUptime)
+                } else if !window.isVisible { scene.update(ProcessInfo.processInfo.systemUptime) }
                 guard let cg = sk.texture(from: scene)?.cgImage() else { throw RuntimeError("SpriteKit cannot capture this scene offscreen.") }
                 var frame = sk.convert(sk.bounds, to: host)
                 if host.isFlipped { frame.origin.y = host.bounds.height - frame.maxY }
                 NSImage(cgImage: cg, size: frame.size).draw(in: frame)
+            } else if let scn = view as? SCNView, let scene = scn.scene {
+                var frame = scn.convert(scn.bounds, to: host)
+                if host.isFlipped { frame.origin.y = host.bounds.height - frame.maxY }
+                let image: NSImage
+                if window.occlusionState.contains(.visible) && !displayAsleep {
+                    image = scn.snapshot()
+                } else {
+                    // A renderer of its own steps the scene's actions and physics and calls the game's
+                    // per-frame code, as the view would if it played.
+                    let renderer = sceneRenderers.object(forKey: scn) ?? SCNRenderer(device: scn.device, options: nil)
+                    sceneRenderers.setObject(renderer, forKey: scn)
+                    if renderer.scene !== scene { renderer.scene = scene }
+                    renderer.pointOfView = scn.pointOfView
+                    renderer.delegate = scn.delegate
+                    image = renderer.snapshot(atTime: ProcessInfo.processInfo.systemUptime, with: CGSize(width: frame.width * scale.width, height: frame.height * scale.height), antialiasingMode: scn.antialiasingMode)
+                }
+                image.draw(in: frame)
             } else {
                 for child in view.subviews { try compositeSprites(child) }
             }
@@ -469,9 +506,13 @@ struct RuntimeError: LocalizedError { let message: String; init(_ text: String) 
     static func press(_ key: String, in window: NSWindow, as types: [NSEvent.EventType] = [.keyDown, .keyUp]) {
         let (characters, code) = named[key] ?? (key, key.count == 1 ? codes[Character(key.lowercased())] ?? 0 : 0)
         playing = true
-        defer { playing = false }
+        // The app sends each key, so a game's local event monitors see it too, then passes it on to its
+        // key window. A window out of sight is never key, so while it is not, a monitor hands each key to
+        // it. Monitors are asked in no set order, so that one lets the key go on to the game's.
+        let deliver = NSApp.keyWindow === window ? nil : NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { event in window.sendEvent(event); return event }
+        defer { playing = false; deliver.map(NSEvent.removeMonitor) }
         for type in types {
-            if let event = NSEvent.keyEvent(with:type,location:.zero,modifierFlags:[],timestamp:ProcessInfo.processInfo.systemUptime,windowNumber:window.windowNumber,context:nil,characters:characters,charactersIgnoringModifiers:characters,isARepeat:false,keyCode:code) { window.sendEvent(event) }
+            if let event = NSEvent.keyEvent(with:type,location:.zero,modifierFlags:[],timestamp:ProcessInfo.processInfo.systemUptime,windowNumber:window.windowNumber,context:nil,characters:characters,charactersIgnoringModifiers:characters,isARepeat:false,keyCode:code) { NSApp.sendEvent(event) }
         }
     }
 }
