@@ -72,7 +72,8 @@ public enum MCPBridgeFiles {
         if let workspace { try mailbox(for: file, workspace: workspace).write(value, named: file.lastPathComponent); return }
         let data = try JSONEncoder().encode(value)
         // Atomic replacement replaces a link itself, never follows its target.
-        try data.write(to: file, options: [.atomic, .completeFileProtectionUnlessOpen])
+        // Readable while the Mac is locked, as This Mac as a Hub must read them for devices away.
+        try data.write(to: file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
     }
 

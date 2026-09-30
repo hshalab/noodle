@@ -10,6 +10,10 @@ All notable changes to Noodle are documented here, following
 
 - Right-click a file in a conversation and choose Save… to save a copy anywhere, including iCloud Drive.
 
+### Fixed
+
+- Bots no longer lose their computers, browsers or tools when a phone or another Mac reaches This Mac as a Hub while the Mac is locked.
+
 ## [0.36.0] - 2026-09-30
 
 ### Changed

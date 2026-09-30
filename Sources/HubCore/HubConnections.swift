@@ -140,8 +140,9 @@ import NoodleMCP
     }
 
     /// Reads the connections and grants again, after Noodle changed them in the same files on its owner's Mac.
-    public func reloadAssignments() {
-        guard let saved = try? MCPRegistry.load(root: root) else { return }
+    /// Throws rather than keep an older copy, which a later save would write over Noodle's.
+    public func reloadAssignments() throws {
+        let saved = try MCPRegistry.load(root: root)
         registry = saved
         Task { [weak self, service] in
             var signedIn: Set<UUID> = []

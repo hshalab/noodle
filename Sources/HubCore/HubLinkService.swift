@@ -217,7 +217,7 @@ import os
         if case .openSurface(let conversationID, let attachmentID) = request {
             do {
                 let user = try user(key)
-                if access.isPersonal { readNoodlesTools() }
+                if access.isPersonal { try readNoodlesTools() }
                 let (link, bot) = try await hubBots().companionLink(attachmentID, in: conversationID, for: user)
                 // Starting a computer or a noodlet can outlast a request, so the channel opens first
                 // and anything that then goes wrong comes down it.
@@ -395,7 +395,7 @@ import os
             case .connections, .saveConnection, .deleteConnection, .assignConnections, .signIn, .finishSignIn, .picture,
                  .computers, .createComputer, .updateComputer, .deleteComputer, .assignComputers,
                  .browsers, .createBrowser, .updateBrowser, .deleteBrowser, .assignBrowsers:
-                readNoodlesTools()
+                try readNoodlesTools()
             default: break
             }
         }
@@ -580,10 +580,13 @@ import os
         }
     }
 
-    private func readNoodlesTools() {
-        connections?.reloadAssignments()
-        computers?.reloadAssignments()
-        browsers?.reloadAssignments()
+    /// Fails the request when they cannot be read: working on an older copy would save it over Noodle's.
+    private func readNoodlesTools() throws {
+        do {
+            try connections?.reloadAssignments()
+            try computers?.reloadAssignments()
+            try browsers?.reloadAssignments()
+        } catch { throw LinkError("Could not read this Mac's tools, computers and browsers.") }
     }
 
     private func hubBrowsers() throws -> HubBrowsers {

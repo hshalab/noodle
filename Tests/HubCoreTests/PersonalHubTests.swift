@@ -404,6 +404,67 @@ import XCTest
         XCTAssertEqual(saved.assigned(to: kai).map(\.id), [notes.id])
     }
 
+    /// Noodle's file cannot be read for a while, as when a locked Mac refuses a protected file.
+    private func unreadable(_ file: URL, while body: () async throws -> Void) async throws {
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: file.path)
+        addTeardownBlock { try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path) }
+        try await body()
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+    }
+
+    /// A computer Noodle gave a bot after the phone joined stays given when the Mac cannot read
+    /// Noodle's file back while the phone lists computers.
+    func testAComputerNoodleAssignedSurvivesAnUnreadableFile() async throws {
+        let (f, made) = try await fixture(bots: ["Kai"])
+        let kai = made[0].id, file = f.repository.rootURL.appendingPathComponent("computers.json")
+        var create = ComputerRequest(.create)
+        create.computer = ComputerDraft(template: "ubuntu", name: "Bench")
+        let bench = try XCTUnwrap(try f.computer.call(create).computers?.first)
+        var saved = ComputerAssignments()
+        saved.computers = [bench]
+        saved.agents[kai.uuidString] = [bench.id]
+        try JSONEncoder().encode(saved).write(to: file)
+
+        try await unreadable(file) { _ = try? await f.device.request(.computers) }
+
+        let after = try JSONDecoder().decode(ComputerAssignments.self, from: Data(contentsOf: file))
+        XCTAssertEqual(after.assigned(to: kai), [bench.id])
+    }
+
+    func testABrowserNoodleAssignedSurvivesAnUnreadableFile() async throws {
+        let (f, made) = try await fixture(bots: ["Kai"])
+        let kai = made[0].id, file = f.repository.rootURL.appendingPathComponent("browsers.json")
+        var create = BrowserRequest(.create)
+        create.profile = BrowserDraft(name: "Work")
+        let work = try XCTUnwrap(try f.browser.call(create).browser)
+        var saved = BrowserAssignments()
+        saved.browsers = [work]
+        saved.agents[kai.uuidString] = [work.id]
+        try JSONEncoder().encode(saved).write(to: file)
+
+        try await unreadable(file) { _ = try? await f.device.request(.browsers) }
+
+        let after = try JSONDecoder().decode(BrowserAssignments.self, from: Data(contentsOf: file))
+        XCTAssertEqual(after.assigned(to: kai), [work.id])
+    }
+
+    func testAConnectionNoodleAssignedSurvivesAnUnreadableFile() async throws {
+        let (f, made) = try await fixture(bots: ["Kai"])
+        let kai = made[0].id, root = f.repository.rootURL
+        var registry = MCPRegistry()
+        let notes = try MCPConnectionRecord(name: "Notes", endpoint: URL(string: "https://example.com/notes")!)
+        registry.connections.append(notes)
+        try registry.assign([notes.id], to: kai)
+        try registry.save(root: root)
+
+        let calendar = LinkConnectionDraft(name: "Calendar", endpoint: URL(string: "https://example.com/calendar")!)
+        try await unreadable(root.appendingPathComponent("MCP/connections.json")) {
+            _ = try? await f.device.request(.saveConnection(calendar))
+        }
+
+        XCTAssertEqual(try MCPRegistry.load(root: root).assigned(to: kai).map(\.id), [notes.id])
+    }
+
     /// It is the owner's own Mac: there is nobody else to add.
     func testNobodyElseCanBeAdded() async throws {
         let (f, _) = try await fixture(bots: [])

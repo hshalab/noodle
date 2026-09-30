@@ -22,6 +22,13 @@ final class ComputerAccessTests: XCTestCase {
         XCTAssertEqual(restored.companion, .computer(computer.id, terminal: nil, view: "web"))
         XCTAssertFalse(try ComputerAssignments.load(root: root).permits(computer.id, agent: agent))
     }
+    /// This Mac as a Hub reads the grants while the Mac is locked and its owner is away.
+    func testAssignmentsStayReadableWhileTheMacIsLocked() throws {
+        let root = try temporaryDirectory()
+        try ComputerAssignments().save(root: root)
+        let values = try root.appendingPathComponent("computers.json").resourceValues(forKeys: [.fileProtectionKey])
+        XCTAssertEqual(values.fileProtection, .completeUntilFirstUserAuthentication)
+    }
     private func temporaryDirectory() throws -> URL {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
