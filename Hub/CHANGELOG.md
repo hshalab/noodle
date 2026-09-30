@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-09-30
+
 ### Changed
 
 - A device that falls behind in a live view picks up again from a small picture built on what it already shows, instead of a full new picture about 40 times larger. The Browser, Computer or Applet and the device need their latest versions.

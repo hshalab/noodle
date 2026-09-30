@@ -6,6 +6,8 @@ All notable changes to Noodle are documented here, following
 
 ## [Unreleased]
 
+## [0.36.0] - 2026-09-30
+
 ### Changed
 
 - The lists for adding tools, computers, browsers and group members, and the calendar and reminders choices, no longer have a Done button; click outside to close them.
