@@ -461,7 +461,6 @@ struct EventKitToolRow: View {
                 Text("Checking access…").foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
-            HStack { Spacer(); Button("Done") { showingScope = false } }
         }.padding(14).frame(width: 260, height: 240)
     }
 }

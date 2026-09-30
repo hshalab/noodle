@@ -22,9 +22,7 @@ struct GroupMemberPicker: View {
                 }
                 .disabled(selected.count == agents.count)
                 .popover(isPresented: $showingAdd, arrowEdge: .bottom) {
-                    GroupMemberChooser(agents: agents, selectedIDs: $selectedIDs, search: $search) {
-                        showingAdd = false
-                    }
+                    GroupMemberChooser(agents: agents, selectedIDs: $selectedIDs, search: $search)
                 }
             }
             ScrollView {
@@ -98,7 +96,6 @@ struct GroupMemberChooser: View {
     let agents: [AgentRecord]
     @Binding var selectedIDs: Set<UUID>
     @Binding var search: String
-    let onDone: () -> Void
 
     private var selected: [AgentRecord] { agents.filter { selectedIDs.contains($0.id) } }
     private var available: [AgentRecord] {
@@ -136,7 +133,6 @@ struct GroupMemberChooser: View {
                     }
                 }
             }
-            HStack { Spacer(); Button("Done", action: onDone) }
         }
         .padding(16)
         .frame(width: 300, height: 280)

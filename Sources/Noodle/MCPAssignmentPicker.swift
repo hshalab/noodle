@@ -43,7 +43,7 @@ struct MCPAssignmentPicker: View {
                     .popover(isPresented: $showingAdd, arrowEdge: .bottom) {
                         MCPConnectionChooser(controller: controller, selectedIDs: $selectedIDs, search: $search,
                             builtIn: $builtIn, missingBuiltIn: missingBuiltIn,
-                            onNewTool: { wantsNewTool = true; showingAdd = false }, onDone: { showingAdd = false })
+                            onNewTool: { wantsNewTool = true; showingAdd = false })
                             .onDisappear {
                                 // Wait for the popover to close before presenting a sheet
                                 // on the bot editor. No nested popover or global window.
@@ -114,7 +114,6 @@ struct MCPConnectionChooser: View {
     var builtIn: Binding<Set<EventKitAssignments.Kind>>? = nil
     var missingBuiltIn: [EventKitAssignments.Kind] = []
     let onNewTool: () -> Void
-    let onDone: () -> Void
     var body: some View {
         VStack(spacing: 10) {
             TextField("Search connections", text: $search).textFieldStyle(.roundedBorder).autocorrectionDisabled()
@@ -164,7 +163,6 @@ struct MCPConnectionChooser: View {
             HStack {
                 Button("New Tool…", action: onNewTool)
                 Spacer()
-                Button("Done", action: onDone)
             }
         }.padding(16).frame(width: 330, height: 260)
     }
@@ -277,7 +275,6 @@ struct HubConnectionPicker: View {
             HStack {
                 Button("New Tool…") { wantsNewTool = true; showingAdd = false }
                 Spacer()
-                Button("Done") { showingAdd = false }
             }
         }.padding(16).frame(width: 330, height: 260)
             .onDisappear {

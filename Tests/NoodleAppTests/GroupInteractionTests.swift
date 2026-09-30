@@ -8,7 +8,6 @@ import NoodleCore
 @MainActor @Observable final class MemberSelection {
     var ids = Set<UUID>()
     var search = ""
-    var done = 0
     var idsBinding: Binding<Set<UUID>> { Binding(get: { self.ids }, set: { self.ids = $0 }) }
     var searchBinding: Binding<String> { Binding(get: { self.search }, set: { self.search = $0 }) }
 }
@@ -17,7 +16,7 @@ import NoodleCore
     func testSearchAddRemoveAndRepeatedAddKeepMembershipUnique() async throws {
         let f = try fixture(), selection = MemberSelection()
         let chooser = host(GroupMemberChooser(agents: f.store.agents, selectedIDs: selection.idsBinding,
-            search: selection.searchBinding, onDone: { selection.done += 1 }))
+            search: selection.searchBinding))
         let search = try await textField("Search bots", in: chooser)
         edit(search, text: "GRACE")
         let add = try await control("Add Grace to group", in: chooser)
@@ -29,7 +28,7 @@ import NoodleCore
         press(try await control("Add Ada to group", in: chooser))
         try await wait { selection.ids == [f.a.id, f.b.id] }
         _ = try await control("All bots added", in: chooser)
-        press(try await control("Done", in: chooser)); XCTAssertEqual(selection.done, 1)
+        XCTAssertFalse(hasControl("Done", in: chooser), "Clicking outside the popover closes it")
         let picker = host(GroupMemberPicker(agents: f.store.agents, selectedIDs: selection.idsBinding).environment(f.store))
         let addAll = try await control("Add Bots", in: picker)
         XCTAssertFalse(enabled(addAll))

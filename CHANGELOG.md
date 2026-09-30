@@ -8,7 +8,7 @@ All notable changes to Noodle are documented here, following
 
 ### Changed
 
-- The lists for adding computers and browsers to a bot no longer have a Done button; click outside to close them.
+- The lists for adding tools, computers, browsers and group members, and the calendar and reminders choices, no longer have a Done button; click outside to close them.
 
 ### Fixed
 

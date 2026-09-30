@@ -147,7 +147,7 @@ import NoodleCore
         let before = try Data(contentsOf: f.registryURL), selection = MemberSelection()
         selection.ids = [first.id]
         let chooser = host(MCPConnectionChooser(controller: f.controller, selectedIDs: selection.idsBinding,
-            search: selection.searchBinding, onNewTool: { XCTFail("No new tool requested") }, onDone: { selection.done += 1 }))
+            search: selection.searchBinding, onNewTool: { XCTFail("No new tool requested") }))
         let search = try await textField("Search connections", in: chooser)
         edit(search, text: "nobody")
         try await wait { !self.hasControl("Personal", in: chooser) }
@@ -156,7 +156,7 @@ import NoodleCore
         press(add); press(add)
         try await wait { selection.ids == [first.id, second.id] }
         try await wait { !self.hasControl("Personal", in: chooser) }
-        press(try await control("Done", in: chooser)); XCTAssertEqual(selection.done, 1)
+        XCTAssertFalse(hasControl("Done", in: chooser), "Clicking outside the popover closes it")
         let picker = host(MCPAssignmentPicker(controller: f.controller, selectedIDs: selection.idsBinding,
             calendars: eventKit(f, kind: .calendar), reminders: eventKit(f, kind: .reminderList),
             calendarIDs: .constant([]), reminderIDs: .constant([]), builtIn: .constant([])))
@@ -182,7 +182,7 @@ import NoodleCore
         let f = try mcpFixture(), selection = MemberSelection()
         var newTool = 0
         let chooser = host(MCPConnectionChooser(controller: f.controller, selectedIDs: selection.idsBinding,
-            search: selection.searchBinding, onNewTool: { newTool += 1 }, onDone: {}))
+            search: selection.searchBinding, onNewTool: { newTool += 1 }))
         _ = try await control("No saved connections. Choose New Tool to add one.", in: chooser)
         press(try await control("New Tool…", in: chooser)); XCTAssertEqual(newTool, 1)
         let picker = host(MCPAssignmentPicker(controller: f.controller, selectedIDs: selection.idsBinding,
