@@ -32,6 +32,27 @@ final class ConversationAnnotationTests: XCTestCase {
         window.contentView = nil
     }
 
+    @MainActor func testReopenedWindowIsReattached() async throws {
+        let controller = ConversationAnnotationController()
+        let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 600, height: 400),
+            styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { window.close(); window.contentView = nil }
+        let hostingView = NSHostingView(rootView: ConversationAnnotationHost(controller: controller,
+            conversationID: UUID(), title: "Reopen", save: { _, _, _, _ in }))
+        window.contentView = hostingView
+        window.orderFront(nil)
+        try await Task.sleep(for: .milliseconds(30))
+        XCTAssertTrue(controller.window === window)
+
+        window.close()
+        XCTAssertNil(controller.window)
+        // The main window keeps its views while closed and is shown again on reopen.
+        window.orderFront(nil)
+        try await Task.sleep(for: .milliseconds(30))
+        XCTAssertTrue(controller.window === window, "Annotations must work again after the window is reopened")
+    }
+
     @MainActor func testPendingAnnotationMountIsCancelledOnDetachAndReplacement() async throws {
         let first = ConversationAnnotationController(), second = ConversationAnnotationController()
         let host = ConversationAnnotationHost.Host(controller: first)
@@ -150,5 +171,54 @@ final class ConversationAnnotationTests: XCTestCase {
         let wire = try JSONEncoder().encode(old)
         XCTAssertFalse(String(decoding: wire, as: UTF8.self).contains("sourceMessageID"))
         XCTAssertEqual(try JSONDecoder().decode(AttachmentAnnotation.self, from: wire), old)
+    }
+}
+
+/// A test process cannot activate, so no window ever becomes key on its own.
+private final class KeyedWindow: NSWindow {
+    override var isKeyWindow: Bool { isVisible }
+}
+
+@MainActor final class ConversationAnnotationShortcutTests: HiddenViewTests {
+    func testShortcutsAndMenuWorkAfterTheMainWindowIsClosedAndReopened() async throws {
+        let f = try fixture()
+        try f.repository.append(ChatMessage(conversationID: f.directA.id, author: .agent(f.a.id),
+            body: "Annotate me", delivery: .delivered))
+        f.store.refreshTranscripts()
+        f.store.selectedConversationID = f.directA.id
+        let window = KeyedWindow(contentRect: .init(x: -10000, y: -10000, width: 1000, height: 700),
+            styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        let root = NSHostingView(rootView: RootView().environment(f.store))
+        window.contentView = root
+        defer { window.close(); window.contentView = nil }
+        window.orderFront(nil)
+        try await wait { self.elements(root).contains { $0 is ComposerTextView } }
+
+        func allViews(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(allViews) }
+        let controller = try XCTUnwrap(allViews(root)
+            .compactMap { ($0 as? ConversationAnnotationHost.Host)?.controller }.first)
+        let menu = AnnotationCommandsState.shared
+        func assertAvailable(_ moment: String) async throws {
+            try await wait { controller.canAnnotate && menu.conversationEnabled && menu.conversationOwner === controller }
+            // The real dispatch path: local event monitors run inside sendEvent.
+            let regionShortcut = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero,
+                modifierFlags: [.command, .shift], timestamp: 0, windowNumber: window.windowNumber, context: nil,
+                characters: "R", charactersIgnoringModifiers: "r", isARepeat: false, keyCode: 15))
+            XCTAssertTrue(KeyboardBindings.shared.matches(.annotateRegion, event: regionShortcut))
+            NSApp.sendEvent(regionShortcut)
+            XCTAssertFalse(controller.canAnnotate, "⇧⌘R must start a region annotation \(moment)")
+            XCTAssertFalse(menu.conversationEnabled, "A running annotation disables the menu items")
+            // Stop before the window capture, which needs Screen Recording access.
+            controller.cancel()
+            XCTAssertTrue(controller.canAnnotate)
+        }
+
+        try await assertAvailable("on first open")
+        window.close()
+        try await wait { !menu.conversationEnabled }
+        // Reopening Noodle shows the same main window with the views it kept.
+        window.orderFront(nil)
+        try await assertAvailable("after the window is reopened")
     }
 }

@@ -10,6 +10,10 @@ All notable changes to Noodle are documented here, following
 
 - The lists for adding computers and browsers to a bot no longer have a Done button; click outside to close them.
 
+### Fixed
+
+- Add Annotation (⇧⌘A) and Annotate Region (⇧⌘R) work in a conversation again after the main window has been closed and reopened.
+
 ## [0.35.0] - 2026-09-29
 
 ### Changed

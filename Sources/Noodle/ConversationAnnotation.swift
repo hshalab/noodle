@@ -31,6 +31,7 @@ struct ConversationAnnotationHost: NSViewRepresentable {
     final class Host: NSView {
         private(set) weak var controller: ConversationAnnotationController?
         private var attachmentGeneration = 0
+        private var visibility: NSKeyValueObservation?
 
         init(controller: ConversationAnnotationController) {
             self.controller = controller
@@ -47,12 +48,19 @@ struct ConversationAnnotationHost: NSViewRepresentable {
 
         override func viewWillMove(toWindow newWindow: NSWindow?) {
             attachmentGeneration += 1
+            visibility = nil
             controller?.attach(to: nil)
             super.viewWillMove(toWindow: newWindow)
         }
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
+            // A closed main window keeps this view and is shown again on reopen.
+            // Closing detached the controller, so attach once it is visible again.
+            visibility = window?.observe(\.isVisible, options: [.new]) { [weak self] _, change in
+                guard change.newValue == true else { return }
+                DispatchQueue.main.async { self?.scheduleAttachment() }
+            }
             scheduleAttachment()
         }
 
