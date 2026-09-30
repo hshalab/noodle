@@ -133,17 +133,6 @@ import NoodleCore
         }
     }
 
-    func testSavedPreviewTimeoutsReopenWithTheTimeoutUsedByNewPreviews() async throws {
-        let f = try fixture()
-        for seconds in LinkPreviewSettings.timeoutOptions {
-            f.runtime.defaults.set(seconds, forKey: LinkPreviewSettings.timeoutKey)
-            let defaults = try reopenedDefaults(f)
-            let reopened = host(ChatSettingsView(microphoneDevices: { [] }, systemMicrophoneID: { 0 }).defaultAppStorage(defaults))
-            _ = try await control("\(seconds) seconds", in: reopened)
-            XCTAssertEqual(LinkPreviewSettings.timeout(in: defaults), TimeInterval(seconds))
-        }
-    }
-
     func testMicrophoneUIDSurvivesReopenDisconnectionAndReconnection() async throws {
         guard #available(macOS 26.0, *) else { throw XCTSkip("Microphone settings require macOS 26") }
         let f = try fixture()

@@ -84,6 +84,47 @@ import XCTest
         XCTAssertTrue(result?.metadata === metadata); XCTAssertNil(result?.image)
     }
 
+    /// Previews are kept on disk for a week: a relaunch shows them at once, and after a week they are fetched again.
+    func testPreviewsAreKeptOnDiskForAWeek() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        var now = Date(timeIntervalSince1970: 1_000_000)
+        var fetches = 0
+        func launch(_ found: Bool = true) -> LinkPreviewMetadataCache {
+            LinkPreviewMetadataCache(fetchMetadata: { _, _, completion in
+                fetches += 1
+                let value = LPLinkMetadata(); value.title = "Kept"; value.imageProvider = NSItemProvider()
+                completion(found ? value : nil)
+                return {}
+            }, fetchImage: { _, completion in
+                completion(NSImage(size: .init(width: 4, height: 4), flipped: false) { NSColor.red.setFill(); $0.fill(); return true })
+                return {}
+            }, fetchMap: { _, _, _ in {} }, folder: folder, now: { now })
+        }
+        var result: LinkPreviewMetadataCache.Result?
+        let cache = launch()
+        cache.load(first) { result = $0 }
+        try await wait { result != nil }
+
+        let relaunched = launch().cachedResult(for: first)
+        XCTAssertEqual(relaunched?.metadata?.title, "Kept")
+        XCTAssertEqual(relaunched?.image?.size, NSSize(width: 4, height: 4))
+        XCTAssertEqual(fetches, 1)
+
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: folder.path).count, 1)
+        now += 8 * 86_400
+        _ = launch()
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: folder.path).count, 0,
+                       "A launch clears previews older than a week")
+        XCTAssertNil(launch().cachedResult(for: first))
+
+        var failed: LinkPreviewMetadataCache.Result?
+        let failing = launch(false)
+        failing.load(second) { failed = $0 }
+        try await wait { failed != nil }
+        XCTAssertNil(launch().cachedResult(for: second), "A failed preview is tried again after a relaunch")
+    }
+
     func testFailedMetadataIsCachedWithoutStartingARetryLoop() async throws {
         let f = loader(); var results: [LinkPreviewMetadataCache.Result] = []
         f.cache.load(first) { results.append($0) }; f.metadata[0].1(nil)

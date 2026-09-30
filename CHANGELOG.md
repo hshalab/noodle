@@ -12,12 +12,17 @@ All notable changes to Noodle are documented here, following
 
 ### Changed
 
+- Link previews are kept on this Mac for a week, so they show at once after a relaunch, and are fetched again after that.
 - Stack overlaps only files Quick Look pages through together; noodlets, browsers, computers, voice messages and annotations sit side by side above them.
 - Hold ⌘, ⌥ or ⇧ while clicking a web link or a file to skip Quick Look: links open in your browser, files in their default app.
 
 ### Fixed
 
 - Bots no longer lose their computers, browsers or tools when a phone or another Mac reaches This Mac as a Hub while the Mac is locked.
+
+### Removed
+
+- The Link preview timeout setting. Previews wait up to 10 seconds, as they did by default.
 
 ## [0.36.0] - 2026-09-30
 

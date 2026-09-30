@@ -41,6 +41,38 @@ import Testing
         #expect(fetches == 2)
     }
 
+    /// Cards last a week, then are fetched again, so they do not go stale.
+    @MainActor @Test func linkCardsAreFetchedAgainAfterAWeek() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let conversation = UUID()
+        var now = Date(timeIntervalSince1970: 1_000_000)
+        var fetches = 0
+        func launch() -> LinkPreviews { LinkPreviews(folder: folder, fetch: { _ in fetches += 1; return Self.card }, now: { now }) }
+        _ = await launch().card(for: Self.page, in: conversation)
+        now += 6 * 86_400
+        _ = await launch().card(for: Self.page, in: conversation)
+        #expect(fetches == 1)
+        now += 2 * 86_400
+        _ = await launch().card(for: Self.page, in: conversation)
+        #expect(fetches == 2)
+    }
+
+    /// A card older than a week is removed at the next sync, even if its message is never shown again.
+    @MainActor @Test func oldCardsAreRemovedAtTheNextSync() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let conversation = UUID()
+        var now = Date(timeIntervalSince1970: 1_000_000)
+        let previews = LinkPreviews(folder: folder, fetch: { _ in Self.card }, now: { now })
+        _ = await previews.card(for: Self.page, in: conversation)
+        let saved = folder.appendingPathComponent(conversation.uuidString, isDirectory: true)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: saved.path).count == 1)
+        now += 8 * 86_400
+        previews.keep(only: [conversation])
+        #expect(((try? FileManager.default.contentsOfDirectory(atPath: saved.path)) ?? []).isEmpty)
+    }
+
     /// A bot or group deleted on another device takes its cards with it.
     @MainActor @Test func cardsOfConversationsThatAreGoneAreForgotten() async throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

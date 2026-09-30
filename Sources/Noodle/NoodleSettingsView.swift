@@ -137,7 +137,6 @@ struct GeneralSettingsView: View {
 
 struct ChatSettingsView: View {
     @AppStorage(ComposerNameCompletion.descriptionsDefaultsKey) private var showBotDescriptions = true
-    @AppStorage(LinkPreviewSettings.timeoutKey) private var linkPreviewTimeout = LinkPreviewSettings.defaultTimeout
     @AppStorage(WebLinkPreview.defaultsKey) private var previewsWebLinks = true
     @AppStorage(VoiceInputDevice.defaultsKey) private var microphoneUID = ""
     @AppStorage(ChatAttachmentLayout.defaultsKey) private var attachmentLayout = ChatAttachmentLayout.defaultValue.rawValue
@@ -208,15 +207,6 @@ struct ChatSettingsView: View {
             Section {
                 Toggle("Preview web links", isOn: $previewsWebLinks)
                     .help("Open web links in Quick Look first, with a button to continue in your browser. When off, links open in your browser.")
-            }
-            Section {
-                Picker("Link preview timeout", selection: $linkPreviewTimeout) {
-                    ForEach(LinkPreviewSettings.timeoutOptions, id: \.self) { seconds in
-                        Text("\(seconds) seconds").tag(seconds)
-                    }
-                }
-            } footer: {
-                Text("Maximum time for new link previews, including images. Unavailable previews remain clickable without a loading spinner.")
             }
         }
         .formStyle(.grouped)

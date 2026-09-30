@@ -385,37 +385,45 @@ struct LinkCard: Codable, Equatable {
     }
 }
 
-/// Link cards, fetched once and kept on this phone with their conversation until it is deleted.
-/// A page that gives nothing away gets a card naming its site and is tried again next launch.
+/// Link cards, kept on this phone with their conversation for a week, then fetched again so they do not
+/// go stale. A page that gives nothing away gets a card naming its site and is tried again next launch.
 @MainActor final class LinkPreviews {
     typealias Fetch = @MainActor (URL) async -> LinkCard?
 
+    static let lifetime: TimeInterval = 7 * 86_400
+
+    private struct Saved: Codable {
+        var card: LinkCard
+        var savedAt: Date
+    }
+
     private let folder: URL
     private let fetch: Fetch
-    private var cards: [URL: LinkCard] = [:]
+    private let now: () -> Date
+    private var cards: [URL: Saved] = [:]
     private var pending: [URL: Task<LinkCard, Never>] = [:]
 
-    init(folder: URL, fetch: @escaping Fetch = LinkPreviews.fetched) {
+    init(folder: URL, fetch: @escaping Fetch = LinkPreviews.fetched, now: @escaping () -> Date = Date.init) {
         self.folder = folder
         self.fetch = fetch
+        self.now = now
     }
 
     func card(for url: URL, in conversationID: UUID) async -> LinkCard {
         let file = self.file(for: url, in: conversationID)
-        if let card = cards[file] { return card }
-        if let data = try? Data(contentsOf: file), let card = try? JSONDecoder().decode(LinkCard.self, from: data) {
-            cards[file] = card
-            return card
+        if let saved = cards[file] ?? Self.saved(at: file), isFresh(saved) {
+            cards[file] = saved
+            return saved.card
         }
         let task = pending[file] ?? Task {
             guard let card = await fetch(url) else { return LinkCard(site: url) }
             try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try? JSONEncoder().encode(card).write(to: file, options: .atomic)
+            try? JSONEncoder().encode(Saved(card: card, savedAt: now())).write(to: file, options: .atomic)
             return card
         }
         pending[file] = task
         let card = await task.value
-        cards[file] = card
+        cards[file] = Saved(card: card, savedAt: now())
         pending[file] = nil
         return card
     }
@@ -425,13 +433,26 @@ struct LinkCard: Codable, Equatable {
         cards = cards.filter { $0.key.deletingLastPathComponent().lastPathComponent != conversationID.uuidString }
     }
 
-    /// Forgets the cards of every conversation but these.
+    /// Forgets the cards of every conversation but these, and the cards older than a week.
     func keep(only conversationIDs: Set<UUID>) {
         let names = Set(conversationIDs.map(\.uuidString))
-        for folder in (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
-        where !names.contains(folder.lastPathComponent) {
-            if let id = UUID(uuidString: folder.lastPathComponent) { forget(id) }
+        for folder in (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? [] {
+            guard names.contains(folder.lastPathComponent) else {
+                if let id = UUID(uuidString: folder.lastPathComponent) { forget(id) }
+                continue
+            }
+            for file in (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
+            where !(Self.saved(at: file).map(isFresh) ?? false) {
+                try? FileManager.default.removeItem(at: file)
+                cards[file] = nil
+            }
         }
+    }
+
+    private func isFresh(_ saved: Saved) -> Bool { now().timeIntervalSince(saved.savedAt) < Self.lifetime }
+
+    private static func saved(at file: URL) -> Saved? {
+        (try? Data(contentsOf: file)).flatMap { try? JSONDecoder().decode(Saved.self, from: $0) }
     }
 
     private func file(for url: URL, in conversationID: UUID) -> URL {

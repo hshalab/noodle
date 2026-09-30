@@ -152,16 +152,6 @@ struct MessageLinkPreview: View {
     }
 }
 
-enum LinkPreviewSettings {
-    static let timeoutKey = "Noodle.linkPreview.timeoutSeconds"
-    static let defaultTimeout = 10
-    static let timeoutOptions = [5, 10, 20, 30]
-    static func timeout(in defaults: UserDefaults = .standard) -> TimeInterval {
-        let value = defaults.object(forKey: timeoutKey) as? Int ?? defaultTimeout
-        return TimeInterval(min(30, max(5, value)))
-    }
-}
-
 /// Holding ⌘, ⌥ or ⇧ while opening a link or attachment skips Quick Look and opens it on its own.
 enum QuickLookBypass {
     static func isHeld(_ modifiers: NSEvent.ModifierFlags = NSEvent.modifierFlags) -> Bool {
@@ -204,16 +194,28 @@ enum WebLinkPreview {
     }
 }
 
+/// Link previews, kept on this Mac for a week, then fetched again so they do not go stale. A preview
+/// that could not be fetched is kept for this launch only.
 @MainActor
 final class LinkPreviewMetadataCache {
-    static let shared = LinkPreviewMetadataCache()
+    static let shared = LinkPreviewMetadataCache(folder: .cachesDirectory.appendingPathComponent("Link Previews", isDirectory: true))
+    static let lifetime: TimeInterval = 7 * 86_400
+    static let timeout: TimeInterval = 10
     final class Result: NSObject {
         let metadata: LPLinkMetadata?
         let image: NSImage?
-        init(metadata: LPLinkMetadata?, image: NSImage?) {
+        let savedAt: Date
+        init(metadata: LPLinkMetadata?, image: NSImage?, savedAt: Date = Date()) {
             self.metadata = metadata
             self.image = image
+            self.savedAt = savedAt
         }
+    }
+    private struct Saved: Codable {
+        var fetched: Bool
+        var title: String?
+        var image: Data?
+        var savedAt: Date
     }
     private final class Request {
         var metadata: LPLinkMetadata?
@@ -228,23 +230,50 @@ final class LinkPreviewMetadataCache {
     private let fetchImage: ImageLoader
     private let fetchMap: MapLoader
     private let sleep: (Duration) async throws -> Void
+    private let folder: URL?
+    private let now: () -> Date
     private let cache = NSCache<NSURL, Result>()
     private var pending: [URL: Request] = [:]
 
     init(fetchMetadata: @escaping MetadataLoader = LinkPreviewMetadataCache.nativeMetadata,
          fetchImage: @escaping ImageLoader = LinkPreviewMetadataCache.nativeImage,
          fetchMap: @escaping MapLoader = MapSnapshot.render,
-         sleep: @escaping (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) {
+         sleep: @escaping (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
+         folder: URL? = nil, now: @escaping () -> Date = Date.init) {
         self.fetchMetadata = fetchMetadata
         self.fetchImage = fetchImage
         self.fetchMap = fetchMap
         self.sleep = sleep
+        self.folder = folder
+        self.now = now
         cache.countLimit = 128
+        for file in folder.flatMap({ try? FileManager.default.contentsOfDirectory(at: $0, includingPropertiesForKeys: nil) }) ?? []
+        where !(saved(at: file).map { isFresh($0.savedAt) } ?? false) {
+            try? FileManager.default.removeItem(at: file)
+        }
     }
     func cachedResult(for url: URL) -> Result? {
-        cache.object(forKey: url as NSURL)
+        if let result = cache.object(forKey: url as NSURL) {
+            if isFresh(result.savedAt) { return result }
+            cache.removeObject(forKey: url as NSURL)
+        }
+        guard let file = file(for: url), let saved = saved(at: file) else { return nil }
+        guard isFresh(saved.savedAt) else {
+            try? FileManager.default.removeItem(at: file)
+            return nil
+        }
+        var metadata: LPLinkMetadata?
+        if saved.fetched {
+            metadata = LPLinkMetadata()
+            metadata?.originalURL = url
+            metadata?.url = url
+            metadata?.title = saved.title
+        }
+        let result = Result(metadata: metadata, image: saved.image.flatMap(NSImage.init(data:)), savedAt: saved.savedAt)
+        cache.setObject(result, forKey: url as NSURL)
+        return result
     }
-    func load(_ url: URL, timeout: TimeInterval = LinkPreviewSettings.timeout(), completion: @escaping (Result) -> Void) {
+    func load(_ url: URL, timeout: TimeInterval = LinkPreviewMetadataCache.timeout, completion: @escaping (Result) -> Void) {
         if let result = cachedResult(for: url) {
             completion(result)
             return
@@ -296,10 +325,24 @@ final class LinkPreviewMetadataCache {
         pending[url] = nil
         request.deadline?.cancel()
         request.cancellations.forEach { $0() }
-        let result = Result(metadata: request.metadata, image: image)
-        // Cache failures too: rebuilding visible rows must not start retry loops.
+        let result = Result(metadata: request.metadata, image: image, savedAt: now())
+        // Cache failures too, for this launch: rebuilding visible rows must not start retry loops.
         cache.setObject(result, forKey: url as NSURL)
+        if request.metadata != nil || image != nil, let file = file(for: url) {
+            let png = image?.tiffRepresentation.flatMap(NSBitmapImageRep.init(data:))?.representation(using: .png, properties: [:])
+            let saved = Saved(fetched: request.metadata != nil, title: request.metadata?.title, image: png, savedAt: result.savedAt)
+            try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? JSONEncoder().encode(saved).write(to: file, options: .atomic)
+        }
         request.completions.forEach { $0(result) }
+    }
+    private func isFresh(_ savedAt: Date) -> Bool { now().timeIntervalSince(savedAt) < Self.lifetime }
+    private func file(for url: URL) -> URL? {
+        let name = SHA256.hash(data: Data(url.absoluteString.utf8)).map { String(format: "%02x", $0) }.joined()
+        return folder?.appendingPathComponent(name + ".json")
+    }
+    private func saved(at file: URL) -> Saved? {
+        (try? Data(contentsOf: file)).flatMap { try? JSONDecoder().decode(Saved.self, from: $0) }
     }
     nonisolated static func nativeMetadata(_ url: URL, timeout: TimeInterval, completion: @escaping (LPLinkMetadata?) -> Void) -> (() -> Void) {
         let provider = LPMetadataProvider()

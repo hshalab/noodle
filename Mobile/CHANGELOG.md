@@ -11,7 +11,7 @@
 
 ### Changed
 
-- Link cards look as on the Mac, and are kept on this iPhone until their conversation is deleted, instead of being fetched again each time Noodle opens.
+- Link cards look as on the Mac, and are kept on this iPhone for a week, instead of being fetched again each time Noodle opens. After a week they are fetched again, and deleting a conversation removes its cards.
 - Stack overlaps only files you can swipe through together, as on the Mac; noodlets, browsers, computers and voice messages sit side by side above them.
 
 ### Fixed
