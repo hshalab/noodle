@@ -439,7 +439,8 @@ final class SurfaceTests: XCTestCase {
         XCTAssertLessThan(difference(shown, now), 2, "a viewer that missed frames did not see the picture as it is")
 
         let keyFrame = try XCTUnwrap(try encoder.encode(now, size: CGSize(width: 800, height: 500), keyFrame: true, at: 2.1))
-        XCTAssertLessThan(recovery.sample.count * 5, keyFrame.sample.count,
+        // Macs' encoders differ in how small they make each: 6.6 times here, 4.8 on a CI runner.
+        XCTAssertLessThan(recovery.sample.count * 3, keyFrame.sample.count,
                           "recovering took \(recovery.sample.count) bytes, a key frame \(keyFrame.sample.count)")
     }
 
