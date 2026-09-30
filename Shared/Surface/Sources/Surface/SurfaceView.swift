@@ -188,7 +188,8 @@ private struct SurfaceCanvas: UIViewRepresentable {
     func updateUIView(_ view: SurfaceUIView, context: Context) { view.control = send }
 }
 
-/// Taps click and a finger drag scrolls, as in Safari; the keyboard types into what is focused.
+/// Taps click and a finger drag scrolls, as in Safari; touch and hold drags, two fingers zoom,
+/// and the keyboard types into what is focused.
 final class SurfaceUIView: UIView, UIKeyInput {
     /// Where controls go. Whoever that is learns the view's size and the last frame it has shown,
     /// or none, which also says it will say what it shows.
@@ -203,12 +204,14 @@ final class SurfaceUIView: UIView, UIKeyInput {
     private let display = SurfaceDisplay()
     private var reported: CGSize?
     private var shown: UInt64 = 0
+    private var touches = SurfaceTouches()
+    /// Where the fingers of a pinch were last, to move the picture with them.
+    private var pinched: CGPoint?
 
     private func send(_ input: SurfaceInput) { control(.input(input)) }
 
     private func reportSize() {
-        let scale = window?.screen.scale ?? traitCollection.displayScale
-        let pixels = CGSize(width: bounds.width * scale, height: bounds.height * scale)
+        let pixels = touches.pixels(bounds.size, screen: window?.screen.scale ?? traitCollection.displayScale)
         guard pixels.width > 0, pixels.height > 0, pixels != reported else { return }
         reported = pixels
         control(.view(width: pixels.width, height: pixels.height))
@@ -218,6 +221,7 @@ final class SurfaceUIView: UIView, UIKeyInput {
         self.feed = feed
         super.init(frame: .zero)
         backgroundColor = .black
+        clipsToBounds = true
         layer.addSublayer(display.layer)
         feed.show = { [weak self, display] packet in
             display.show(packet)
@@ -228,14 +232,26 @@ final class SurfaceUIView: UIView, UIKeyInput {
         display.needsKeyFrame = { [weak self] in self?.control(.keyFrame) }
         feed.keyboard = { [weak self] in self?.toggleKeyboard() }
         addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tap)))
-        addGestureRecognizer(UIPanGestureRecognizer(target: self, action: #selector(pan)))
+        let pan = UIPanGestureRecognizer(target: self, action: #selector(pan))
+        pan.maximumNumberOfTouches = 1
+        addGestureRecognizer(pan)
+        addGestureRecognizer(UILongPressGestureRecognizer(target: self, action: #selector(hold)))
+        addGestureRecognizer(UIPinchGestureRecognizer(target: self, action: #selector(pinch)))
     }
     required init?(coder: NSCoder) { nil }
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        display.layer.frame = bounds
+        place()
         reportSize()
+    }
+
+    /// Lays the picture where the zoom puts it, following the fingers without animating.
+    private func place() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        display.layer.frame = touches.zoomed ? touches.frame(feed.size, in: bounds.size) : bounds
+        CATransaction.commit()
     }
 
     override var canBecomeFirstResponder: Bool { true }
@@ -243,22 +259,41 @@ final class SurfaceUIView: UIView, UIKeyInput {
     func insertText(_ text: String) { send(text == "\n" ? .key(.enter) : .text(text)) }
     func deleteBackward() { send(.key(.backspace)) }
 
-    private func target(_ gesture: UIGestureRecognizer) -> CGPoint? {
-        SurfaceGeometry.surfacePoint(gesture.location(in: self), in: bounds.size, surface: feed.size)
-    }
-
     @objc private func tap(_ gesture: UITapGestureRecognizer) {
-        guard let point = target(gesture) else { return }
-        send(.pointer(.down, x: point.x, y: point.y))
-        send(.pointer(.up, x: point.x, y: point.y))
+        touches.tap(gesture.location(in: self), surface: feed.size, view: bounds.size).forEach(send)
     }
 
     @objc private func pan(_ gesture: UIPanGestureRecognizer) {
-        guard let point = target(gesture) else { return }
         let moved = gesture.translation(in: self)
         gesture.setTranslation(.zero, in: self)
-        let scale = feed.size.width / max(1, SurfaceGeometry.fitted(feed.size, in: bounds.size).width)
-        send(.scroll(x: point.x, y: point.y, dx: -moved.x * scale, dy: -moved.y * scale))
+        touches.scroll(gesture.location(in: self), by: moved, surface: feed.size, view: bounds.size).forEach(send)
+    }
+
+    @objc private func hold(_ gesture: UILongPressGestureRecognizer) {
+        let phase: SurfaceTouches.Hold
+        switch gesture.state {
+        case .began: phase = .began
+        case .changed: phase = .moved
+        case .ended, .cancelled, .failed: phase = .ended
+        default: return
+        }
+        touches.hold(phase, at: gesture.location(in: self), surface: feed.size, view: bounds.size).forEach(send)
+    }
+
+    @objc private func pinch(_ gesture: UIPinchGestureRecognizer) {
+        let point = gesture.location(in: self)
+        switch gesture.state {
+        case .began, .changed:
+            let moved = pinched.map { CGPoint(x: point.x - $0.x, y: point.y - $0.y) } ?? .zero
+            touches.zoom(by: gesture.scale, around: point, moved: moved, surface: feed.size, view: bounds.size)
+            gesture.scale = 1
+            pinched = point
+            place()
+        default:
+            pinched = nil
+            // Once the fingers are off, so the stream does not start again at every step of a pinch.
+            reportSize()
+        }
     }
 
     /// Shows or hides the keyboard, which types into whatever the person tapped.

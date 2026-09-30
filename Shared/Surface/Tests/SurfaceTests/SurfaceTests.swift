@@ -780,6 +780,75 @@ final class SurfaceTests: XCTestCase {
         XCTAssertEqual(SurfaceGeometry.surfacePoint(CGPoint(x: 320, y: 300), in: view, surface: surface), CGPoint(x: 640, y: 400))
         XCTAssertNil(SurfaceGeometry.surfacePoint(CGPoint(x: 320, y: 10), in: view, surface: surface), "a click in the letterbox reaches nothing")
     }
+
+    /// Touching and holding, then moving, presses the pointer, drags it and lets go.
+    func testHoldingThenMovingDragsThePointer() {
+        let (surface, view) = (CGSize(width: 1280, height: 800), CGSize(width: 640, height: 600))
+        var touches = SurfaceTouches()
+        XCTAssertEqual(touches.hold(.began, at: CGPoint(x: 320, y: 300), surface: surface, view: view), [.pointer(.down, x: 640, y: 400)])
+        XCTAssertEqual(touches.hold(.moved, at: CGPoint(x: 330, y: 300), surface: surface, view: view), [.pointer(.drag, x: 660, y: 400)])
+        XCTAssertEqual(touches.hold(.ended, at: CGPoint(x: 330, y: 300), surface: surface, view: view), [.pointer(.up, x: 660, y: 400)])
+    }
+
+    /// A drag that leaves the picture keeps to its edge and still lets go, so no button stays held.
+    func testADragThatLeavesThePictureStillLetsGo() {
+        let (surface, view) = (CGSize(width: 1280, height: 800), CGSize(width: 640, height: 600))
+        var touches = SurfaceTouches()
+        _ = touches.hold(.began, at: CGPoint(x: 320, y: 300), surface: surface, view: view)
+        XCTAssertEqual(touches.hold(.moved, at: CGPoint(x: 320, y: 10), surface: surface, view: view), [.pointer(.drag, x: 640, y: 0)])
+        XCTAssertEqual(touches.hold(.ended, at: CGPoint(x: 700, y: 700), surface: surface, view: view), [.pointer(.up, x: 1280, y: 800)])
+    }
+
+    func testHoldingInTheLetterboxDragsNothing() {
+        let (surface, view) = (CGSize(width: 1280, height: 800), CGSize(width: 640, height: 600))
+        var touches = SurfaceTouches()
+        XCTAssertEqual(touches.hold(.began, at: CGPoint(x: 320, y: 10), surface: surface, view: view), [])
+        XCTAssertEqual(touches.hold(.moved, at: CGPoint(x: 320, y: 300), surface: surface, view: view), [])
+        XCTAssertEqual(touches.hold(.ended, at: CGPoint(x: 320, y: 300), surface: surface, view: view), [])
+    }
+
+    /// Pinching keeps what is under the fingers there, and taps land on the zoomed picture.
+    func testPinchingZoomsAroundTheFingers() {
+        let (surface, view) = (CGSize(width: 1280, height: 800), CGSize(width: 640, height: 600))
+        var touches = SurfaceTouches()
+        touches.zoom(by: 2, around: CGPoint(x: 320, y: 300), moved: .zero, surface: surface, view: view)
+        XCTAssertEqual(touches.frame(surface, in: view), CGRect(x: -320, y: -100, width: 1280, height: 800))
+        XCTAssertEqual(touches.tap(CGPoint(x: 320, y: 300), surface: surface, view: view).first, .pointer(.down, x: 640, y: 400))
+        XCTAssertEqual(touches.tap(CGPoint(x: 0, y: 300), surface: surface, view: view).first, .pointer(.down, x: 320, y: 400))
+        XCTAssertEqual(touches.scroll(CGPoint(x: 320, y: 300), by: CGPoint(x: 0, y: 10), surface: surface, view: view),
+                       [.scroll(x: 640, y: 400, dx: 0, dy: -10)], "a finger scrolls as far as it moves over the zoomed picture")
+    }
+
+    /// Two fingers move around the zoomed picture, up to its edges.
+    func testTwoFingersMoveAroundTheZoomedPicture() {
+        let (surface, view) = (CGSize(width: 1280, height: 800), CGSize(width: 640, height: 600))
+        var touches = SurfaceTouches()
+        touches.zoom(by: 2, around: CGPoint(x: 320, y: 300), moved: .zero, surface: surface, view: view)
+        touches.zoom(by: 1, around: CGPoint(x: 320, y: 300), moved: CGPoint(x: 100, y: 0), surface: surface, view: view)
+        XCTAssertEqual(touches.frame(surface, in: view).origin, CGPoint(x: -220, y: -100))
+        touches.zoom(by: 1, around: CGPoint(x: 320, y: 300), moved: CGPoint(x: 1000, y: -1000), surface: surface, view: view)
+        XCTAssertEqual(touches.frame(surface, in: view).origin, CGPoint(x: 0, y: -200))
+    }
+
+    /// A zoomed-in viewer asks for as many more pixels as it zooms, so the picture stays sharp.
+    func testZoomingInAsksForASharperPicture() {
+        let (surface, view) = (CGSize(width: 1280, height: 800), CGSize(width: 640, height: 600))
+        var touches = SurfaceTouches()
+        XCTAssertEqual(touches.pixels(view, screen: 3), CGSize(width: 1920, height: 1800))
+        touches.zoom(by: 2, around: CGPoint(x: 320, y: 300), moved: .zero, surface: surface, view: view)
+        XCTAssertEqual(touches.pixels(view, screen: 3), CGSize(width: 3840, height: 3600))
+        touches.zoom(by: 0.1, around: CGPoint(x: 320, y: 300), moved: .zero, surface: surface, view: view)
+        XCTAssertEqual(touches.pixels(view, screen: 3), CGSize(width: 1920, height: 1800))
+    }
+
+    /// Pinching out stops at the whole picture, back in its place.
+    func testPinchingOutStopsAtTheWholePicture() {
+        let (surface, view) = (CGSize(width: 1280, height: 800), CGSize(width: 640, height: 600))
+        var touches = SurfaceTouches()
+        touches.zoom(by: 3, around: CGPoint(x: 100, y: 150), moved: .zero, surface: surface, view: view)
+        touches.zoom(by: 0.1, around: CGPoint(x: 600, y: 500), moved: .zero, surface: surface, view: view)
+        XCTAssertEqual(touches.frame(surface, in: view), CGRect(x: 0, y: 100, width: 640, height: 400))
+    }
 }
 
 /// A viewer's link as the relay sees it: what got through, and what is still waiting while it stalls.

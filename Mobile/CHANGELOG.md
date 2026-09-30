@@ -8,6 +8,13 @@
 - A link to a page that shares no preview still gets a card with the site's name.
 - With Stack chosen for files, open a message with a noodlet and several pictures: the noodlet sits whole above them, and only the pictures overlap.
 - Press return in an empty message field, go back to the list and open the conversation again: the field is empty, says Message, and is as tall as the plus beside it.
+- Open a computer's live view, touch and hold a window's title bar, then move: the window follows and stays where you let go.
+- Pinch with two fingers to zoom into a computer or browser; move both fingers to look around, and pinch out to see it whole again. Taps land where you tap.
+
+### Added
+
+- Touch and hold, then move, to drag in a computer or browser live view, as with a mouse.
+- Pinch to zoom into a live view, and move two fingers to look around it. The picture sharpens once you let go.
 
 ### Changed
 
