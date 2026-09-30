@@ -13,11 +13,12 @@ import Testing
         let stream = AsyncStream<AnalyzerInput>.makeStream(bufferingPolicy: .bufferingOldest(64))
         let sink = try VoiceAudioSink(url: url, targetFormat: target, continuation: stream.continuation)
 
+        // Offline before the mixer is first touched, so the engine never wires up the simulator's audio device.
         let engine = AVAudioEngine()
+        try engine.enableManualRenderingMode(.offline, format: source, maximumFrameCount: 4096)
         let player = AVAudioPlayerNode()
         engine.attach(player)
         engine.connect(player, to: engine.mainMixerNode, format: source)
-        try engine.enableManualRenderingMode(.offline, format: source, maximumFrameCount: 4096)
         VoiceRecorder.tap(engine.mainMixerNode, into: sink)
         let sound = try #require(AVAudioPCMBuffer(pcmFormat: source, frameCapacity: 16_000))
         sound.frameLength = 16_000
