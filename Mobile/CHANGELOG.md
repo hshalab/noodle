@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-09-30
+
 ### What to Test
 
 - Open a conversation where a bot sent a web link: a card with the page's picture and title shows under the message. Quit and reopen Noodle, or turn on Airplane Mode: the card is still there.

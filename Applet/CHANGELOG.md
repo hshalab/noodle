@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-09-30
+
 ### Changed
 
 - Noodlets are no longer limited to 20 MB or 512 files, and hidden files and folders such as `.git` are no longer counted as part of them. Opening a noodlet no longer reads all its files, and a Swift noodlet's run no longer copies them.

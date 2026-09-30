@@ -6,6 +6,8 @@ All notable changes to Noodle are documented here, following
 
 ## [Unreleased]
 
+## [0.37.0] - 2026-09-30
+
 ### Added
 
 - Right-click a file in a conversation and choose Save… to save a copy anywhere, including iCloud Drive.
