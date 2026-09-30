@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Changed
+
+- A device that falls behind in a live view picks up again from a small picture built on what it already shows, instead of a full new picture about 40 times larger. The Browser, Computer or Applet and the device need their latest versions.
+- Live views start live on a slow connection: the first picture comes at a moderate rate and more follows as soon as the device confirms it can take it, instead of the first seconds arriving late.
+- Brief wobbles on Wi-Fi no longer make live video lighter than the connection allows.
+- A live view on a congested connection asks for one fresh picture and waits for room, instead of asking again after every picture it could not use.
+
 ## [0.10.0] - 2026-09-29
 
 ### Changed

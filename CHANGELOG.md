@@ -9,10 +9,15 @@ All notable changes to Noodle are documented here, following
 ### Changed
 
 - The lists for adding tools, computers, browsers and group members, and the calendar and reminders choices, no longer have a Done button; click outside to close them.
+- A live view that falls behind on a slow connection picks up again from a small picture built on what it already shows, instead of a full new picture that is about 40 times larger and blurry for its first moments.
+- Live views start live on a slow connection: the first picture comes at a moderate rate and more follows as soon as the device confirms it can take it, instead of the first seconds arriving late.
+- Brief wobbles on Wi-Fi no longer make live video lighter than the connection allows.
+- A live view on a congested connection asks for one fresh picture and waits for room, instead of asking again after every picture it could not use.
 
 ### Fixed
 
 - Add Annotation (⇧⌘A) and Annotate Region (⇧⌘R) work in a conversation again after the main window has been closed and reopened.
+- Live views are sent at the size of their window. The window's size could go unsaid when it appeared before its connection opened, so video came larger than it needed to be.
 - The Shared list shows every noodlet's picture and name instead of "Noodlet unavailable" for all but the first few. Noodle now asks Noodle Applet for them a couple at a time.
 
 ## [0.35.0] - 2026-09-29

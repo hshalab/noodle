@@ -91,10 +91,19 @@ private struct SurfaceCanvas: NSViewRepresentable {
 }
 
 final class SurfaceNSView: NSView {
-    var control: (SurfaceControl) -> Void = { _ in } { didSet { reportSize() } }
+    /// Where controls go. Whoever that is learns the view's size and the last frame it has shown,
+    /// or none, which also says it will say what it shows.
+    var control: (SurfaceControl) -> Void = { _ in } {
+        didSet {
+            reported = nil
+            reportSize()
+            control(.shown(sequence: shown))
+        }
+    }
     private let feed: SurfaceFeed
     private let display = SurfaceDisplay()
     private var reported: CGSize?
+    private var shown: UInt64 = 0
 
     private func send(_ input: SurfaceInput) { control(.input(input)) }
 
@@ -114,6 +123,7 @@ final class SurfaceNSView: NSView {
         feed.show = { [weak self, display] packet in
             display.show(packet)
             // The Hub measures how late video arrives by it.
+            self?.shown = packet.sequence
             self?.control(.shown(sequence: packet.sequence))
         }
         display.needsKeyFrame = { [weak self] in self?.control(.keyFrame) }
@@ -180,10 +190,19 @@ private struct SurfaceCanvas: UIViewRepresentable {
 
 /// Taps click and a finger drag scrolls, as in Safari; the keyboard types into what is focused.
 final class SurfaceUIView: UIView, UIKeyInput {
-    var control: (SurfaceControl) -> Void = { _ in } { didSet { reportSize() } }
+    /// Where controls go. Whoever that is learns the view's size and the last frame it has shown,
+    /// or none, which also says it will say what it shows.
+    var control: (SurfaceControl) -> Void = { _ in } {
+        didSet {
+            reported = nil
+            reportSize()
+            control(.shown(sequence: shown))
+        }
+    }
     private let feed: SurfaceFeed
     private let display = SurfaceDisplay()
     private var reported: CGSize?
+    private var shown: UInt64 = 0
 
     private func send(_ input: SurfaceInput) { control(.input(input)) }
 
@@ -203,6 +222,7 @@ final class SurfaceUIView: UIView, UIKeyInput {
         feed.show = { [weak self, display] packet in
             display.show(packet)
             // The Hub measures how late video arrives by it.
+            self?.shown = packet.sequence
             self?.control(.shown(sequence: packet.sequence))
         }
         display.needsKeyFrame = { [weak self] in self?.control(.keyFrame) }

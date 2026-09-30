@@ -32,7 +32,10 @@ public enum LinkSurface {
         stream.onFrame { data in
             // How fast the device's link goes is the Hub's to measure, not the device's to say.
             switch SurfaceControl(data) {
-            case .shown(let sequence)?: delivery.shown(sequence)
+            case .shown(let sequence)?:
+                // The companion builds recovery frames on what the device has shown.
+                delivery.shown(sequence)
+                companion.send(data)
             case .rate?, nil: break
             case _?: companion.send(data)
             }

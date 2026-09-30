@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Changed
+
+- A live view that falls behind on a slow connection picks up again from a small picture built on what it already shows, instead of a full new picture that is about 40 times larger and blurry for its first moments.
+- Live views start live on a slow connection: the first picture comes at a moderate rate and more follows as soon as the device confirms it can take it, instead of the first seconds arriving late.
+- Brief wobbles on Wi-Fi no longer make live video lighter than the connection allows.
+
+### Fixed
+
+- Live views are sent at the size of their window. The window's size could go unsaid when it appeared before its connection opened, so video came larger than it needed to be.
+
 ## [0.9.0] - 2026-09-29
 
 ### What to Test

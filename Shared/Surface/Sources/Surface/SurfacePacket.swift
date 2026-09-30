@@ -7,6 +7,10 @@ public struct SurfacePacket: Equatable, Sendable {
     /// Counts up from 1 within one surface session.
     public var sequence: UInt64
     public var keyFrame: Bool
+    /// Built only on frames this viewer has shown, so it can go on from here after skipping some.
+    public var recovery = false
+    /// The companion answers `SurfaceControl.recover` with a recovery frame. Never on a key frame.
+    public var recoverable = false
     /// The surface's size in points, which input is given in.
     public var width: Double
     public var height: Double
@@ -15,9 +19,12 @@ public struct SurfacePacket: Equatable, Sendable {
     /// The frame's NAL units, each with a four-byte big-endian length (AVCC).
     public var sample: Data
 
-    public init(sequence: UInt64, keyFrame: Bool, width: Double, height: Double, parameterSets: [Data], sample: Data) {
+    public init(sequence: UInt64, keyFrame: Bool, recovery: Bool = false, recoverable: Bool = false, width: Double, height: Double,
+                parameterSets: [Data], sample: Data) {
         self.sequence = sequence
         self.keyFrame = keyFrame
+        self.recovery = recovery
+        self.recoverable = recoverable
         self.width = width
         self.height = height
         self.parameterSets = parameterSets
@@ -36,7 +43,8 @@ public struct SurfacePacket: Equatable, Sendable {
         data.append(UInt32(packets.count))
         for packet in packets {
             data.append(packet.sequence)
-            data.append(UInt8(packet.keyFrame ? 1 : 0))
+            // Older Hubs and viewers take a key frame only from exactly 1, so key frames carry no other flag.
+            data.append(packet.keyFrame ? UInt8(1) : UInt8((packet.recovery ? 2 : 0) | (packet.recoverable ? 4 : 0)))
             data.append(packet.width.bitPattern)
             data.append(packet.height.bitPattern)
             data.append(UInt8(packet.parameterSets.count))
@@ -60,7 +68,8 @@ public struct SurfacePacket: Equatable, Sendable {
                 sets.append(set)
             }
             guard let length = reader.uint32(), let sample = reader.bytes(Int(length)) else { return nil }
-            packets.append(SurfacePacket(sequence: sequence, keyFrame: key == 1, width: Double(bitPattern: width),
+            packets.append(SurfacePacket(sequence: sequence, keyFrame: key & 1 != 0, recovery: key & 2 != 0, recoverable: key & 4 != 0,
+                                         width: Double(bitPattern: width),
                                          height: Double(bitPattern: height), parameterSets: sets, sample: sample))
         }
         return reader.atEnd ? packets : nil

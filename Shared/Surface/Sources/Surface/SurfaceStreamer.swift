@@ -5,7 +5,8 @@ import Foundation
 /// steady beat, encodes each picture away from the main thread while the next is captured, and
 /// pushes it to every viewer at once. A beat that comes while the encoder is still busy is skipped. A viewer that falls
 /// behind misses frames instead of getting old ones late, and picks up again at the next key
-/// frame. What viewers do comes back on their sockets and reaches the surface in order. Once
+/// frame, or at a much smaller recovery frame when it says what it has shown. What viewers do
+/// comes back on their sockets and reaches the surface in order. Once
 /// the picture settles it is looked at only a few times a second, until it changes or a viewer
 /// does something.
 @MainActor public final class SurfaceStreamer {
@@ -16,6 +17,8 @@ import Foundation
         var waiting = true
         /// Bits per second the viewer's link takes, once it has said.
         var rate: Double?
+        /// The last frame the viewer has shown, once it has said.
+        var shown: UInt64?
     }
 
     /// Frames a viewer may have queued before it counts as behind.
@@ -29,6 +32,10 @@ import Foundation
     private var sequence: UInt64 = 0
     private var loop: Task<Void, Never>?
     private var wantsKeyFrame = false
+    private var wantsRecovery = false
+    /// Frames since the last key frame that not every viewer has shown yet, and the last one they all have.
+    private var unacknowledged: [(sequence: UInt64, token: Int)] = []
+    private var acknowledged: UInt64 = 0
     private var encoding = false
     /// The picture had stayed the same long enough that the encoder sent nothing for it.
     private var settled = false
@@ -103,10 +110,25 @@ import Foundation
         case .rate(let bitsPerSecond):
             viewers[id]?.rate = bitsPerSecond
             encoder.setBitRate(rate)
-        case .shown:
-            // How far the viewer has got is the Hub's to measure.
-            break
+        case .shown(let sequence):
+            let before = viewers[id]?.shown ?? 0
+            viewers[id]?.shown = max(before, sequence)
+            acknowledgeShown()
+        case .recover:
+            viewers[id]?.waiting = true
+            if viewers[id]?.shown != nil { wantsRecovery = true } else { wantsKeyFrame = true }
+            wake()
         }
+    }
+
+    /// Tells the encoder which frames every viewer that says what it has shown has shown, so
+    /// recovery frames are built only on those.
+    private func acknowledgeShown() {
+        guard let shown = viewers.values.compactMap(\.shown).min(), shown > acknowledged else { return }
+        let due = unacknowledged.filter { $0.sequence <= shown }.map(\.token)
+        unacknowledged.removeAll { $0.sequence <= shown }
+        acknowledged = shown
+        encoder.acknowledge(due)
     }
 
     private func start() {
@@ -139,36 +161,46 @@ import Foundation
 
     private func step() async {
         let now = ContinuousClock.now
-        if settled, !wantsKeyFrame, now >= busyUntil, let lastCapture, now - lastCapture < Self.settledInterval { return }
+        if settled, !wantsKeyFrame, !wantsRecovery, now >= busyUntil, let lastCapture, now - lastCapture < Self.settledInterval { return }
         guard !encoding else { return }
         lastCapture = now
         guard let picture = try? await capture() else { return }
         let taken = (ContinuousClock.now - began) / .seconds(1)
-        let keyFrame = wantsKeyFrame
-        wantsKeyFrame = false
+        let keyFrame = wantsKeyFrame, recover = wantsRecovery && !wantsKeyFrame
+        (wantsKeyFrame, wantsRecovery) = (false, false)
+        // A recovery frame is built on frames up to this one, which viewers need to have shown.
+        let base = acknowledged
         encoding = true
         Task {
-            let (encoded, settled) = await encoder.encode(picture.image, size: picture.size, keyFrame: keyFrame, fitting: fit, at: taken)
+            let (encoded, settled) = await encoder.encode(picture.image, size: picture.size, keyFrame: keyFrame, fitting: fit,
+                                                          at: taken, recover: recover)
             encoding = false
             self.settled = settled
-            if let encoded { send(encoded, size: picture.size) } else if keyFrame { wantsKeyFrame = true }
+            if let encoded { send(encoded, size: picture.size, base: base) }
+            else if keyFrame { wantsKeyFrame = true }
+            else if recover { wantsRecovery = true }
         }
     }
 
-    private func send(_ encoded: (sample: Data, parameterSets: [Data], keyFrame: Bool), size: CGSize) {
+    private func send(_ encoded: SurfaceEncoder.Frame, size: CGSize, base: UInt64) {
         sequence += 1
-        let packet = SurfacePacket(sequence: sequence, keyFrame: encoded.keyFrame, width: size.width, height: size.height,
-                                   parameterSets: encoded.parameterSets, sample: encoded.sample)
+        if encoded.keyFrame { (unacknowledged, acknowledged) = ([], 0) }
+        if let token = encoded.token { unacknowledged.append((sequence, token)) }
+        var packet = SurfacePacket(sequence: sequence, keyFrame: encoded.keyFrame, recoverable: !encoded.keyFrame, width: size.width,
+                                   height: size.height, parameterSets: encoded.parameterSets, sample: encoded.sample)
         let frame = SurfacePacket.encode([packet])
+        packet.recovery = true
+        let recovery = SurfacePacket.encode([packet])
         for (id, viewer) in viewers {
-            if viewer.waiting, !packet.keyFrame { continue }
+            let recovers = encoded.recovery && (viewer.shown ?? 0) >= base && viewer.shown != nil
+            if viewer.waiting, !encoded.keyFrame, !recovers { continue }
             if viewer.socket.pending >= Self.behind {
                 viewers[id]?.waiting = true
-                wantsKeyFrame = true
+                if viewer.shown != nil { wantsRecovery = true } else { wantsKeyFrame = true }
                 continue
             }
             viewers[id]?.waiting = false
-            viewer.socket.send(frame)
+            viewer.socket.send(recovers ? recovery : frame)
         }
     }
 }
@@ -184,13 +216,17 @@ private final class EncoderQueue: @unchecked Sendable {
     /// The frame, if any, and whether the picture has settled. A frame can also be missing because
     /// the encoder dropped it to keep to the rate, which says nothing about the picture.
     func encode(_ image: CGImage, size: CGSize, keyFrame: Bool,
-                fitting: CGSize?, at time: Double) async -> (frame: (sample: Data, parameterSets: [Data], keyFrame: Bool)?, settled: Bool) {
+                fitting: CGSize?, at time: Double, recover: Bool) async -> (frame: SurfaceEncoder.Frame?, settled: Bool) {
         await withCheckedContinuation { done in
             queue.async { [self] in
-                let frame = try? encoder.encode(image, size: size, keyFrame: keyFrame, fitting: fitting, at: time)
+                let frame = try? encoder.encode(image, size: size, keyFrame: keyFrame, fitting: fitting, at: time, recover: recover)
                 done.resume(returning: (frame ?? nil, encoder.isSettled))
             }
         }
+    }
+
+    func acknowledge(_ tokens: [Int]) {
+        queue.async { [self] in encoder.acknowledge(tokens) }
     }
 
     func setBitRate(_ bitRate: Double?) {

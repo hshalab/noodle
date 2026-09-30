@@ -24,6 +24,8 @@ public enum SurfaceControl: Codable, Equatable, Sendable {
     case keyFrame
     case rate(bitsPerSecond: Double)
     case shown(sequence: UInt64)
+    /// Frames were skipped, but the viewer can still decode on from those it has shown.
+    case recover
 
     public init?(_ data: Data) {
         guard let control = try? JSONDecoder().decode(Self.self, from: data) else { return nil }

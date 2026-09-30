@@ -8,6 +8,19 @@ import VideoToolbox
 /// no frame reordering, key frames only when asked for, and one frame out for each frame in until
 /// the picture stops changing. Scaling and colour conversion happen on the GPU, so a frame costs the CPU little more than a copy.
 public final class SurfaceEncoder {
+    public struct Frame: Sendable {
+        /// The frame's NAL units, each with a four-byte big-endian length (AVCC).
+        public var sample: Data
+        /// SPS and PPS, on key frames only.
+        public var parameterSets: [Data]
+        public var keyFrame: Bool
+        /// Built only on a frame every viewer has shown, so a viewer that missed the frames
+        /// since can go on from it without a key frame.
+        public var recovery = false
+        /// What to acknowledge once every viewer has shown this frame.
+        var token: Int?
+    }
+
     private var session: VTCompressionSession?
     private var transfer: VTPixelTransferSession?
     private var pool: CVPixelBufferPool?
@@ -18,6 +31,15 @@ public final class SurfaceEncoder {
     private var stamped = CMTime.negativeInfinity
     /// The last picture at its own size, and for how many frames it has stayed the same.
     private var last: CVPixelBuffer?
+    /// Whether the session keeps long-term references, which recovery frames are built on.
+    private var longTermReferences = false
+    /// Counts sessions, so a token from an earlier one is never acknowledged to this one.
+    private var generation = 0
+    /// Tokens of frames since the last key frame, those acknowledged and not yet passed on, and
+    /// whether any has been, which a recovery frame needs.
+    private var issued: Set<Int> = []
+    private var acknowledged: [Int] = []
+    private var canRecover = false
     private var unchanged = 0
     /// Frames still sent once the picture stops changing, so the encoder can sharpen what it
     /// sent while the picture moved before video goes quiet.
@@ -53,7 +75,7 @@ public final class SurfaceEncoder {
     /// time since the last, so a surface captured slowly or after a pause gets sharper frames.
     /// Without it, frames count as coming at the encoder's frame rate.
     public func encode(_ image: CGImage, size: CGSize, keyFrame: Bool = false,
-                       fitting: CGSize? = nil, at time: Double? = nil) throws -> (sample: Data, parameterSets: [Data], keyFrame: Bool)? {
+                       fitting: CGSize? = nil, at time: Double? = nil, recover: Bool = false) throws -> Frame? {
         var scale = min(1, Double(maxPixelSize) / Double(max(image.width, image.height)))
         if let fitting, fitting.width > 0, fitting.height > 0 {
             let box = (width: (fitting.width / 128).rounded(.up) * 128, height: (fitting.height / 128).rounded(.up) * 128)
@@ -65,10 +87,19 @@ public final class SurfaceEncoder {
         guard let session, let source = Self.pixelBuffer(image) else { return nil }
         unchanged = last.map { Self.same(source, $0) } == true ? unchanged + 1 : 0
         last = source
-        if isSettled, !keyFrame, frame > 0 { return nil }
+        if isSettled, !keyFrame, !recover, frame > 0 { return nil }
         guard let buffer = scaled(source) else { return nil }
-        var result: (Data, [Data], Bool)?
-        let properties = (keyFrame || frame == 0 ? [kVTEncodeFrameOptionKey_ForceKeyFrame: true] : [:]) as CFDictionary
+        var result: (Data, [Data], Bool, Int?)?
+        var properties: [CFString: Any] = [:]
+        if !acknowledged.isEmpty {
+            properties[kVTEncodeFrameOptionKey_AcknowledgedLTRTokens] = acknowledged.map { NSNumber(value: $0 & 0xFFFF_FFFF) }
+            acknowledged = []
+            canRecover = true
+        }
+        // A frame built on one every viewer has shown, when there is one; a key frame otherwise.
+        let recovering = recover && !keyFrame && frame > 0 && canRecover
+        if keyFrame || frame == 0 || (recover && !recovering) { properties[kVTEncodeFrameOptionKey_ForceKeyFrame] = true }
+        if recovering { properties[kVTEncodeFrameOptionKey_ForceLTRRefresh] = true }
         let taken = time ?? Double(frame) / Double(fps)
         origin = origin ?? taken
         var stamp = CMTime(seconds: taken - origin!, preferredTimescale: 90_000)
@@ -76,14 +107,21 @@ public final class SurfaceEncoder {
         stamped = stamp
         frame += 1
         let status = VTCompressionSessionEncodeFrame(session, imageBuffer: buffer, presentationTimeStamp: stamp,
-                                                     duration: .invalid, frameProperties: properties,
+                                                     duration: .invalid, frameProperties: properties as CFDictionary,
                                                      infoFlagsOut: nil) { status, _, sample in
             guard status == noErr, let sample else { return }
-            result = Self.unpack(sample)
+            result = Self.unpack(sample).map { unpacked in
+                let attachments = CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: false) as? [[CFString: Any]]
+                return (unpacked.0, unpacked.1, unpacked.2, (attachments?.first?[kVTSampleAttachmentKey_RequireLTRAcknowledgementToken] as? NSNumber)?.intValue)
+            }
         }
         guard status == noErr else { throw SurfaceEncoderError(status: status) }
         VTCompressionSessionCompleteFrames(session, untilPresentationTimeStamp: stamp)
-        return result.map { (sample: $0.0, parameterSets: $0.1, keyFrame: $0.2) }
+        guard let (sample, sets, isKey, token) = result else { return nil }
+        if isKey { (issued, acknowledged, canRecover) = ([], [], false) }
+        let tagged = token.map { generation << 32 | $0 }
+        if let tagged { issued.insert(tagged) }
+        return Frame(sample: sample, parameterSets: sets, keyFrame: isKey, recovery: recovering && !isKey, token: tagged)
     }
 
     private func start(width: Int, height: Int) throws {
@@ -124,12 +162,23 @@ public final class SurfaceEncoder {
         VTSessionSetProperty(created, key: kVTCompressionPropertyKey_MaxKeyFrameInterval, value: 0 as CFNumber)
         VTSessionSetProperty(created, key: kVTCompressionPropertyKey_ExpectedFrameRate, value: fps as CFNumber)
         Self.setBitRate(created, pixels: (width, height), cap: bitRate)
+        longTermReferences = VTSessionSetProperty(created, key: kVTCompressionPropertyKey_EnableLTR, value: kCFBooleanTrue) == noErr
         VTCompressionSessionPrepareToEncodeFrames(created)
         session = created
         pixels = (width, height)
         frame = 0
         origin = nil
         stamped = .negativeInfinity
+        generation += 1
+        (issued, acknowledged, canRecover) = ([], [], false)
+    }
+
+    /// Frames every viewer has shown, by their tokens, which recovery frames may be built on.
+    /// Tokens from before the last key frame or of another session are left out.
+    public func acknowledge(_ tokens: [Int]) {
+        guard longTermReferences else { return }
+        acknowledged += tokens.filter(issued.contains)
+        issued.subtract(tokens)
     }
 
     private static func setBitRate(_ session: VTCompressionSession, pixels: (width: Int, height: Int), cap: Double?) {

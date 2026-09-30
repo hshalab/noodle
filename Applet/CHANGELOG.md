@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Let a live viewer that fell behind pick up again from a small picture built on what it has shown, instead of a full new picture about 40 times larger. Update Noodle, Noodle for iPhone and Noodle Hub as well.
+
 ### Fixed
 
 - Requests beyond the few Applet answers at once wait their turn instead of being dropped unanswered, which bots and Noodle saw as failures.

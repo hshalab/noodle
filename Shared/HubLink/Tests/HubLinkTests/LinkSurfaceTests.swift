@@ -4,15 +4,8 @@ import Foundation
 import XCTest
 
 final class LinkSurfaceTests: XCTestCase {
-    /// On a link slower than the video, what the device sees stays close to live: the Hub learns
-    /// from what the device says it has shown that frames take longer to arrive, and has the
-    /// companion send less, instead of letting them pile up in the network and arrive seconds late.
-    func testLiveVideoStaysLiveOnASlowLink() async throws {
-        // A virtual machine's timers are too coarse to pace a link.
-        var virtual: Int32 = 0, size = MemoryLayout<Int32>.size
-        sysctlbyname("kern.hv_vmm_present", &virtual, &size, nil, 0)
-        try XCTSkipIf(virtual == 1, "this Mac is a virtual machine")
-
+    /// What the device has shown reaches the companion too, which builds recovery frames on it.
+    func testTheCompanionHearsWhatTheDeviceHasShown() async throws {
         var fds: [Int32] = [0, 0]
         XCTAssertEqual(socketpair(AF_UNIX, SOCK_STREAM, 0, &fds), 0)
         let companion = SurfaceSocket(fd: fds[0]), hubEnd = SurfaceSocket(fd: fds[1])
@@ -21,13 +14,45 @@ final class LinkSurfaceTests: XCTestCase {
             .stream { LinkSurface.relay(hubEnd, to: $0) }
         })
         try await server.start()
-        let link = try SlowLink(to: try XCTUnwrap(server.port), bitsPerSecond: 2_000_000, queueSeconds: 0.5)
-        let video = FakeCompanion(companion, bitsPerSecond: 6_000_000, fps: 30)
+        defer { companion.close(); server.stop() }
+        let channel = try await LinkClient.channel(Data("{}".utf8), identity: LinkIdentity(), hubKey: hub.publicKey,
+                                                   endpoints: [LinkEndpoint(host: "::1", port: try XCTUnwrap(server.port))])
+        defer { channel.cancel() }
+        channel.send(SurfaceControl.shown(sequence: 5).encoded)
+        channel.send(SurfaceControl.input(.key(.enter)).encoded)
+        var heard: [SurfaceControl] = []
+        for await frame in companion.frames {
+            // The Hub's own say on the rate is not the device's.
+            if let control = SurfaceControl(frame), !{ if case .rate = control { true } else { false } }() { heard.append(control) }
+            if heard.contains(.input(.key(.enter))) { break }
+        }
+        XCTAssertEqual(heard, [.shown(sequence: 5), .input(.key(.enter))])
+    }
+
+    /// How late each frame reached a device that says what it has shown, over `seconds` of a live
+    /// view through a link of `bitsPerSecond`, from a companion that can send up to `ceiling`.
+    private func watch(for seconds: Double, bitsPerSecond: Double, ceiling: Double) async throws
+        -> (late: [(at: Double, seconds: Double)], rate: Double) {
+        var fds: [Int32] = [0, 0]
+        XCTAssertEqual(socketpair(AF_UNIX, SOCK_STREAM, 0, &fds), 0)
+        let companion = SurfaceSocket(fd: fds[0]), hubEnd = SurfaceSocket(fd: fds[1])
+        let hub = LinkIdentity()
+        let server = try LinkServer(identity: hub, port: 0, admits: { _ in true }, handler: { _, _ in
+            .stream { LinkSurface.relay(hubEnd, to: $0) }
+        })
+        try await server.start()
+        let link = try SlowLink(to: try XCTUnwrap(server.port), bitsPerSecond: bitsPerSecond, queueSeconds: 0.5)
+        let video = FakeCompanion(companion, bitsPerSecond: ceiling, fps: 30)
         defer { video.stop(); companion.close(); link.stop(); server.stop() }
 
         let channel = try await LinkClient.channel(Data("{}".utf8), identity: LinkIdentity(), hubKey: hub.publicKey,
                                                    endpoints: [LinkEndpoint(host: "::1", port: link.port)])
         defer { channel.cancel() }
+        // As a viewer does once its channel opens.
+        channel.send(SurfaceControl.shown(sequence: 0).encoded)
+        // Video that stops altogether must not hold the test up.
+        let deadline = Task { try await Task.sleep(for: .seconds(seconds + 2)); channel.cancel() }
+        defer { deadline.cancel() }
         let start = ContinuousClock.now
         var late: [(at: Double, seconds: Double)] = []
         for try await frame in channel.frames {
@@ -36,14 +61,53 @@ final class LinkSurfaceTests: XCTestCase {
                 if let sent = video.sent(packet.sequence) { late.append(((now - start) / .seconds(1), (now - sent) / .seconds(1))) }
                 channel.send(SurfaceControl.shown(sequence: packet.sequence).encoded)
             }
-            if now - start > .seconds(10) { break }
+            if now - start > .seconds(seconds) { break }
         }
+        return (late, video.currentRate)
+    }
+
+    /// These pace a real link in real time, so a busy Mac or a virtual machine's coarse timers
+    /// change what they measure. SurfaceFlowTests check the same behaviour without a clock; run
+    /// these with NOODLE_LINK_TESTS=1 to see it over QUIC.
+    private func skipUnlessPacingIsReal() throws {
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["NOODLE_LINK_TESTS"] != nil, "set NOODLE_LINK_TESTS=1 to run over a paced link")
+        var virtual: Int32 = 0, size = MemoryLayout<Int32>.size
+        sysctlbyname("kern.hv_vmm_present", &virtual, &size, nil, 0)
+        try XCTSkipIf(virtual == 1, "this Mac is a virtual machine")
+    }
+
+    /// On a link slower than the video, what the device sees stays close to live: the Hub learns
+    /// from what the device says it has shown that frames take longer to arrive, and has the
+    /// companion send less, instead of letting them pile up in the network and arrive seconds late.
+    func testLiveVideoStaysLiveOnASlowLink() async throws {
+        try skipUnlessPacingIsReal()
+        let (late, _) = try await watch(for: 10, bitsPerSecond: 2_000_000, ceiling: 6_000_000)
         // The first seconds find the link's pace; after that video should stay live.
         let settled = late.filter { $0.at > 5 }.map(\.seconds).sorted()
         XCTAssertFalse(settled.isEmpty, "no video came through")
         let median = settled.isEmpty ? 0 : settled[settled.count / 2], worst = settled.last ?? 0
         XCTAssertLessThan(median, 0.2, "frames arrived \(String(format: "%.2f", median)) s after they were sent")
         XCTAssertLessThan(worst, 0.5, "frames arrived up to \(String(format: "%.2f", worst)) s after they were sent")
+    }
+
+    /// A view on a slow link is live within its first second, instead of spending seconds
+    /// finding the link's pace behind video it cannot carry.
+    func testAViewStartsLiveOnASlowLink() async throws {
+        try skipUnlessPacingIsReal()
+        let (late, _) = try await watch(for: 3, bitsPerSecond: 2_000_000, ceiling: 6_000_000)
+        let start = late.filter { $0.at > 1 }.map(\.seconds)
+        XCTAssertGreaterThan(start.count, 30, "only \(start.count) frames came in two seconds")
+        let worst = start.max() ?? 0
+        XCTAssertLessThan(worst, 0.5, "after the first second, frames still arrived up to \(String(format: "%.2f", worst)) s late")
+    }
+
+    /// Starting carefully costs a fast link nothing: video reaches the most the companion sends
+    /// within two seconds.
+    func testAViewOnAFastLinkReachesFullRateQuickly() async throws {
+        try skipUnlessPacingIsReal()
+        let (late, rate) = try await watch(for: 2, bitsPerSecond: 60_000_000, ceiling: 8_000_000)
+        XCTAssertGreaterThan(late.count, 45)
+        XCTAssertGreaterThanOrEqual(rate, 7_000_000, "after two seconds the companion was asked for only \(Int(rate)) bits a second")
     }
 }
 
@@ -86,6 +150,8 @@ private final class FakeCompanion: @unchecked Sendable {
             }
         }
     }
+
+    var currentRate: Double { lock.withLock { rate } }
 
     func sent(_ sequence: UInt64) -> ContinuousClock.Instant? { lock.withLock { times[sequence] } }
 
