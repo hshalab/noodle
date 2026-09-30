@@ -311,6 +311,12 @@ struct ChatView: View {
             NSWorkspace.shared.open(link)
             return
         }
+        // Annotations stay in Quick Look, where their note is shown and edited.
+        if attachment.url == nil, attachment.annotation == nil, QuickLookBypass.isHeld() {
+            attachmentPreview.close()
+            NSWorkspace.shared.open(store.attachmentFileURL(attachment))
+            return
+        }
         let edit: ((ConversationAttachment, String) throws -> ConversationAttachment)? = store.canEditAnnotation(attachment) ? { [weak store] attachment, comment in
             guard let store else { throw WorkspaceError.missingConversation(attachment.conversationID) }
             return try store.reviseAnnotationComment(attachment, comment: comment)

@@ -162,16 +162,22 @@ enum LinkPreviewSettings {
     }
 }
 
+/// Holding ⌘, ⌥ or ⇧ while opening a link or attachment skips Quick Look and opens it on its own.
+enum QuickLookBypass {
+    static func isHeld(_ modifiers: NSEvent.ModifierFlags = NSEvent.modifierFlags) -> Bool {
+        !modifiers.intersection([.command, .option, .shift]).isEmpty
+    }
+}
+
 /// Web links open in Quick Look first, whose Open button hands them to the browser.
 enum WebLinkPreview {
     static let defaultsKey = "Noodle.webLinks.preview"
     static func isEnabled(in defaults: UserDefaults = .standard) -> Bool {
         defaults.object(forKey: defaultsKey) as? Bool ?? true
     }
-    /// Command-click skips Quick Look and opens the link in the browser.
     static func opensInPreview(in defaults: UserDefaults = .standard,
                                modifiers: NSEvent.ModifierFlags = NSEvent.modifierFlags) -> Bool {
-        isEnabled(in: defaults) && !modifiers.contains(.command)
+        isEnabled(in: defaults) && !QuickLookBypass.isHeld(modifiers)
     }
     /// The link to show in Quick Look, or nil when it goes straight to the system.
     static func previewed(_ url: URL, enabled: Bool) -> URL? {

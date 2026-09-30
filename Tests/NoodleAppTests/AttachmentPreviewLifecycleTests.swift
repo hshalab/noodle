@@ -200,11 +200,17 @@ import XCTest
         }
     }
 
-    func testCommandClickOpensWebLinksInTheBrowserEvenWhenPreviewIsOn() throws {
+    func testModifierClickOpensWebLinksInTheBrowserEvenWhenPreviewIsOn() throws {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: "WebLinkPreviewCommandClick-\(UUID())"))
         XCTAssertTrue(WebLinkPreview.opensInPreview(in: defaults, modifiers: []))
-        XCTAssertFalse(WebLinkPreview.opensInPreview(in: defaults, modifiers: [.command]))
-        XCTAssertFalse(WebLinkPreview.opensInPreview(in: defaults, modifiers: [.command, .shift]))
+        XCTAssertTrue(WebLinkPreview.opensInPreview(in: defaults, modifiers: [.capsLock, .function]))
+        // Control-click is a right-click on macOS, so it never counts.
+        XCTAssertTrue(WebLinkPreview.opensInPreview(in: defaults, modifiers: [.control]))
+        for modifiers: NSEvent.ModifierFlags in [.command, .option, .shift, [.command, .shift]] {
+            XCTAssertFalse(WebLinkPreview.opensInPreview(in: defaults, modifiers: modifiers), "\(modifiers)")
+            XCTAssertTrue(QuickLookBypass.isHeld(modifiers), "\(modifiers)")
+        }
+        XCTAssertFalse(QuickLookBypass.isHeld([]))
         defaults.set(false, forKey: WebLinkPreview.defaultsKey)
         XCTAssertFalse(WebLinkPreview.opensInPreview(in: defaults, modifiers: []))
     }
